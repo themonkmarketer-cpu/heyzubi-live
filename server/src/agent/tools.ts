@@ -10,6 +10,7 @@ import { scheduleRoutine, unscheduleRoutine } from '../routines.js';
 import { createEventRoutine, deleteEventTrigger, describeEvent, listTriggerTypes } from '../triggers.js';
 import { setCheckins } from '../proactive.js';
 import { createRoom, postToRoom } from './rooms.js';
+import { whatsappSend } from '../whatsapp.js';
 import type { ActivityKind } from '../types.js';
 import { Cron } from 'croner';
 
@@ -312,6 +313,14 @@ export const TOOLS: ToolDef[] = [
       appendRow(ctx.botId, 'card', { type: 'card', card: 'question', question: a.question, options: (a.options ?? []).slice(0, 6), status: 'pending' });
       return { output: 'Question shown to the user. Stop here and wait for their answer.', endTurn: true };
     },
+  },
+  {
+    name: 'whatsapp_send',
+    description: "Send a WhatsApp text message from the owner's own WhatsApp (send-only, the account connected in Zubi HQ). Give to_group (the group's name) or to_number (phone number with country code, digits only), and the exact text. The owner sees the recipient and text on an approval card and nothing is sent unless they allow it; never say a message was sent unless this tool says so. At most 20 a day, shared with Zubi HQ.",
+    parameters: obj({ to_group: { type: 'string', description: 'WhatsApp group name' }, to_number: { type: 'string', description: 'Phone number with country code, digits only' }, text: { type: 'string', description: 'The exact message' } }, ['text']),
+    activity: 'connecting_service',
+    label: 'Using WhatsApp',
+    impl: async (a, ctx) => whatsappSend(a, ctx),
   },
   {
     name: 'request_app_connection',
