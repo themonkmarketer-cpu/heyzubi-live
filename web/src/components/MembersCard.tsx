@@ -28,7 +28,7 @@ export function MembersCard({ room }: { room: Bot }) {
   return (
     <div className="panel-card members">
       {members === null ? <div className="panel-empty">Loading…</div> : members.length === 0 ? (
-        <div className="panel-empty">No Bots in this group yet.</div>
+        <div className="panel-empty">No one from your team is in this group yet.</div>
       ) : members.map((m) => {
         const bot = bots.find((b) => b.id === m.id);
         return (
@@ -58,15 +58,15 @@ export function MembersCard({ room }: { room: Bot }) {
               <BotAvatarFor bot={b} size={20} />
               <span className="panel-row__title" style={{ flex: 1 }}>{b.name}</span>
             </button>
-          )) : <div className="panel-empty">Every Bot is already here.</div>}
+          )) : <div className="panel-empty">Your whole team is already here.</div>}
         </div>
       ) : (
         <button type="button" className="panel-row panel-row--action" onClick={() => setAdding(true)}>
-          <Icon name="plus" size={12} opacity={0.56} /> Add a Bot
+          <Icon name="plus" size={12} opacity={0.56} /> Add a team member
         </button>
       )}
       {error && <div className="card__error">{error}</div>}
-      <div className="members__hint">@mention a Bot to ask just them; otherwise the group answers.</div>
+      <div className="members__hint">@mention a team member to ask just them; otherwise the group answers.</div>
     </div>
   );
 }

@@ -125,7 +125,7 @@ function GeneralTab({ bot, onClose }: { bot: Bot; onClose: () => void }) {
         <div className="cfg-look">
           <BotAvatar shape={draft.avatarShape} color={draft.avatarColor} size={72} />
           <div className="cfg-look__text">
-            <div className="cfg-look__name">{draft.name || 'New Bot'}</div>
+            <div className="cfg-look__name">{draft.name || 'New team member'}</div>
             <button type="button" className="cfg-btn cfg-btn--secondary" onClick={() => setPicker(!picker)} aria-expanded={picker}>
               {picker ? 'Done' : 'Change look'}
             </button>
@@ -145,16 +145,16 @@ function GeneralTab({ bot, onClose }: { bot: Bot; onClose: () => void }) {
 
       <section className="cfg-section">
         <Field label="About" htmlFor="cfg-about">
-          <textarea id="cfg-about" className="text-input cfg-textarea" rows={2} value={draft.description} maxLength={500} placeholder="What is this Bot for?" onChange={(e) => put('description', e.target.value)} />
+          <textarea id="cfg-about" className="text-input cfg-textarea" rows={2} value={draft.description} maxLength={500} placeholder="What are they on the team for?" onChange={(e) => put('description', e.target.value)} />
         </Field>
-        <Field label="Instructions" htmlFor="cfg-instructions" hint={`Standing guidance ${draft.name || 'this Bot'} always follows, like tone, priorities or things to avoid. It also learns from chat, skills and memories.`}>
+        <Field label="Instructions" htmlFor="cfg-instructions" hint={`Standing guidance ${draft.name || 'this team member'} always follows, like tone, priorities or things to avoid. It also learns from chat, skills and memories.`}>
           <textarea id="cfg-instructions" className="text-input cfg-textarea cfg-textarea--tall" rows={7} value={draft.instructions} maxLength={8000} placeholder="e.g. Keep updates to three bullets. Never email anyone outside the team without asking." onChange={(e) => put('instructions', e.target.value)} />
         </Field>
         <Field label="Thinking effort" hint={EFFORT_HINT[draft.effort]}>
           <Segmented label="Thinking effort" value={draft.effort} options={EFFORTS} onChange={(v) => put('effort', v)} />
         </Field>
         <Field label="Used as">
-          <Segmented label="Bot type" value={draft.mode} options={[{ value: 'personal', label: 'Personal assistant' }, { value: 'teammate', label: 'Teammate' }]} onChange={(v) => put('mode', v)} />
+          <Segmented label="Role" value={draft.mode} options={[{ value: 'personal', label: 'Personal assistant' }, { value: 'teammate', label: 'Teammate' }]} onChange={(v) => put('mode', v)} />
         </Field>
       </section>
 
@@ -180,7 +180,7 @@ function GeneralTab({ bot, onClose }: { bot: Bot; onClose: () => void }) {
             <div className="cfg-row">
               <div className="cfg-row__text">
                 <div className="cfg-row__title">Make primary</div>
-                <div className="cfg-row__sub">Your go-to Bot. It reaches out first and keeps the others on track.</div>
+                <div className="cfg-row__sub">Your go-to team member. They reach out first and keep the rest of the team on track.</div>
               </div>
               <button type="button" className="cfg-btn cfg-btn--secondary" onClick={() => configApi.makePrimary(bot.id).then(() => flash(`${bot.name} is now your primary Bot`)).catch((e) => flash(e.message, 'error'))}>Make primary</button>
             </div>

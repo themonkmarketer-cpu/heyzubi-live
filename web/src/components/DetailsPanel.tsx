@@ -65,7 +65,7 @@ export function DetailsPanel() {
   return (
     <aside className="details" style={botVars(bot.avatarColor)} aria-label="Conversation details">
       <div className="details__top">
-        <button type="button" className="icon-btn icon-btn--bordered details__gear" onClick={() => useConfigUI.getState().openBotSettings(bot.id)} aria-label="Bot settings" title="Bot settings">
+        <button type="button" className="icon-btn icon-btn--bordered details__gear" onClick={() => useConfigUI.getState().openBotSettings(bot.id)} aria-label="Settings" title="Settings">
           <Glyph name="gear" size={16} opacity={0.7} />
         </button>
         <button type="button" className="icon-btn icon-btn--bordered" onClick={() => set({ detailsOpen: false })} aria-label="Close details">

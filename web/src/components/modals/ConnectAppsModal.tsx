@@ -185,9 +185,9 @@ export function ConnectAppsModal() {
               <Icon name="search" size={14} opacity={0.56} />
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search apps and skills" aria-label="Search apps" />
             </label>
-            <button type="button" className="pill-chip" title="Bot templates are coming soon" disabled>
+            <button type="button" className="pill-chip" title="Team templates are coming soon" disabled>
               {primary && <BotAvatarFor bot={primary} size={22} />}
-              <span>Bot templates</span>
+              <span>Team templates</span>
               <Icon name="share" size={12} opacity={0.56} />
             </button>
           </div>

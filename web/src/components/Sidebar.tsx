@@ -82,7 +82,7 @@ export function Sidebar() {
               <button type="button" className="icon-btn" onClick={() => setModal('search')} aria-label="Search" title="Search (⌘K)">
                 <Icon name="search" opacity={0.66} />
               </button>
-              <button type="button" className="icon-btn" onClick={() => setModal('create')} aria-label="New Bot" title="New Bot">
+              <button type="button" className="icon-btn" onClick={() => setModal('create')} aria-label="Add a team member" title="Add a team member">
                 <Icon name="plus" opacity={0.66} />
               </button>
             </>
@@ -117,7 +117,7 @@ export function Sidebar() {
             <button type="button" className="bot-list__empty" onClick={() => setModal('create')}>
               <span className="bot-list__empty-plus"><Icon name="plus" size={14} opacity={0.66} /></span>
               <span>
-                <span className="bot-row__name">Create a Bot</span>
+                <span className="bot-row__name">Add a team member</span>
                 <span className="bot-row__preview">Give it a job, like research or inbox triage</span>
               </span>
             </button>

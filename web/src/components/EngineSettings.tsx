@@ -136,7 +136,7 @@ export function EngineSettings({ bot }: { bot: Bot }) {
     try {
       const { bot: next } = await configApi.updateBot(botId, { effort: v });
       useStore.setState((s) => ({ bots: s.bots.map((b) => (b.id === next.id ? { ...b, effort: next.effort } : b)) }));
-    } catch (e) { setEffort(before); setNote(`Couldn’t save: ${(e as Error).message || 'the bot did not answer'}`); }
+    } catch (e) { setEffort(before); setNote(`Couldn’t save: ${(e as Error).message || 'the app did not answer'}`); }
     finally { setBusy(null); }
   };
 

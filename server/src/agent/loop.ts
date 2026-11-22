@@ -67,7 +67,7 @@ function triggerText(t: Trigger): string {
   switch (t.type) {
     case 'user': return t.text;
     case 'routine': return `[Routine "${t.name}" is running now. Do this:]\n${t.prompt}`;
-    case 'bot': return `[Message from ${t.fromName}, another Bot on the team. Reply to them with send_to_bot if they asked you something.]\n${t.text}`;
+    case 'bot': return `[Message from ${t.fromName}, another member of the team. Reply to them with send_to_bot if they asked you something.]\n${t.text}`;
     case 'system': return `[System notice] ${t.text}`;
   }
 }

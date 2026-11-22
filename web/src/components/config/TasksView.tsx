@@ -77,7 +77,7 @@ export function TasksView() {
             <div className="tasks-empty">
               <Glyph name="tasks" size={28} opacity={0.35} />
               <div className="tasks-empty__title">{filter === 'done' ? 'Nothing finished yet' : 'Nothing in progress'}</div>
-              <div className="tasks-empty__sub">Give a Bot a multi-part request and every piece gets its own row here, so progress is easy to follow.</div>
+              <div className="tasks-empty__sub">Give someone on your team a multi-part request and every piece gets its own row here, so progress is easy to follow.</div>
             </div>
           ) : (
             <div className="task-list">{shown.map((t) => <TaskRow key={t.id} t={t} bot={byId.get(t.botId)} showBot />)}</div>

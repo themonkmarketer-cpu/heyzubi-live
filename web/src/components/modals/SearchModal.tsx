@@ -35,7 +35,7 @@ export function SearchModal() {
           autoFocus
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search Bots, chats and settings"
+          placeholder="Search your team, chats and settings"
           aria-label="Search"
           onKeyDown={(e) => {
             if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(a + 1, results.length - 1)); }
@@ -45,7 +45,7 @@ export function SearchModal() {
         />
       </div>
       <div className="search-modal__results" ref={listRef} role="listbox">
-        <div className="search-modal__section">Bots</div>
+        <div className="search-modal__section">Team</div>
         {results.map((b, i) => (
           <button
             key={b.id}
@@ -64,7 +64,7 @@ export function SearchModal() {
             </span>
           </button>
         ))}
-        {results.length === 0 && <div className="search-modal__empty">No Bots match “{q}”</div>}
+        {results.length === 0 && <div className="search-modal__empty">No one on your team matches “{q}”</div>}
       </div>
     </Modal>
   );

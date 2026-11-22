@@ -261,7 +261,7 @@ export const TOOLS: ToolDef[] = [
     description: "Send a message to another Bot on the user's team (by name) to delegate work or ask a question. Their reply will arrive later as a new message to you.",
     parameters: obj({ bot_name: { type: 'string' }, message: { type: 'string' } }, ['bot_name', 'message']),
     activity: 'messaging_named',
-    label: 'Messaging a Bot',
+    label: 'Messaging a teammate',
     impl: async (a, ctx) => {
       const target = botByName(ctx.userId, a.bot_name);
       if (!target) return { output: `No bot named "${a.bot_name}". Team: ${(db.prepare('SELECT name FROM bots WHERE user_id=?').all(ctx.userId) as any[]).map((b) => b.name).join(', ')}` };

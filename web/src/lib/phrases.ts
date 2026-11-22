@@ -32,7 +32,7 @@ export function activityPhrase(live: LiveState, rows: Row[], tick: number): stri
   const kind = a.kind as ActivityKind;
   if (kind === 'messaging_named') {
     const name = messagedName(live, rows);
-    return name ? `Asking ${name}` : 'Asking another Bot';
+    return name ? `Asking ${name}` : 'Asking someone on the team';
   }
   if (kind === 'connecting_service') return nice(a.detail) ? `Using ${a.detail}` : 'Using a connected app';
   const list = PHRASES[kind] ?? PHRASES.working;

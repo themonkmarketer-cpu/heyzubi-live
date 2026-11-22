@@ -37,22 +37,22 @@ export function CreateBotModal() {
   };
 
   return (
-    <Modal onClose={close} className="create-modal" label="Create New Bot">
+    <Modal onClose={close} className="create-modal" label="Add to your team">
       <form onSubmit={(e) => { e.preventDefault(); create(); }}>
         <div className="modal__header">
-          <div className="modal__title">Create New Bot</div>
+          <div className="modal__title">Add to your team</div>
           <button type="button" className="modal__close" onClick={close} aria-label="Close"><Icon name="close" size={14} opacity={0.68} /></button>
         </div>
         <div className="create-modal__body">
           <BotAvatar shape={shape} color={color} size={96} className="create-modal__preview" />
           <input
             className="text-input create-modal__name"
-            placeholder="Give your Bot a name"
+            placeholder="Give them a name"
             value={name}
             maxLength={60}
             onChange={(e) => setName(e.target.value)}
             autoFocus
-            aria-label="Bot name"
+            aria-label="Name"
           />
           <div className="shape-grid" role="radiogroup" aria-label="Character shape">
             {ROWS.map((row, i) => (
@@ -76,7 +76,7 @@ export function CreateBotModal() {
               </div>
             ))}
           </div>
-          <div className="mode-pick" role="radiogroup" aria-label="Bot type">
+          <div className="mode-pick" role="radiogroup" aria-label="Role">
             <button type="button" role="radio" aria-checked={mode === 'personal'} className={`mode-pick__opt${mode === 'personal' ? ' is-active' : ''}`} onClick={() => setMode('personal')}>
               <span className="mode-pick__title">Personal assistant</span>
               <span className="mode-pick__sub">Works for you, with your apps</span>

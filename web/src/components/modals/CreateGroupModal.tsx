@@ -43,7 +43,7 @@ export function CreateGroupModal() {
         </div>
         <div className="create-modal__body" style={{ alignItems: "stretch" }}>
           <input className="text-input create-modal__name" placeholder="Name your group" value={name} onChange={(e) => setName(e.target.value)} autoFocus aria-label="Group name" />
-          <div className="section-label" style={{ marginTop: 14 }}>Bots in this group</div>
+          <div className="section-label" style={{ marginTop: 14 }}>Team members in this group</div>
           <div className="group-pick">
             {bots.map((b) => (
               <button key={b.id} type="button" role="checkbox" aria-checked={picked.includes(b.id)} className={`group-pick__opt${picked.includes(b.id) ? ' is-active' : ''}`} onClick={() => toggle(b.id)}>

@@ -42,7 +42,7 @@ export function dispatchRoomMessage(roomId: string, text: string, enqueue: (botI
   const room = db.prepare('SELECT * FROM bots WHERE id=?').get(roomId) as any;
   const members = roomMembers(roomId);
   if (!members.length) {
-    appendRow(roomId, 'notice', { type: 'notice', text: 'This group has no Bots yet.', tone: 'warn' });
+    appendRow(roomId, 'notice', { type: 'notice', text: 'This group has no team members yet.', tone: 'warn' });
     return;
   }
   const lower = text.toLowerCase();
@@ -63,7 +63,7 @@ export function dispatchRoomMessage(roomId: string, text: string, enqueue: (botI
         `${mentioned.length ? 'You were @mentioned.' : 'The user addressed the whole group.'}\n` +
         `Recent group messages:\n${recent}\n\n` +
         `Reply to the group by calling post_to_group with group_name "${room.name}" (use your tools first if the request needs real work). ` +
-        `Keep it short and don't repeat what other Bots already said. If you have nothing to add, call stay_silent. Do not write a normal reply.`,
+        `Keep it short and don't repeat what other team members already said. If you have nothing to add, call stay_silent. Do not write a normal reply.`,
     });
   }
 }
