@@ -125,6 +125,13 @@ const SHARED_ENV = [
   'FIRECRAWL_API_KEY', 'TAVILY_API_KEY', 'EXA_API_KEY', 'PARALLEL_API_KEY',
 ];
 
+/**
+ * What a packaged Hermes (the official Docker image) reads from its environment: where its bundled
+ * tools live, and HERMES_ALLOW_ROOT_GATEWAY, without which it refuses to run a gateway as root (the
+ * extra bots run as root here, as they do on an Orgo computer, each in a home of its own).
+ */
+const HERMES_RUNTIME_ENV = ['HERMES_RUNTIME_DIR', 'HERMES_PYTHON', 'HERMES_TUI_DIR', 'HERMES_WEB_DIST', 'HERMES_ALLOW_ROOT_GATEWAY'];
+
 /** Parts of the primary agent's config a managed agent starts from, so it reaches the same models. */
 const SHARED_CONFIG = ['model', 'providers', 'custom_providers', 'auxiliary', 'fallback_model', 'fallback_providers'];
 
@@ -330,6 +337,8 @@ async function startGateway(botId: string): Promise<void> {
       // (one folder per HOME) every agent on the computer would end up driving the same browser.
       BH_HOME: path.join(home, 'browser-harness'),
       ...(display ? { DISPLAY: display } : {}),
+      // What a packaged Hermes (the official Docker image) needs from its environment. No secrets.
+      ...Object.fromEntries(HERMES_RUNTIME_ENV.filter((k) => process.env[k]).map((k) => [k, process.env[k] as string])),
     },
   });
   fs.closeSync(log);

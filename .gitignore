@@ -15,3 +15,6 @@ docs/INTERNAL-*.md
 docs/SPEC.md
 web/screenshots/
 tests/out/
+
+# Built by scripts/pack.sh for deploy/hermes-box
+deploy/hermes-box/hq-app.tgz

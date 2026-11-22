@@ -1,4 +1,5 @@
 import { env } from './env.js';
+import { localOrgo } from './localscreens.js';
 
 const BASE = 'https://www.orgo.ai/api';
 
@@ -50,7 +51,7 @@ export interface OrgoScreen { id: string; display: string; width: number; height
 
 const q = (screen?: string) => (screen && screen !== 'default' ? `?screen=${encodeURIComponent(screen)}` : '');
 
-export const orgo = {
+const cloudOrgo = {
   workspaces: () => call<any>('GET', '/workspaces'),
 
   getComputer: (id: string) => call<OrgoComputer>('GET', `/computers/${id}`),
@@ -81,3 +82,9 @@ export const orgo = {
   exportFile: (id: string, path: string) =>
     call<{ url?: string; file?: { id: string; url?: string; filename?: string }; [k: string]: unknown }>('POST', '/files/export', { desktopId: id, path }, { timeoutMs: 180_000 }),
 };
+
+/**
+ * The computer the bots work on. With HQ_SCREENS=local this machine stands in for Orgo: its screens
+ * are local X displays (see localscreens.ts) and no call goes to Orgo's API.
+ */
+export const orgo: typeof cloudOrgo = env.localScreens ? ({ ...cloudOrgo, ...localOrgo } as unknown as typeof cloudOrgo) : cloudOrgo;

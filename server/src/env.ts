@@ -53,6 +53,7 @@ function defaultDbPath(): string {
 
 const hermesHome = process.env.HERMES_HOME_PRIMARY ?? path.join(os.homedir(), '.hermes');
 const appUrl = process.env.APP_URL ?? 'http://localhost:5173';
+const localScreens = process.env.HQ_SCREENS === 'local';
 
 export const env = {
   port: Number(process.env.PORT ?? 8787),
@@ -70,7 +71,8 @@ export const env = {
   xaiKey: req('XAI_API_KEY'),
   xaiModel: process.env.XAI_MODEL ?? 'grok-4.7',
   composioKey: req('COMPOSIO_API_KEY'),
-  orgoKey: secret('ORGO_API_KEY'),
+  /** Not needed with local screens: nothing then calls Orgo. */
+  orgoKey: localScreens && !process.env.ORGO_API_KEY && !process.env.ORGO_API_KEY_FILE ? '' : secret('ORGO_API_KEY'),
   sessionSecret: sessionSecret(),
   /** Email-only sign-in for testing. Honoured only when APP_URL is a local address (see routes.ts). */
   devLogin: process.env.DEV_LOGIN === '1' && isLoopbackUrl(appUrl),
@@ -94,10 +96,19 @@ export const env = {
   primaryBotLabel: process.env.PRIMARY_BOT_LABEL ?? 'Chief of Staff',
 
   // ---- the one shared computer ----
+  /**
+   * HQ_SCREENS=local: no Orgo. This machine is the computer, and its screens are local X displays
+   * (Xvfb + x11vnc, see localscreens.ts). Implies HQ_LOCAL=1.
+   */
+  localScreens,
+  /** Folder for the local screens' own state (which screens exist, the VNC password). */
+  localScreensDir: process.env.HQ_SCREENS_DIR ?? new URL('../../data/screens', import.meta.url).pathname,
+  /** Size of each local screen, WIDTHxHEIGHT. */
+  localScreenSize: process.env.HQ_SCREEN_SIZE ?? '1280x800',
   /** The Orgo computer every bot works on (one screen each). Empty = legacy one-box-per-user mode is not supported. */
-  orgoComputerId: process.env.ORGO_COMPUTER_ID ?? '',
+  orgoComputerId: process.env.ORGO_COMPUTER_ID || (localScreens ? 'local' : ''),
   /** This server runs on that computer, so shell commands run locally instead of through Orgo's API. */
-  localBox: process.env.HQ_LOCAL === '1',
+  localBox: process.env.HQ_LOCAL === '1' || localScreens,
   /**
    * DevTools URL of a Chrome that already runs on the default screen and belongs to the primary bot
    * (e.g. http://127.0.0.1:9333). When set, we never start or stop that screen's Chrome ourselves.
