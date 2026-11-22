@@ -13,6 +13,12 @@ body {
   font-synthesis: none;
   overflow: hidden;
 }
+/* HeyZubi display type (Bricolage Grotesque) for titles; everything else stays in Instrument Sans. */
+h1, h2, .empty-chat__title, .tasks-view__title, .apps-modal__title, .cfg-look__name {
+  font-family: var(--font-display); font-weight: 600; letter-spacing: -0.01em;
+}
+.signin__title, .app-settings__head h1 { font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em; }
+code, pre, kbd { font-family: var(--font-mono-stack); }
 button, input, textarea, select { font: inherit; letter-spacing: inherit; color: inherit; }
 button { background: none; border: 0; padding: 0; margin: 0; cursor: pointer; text-align: inherit; }
 button:disabled { cursor: default; }
@@ -64,7 +70,7 @@ a { color: inherit; }
   font-size: 13px; line-height: 18px; letter-spacing: 0.195px; outline: none;
 }
 .text-input::placeholder { color: var(--color-text-quaternary); }
-.text-input:focus { border-color: var(--color-border-focus); box-shadow: 0 0 0 3px #1E86FC22; }
+.text-input:focus { border-color: var(--color-border-focus); box-shadow: 0 0 0 3px #8B5CF633; }
 
 .status-dot {
   position: absolute; width: 8px; height: 8px; border-radius: 50%;

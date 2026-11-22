@@ -25,7 +25,8 @@ interface Props {
 /** The part of the 100×100 drawing box that maps onto the slot. */
 const VIEW = { x: 8, w: 84 };
 const PUPIL_MIN_SIZE = 26;
-const INK = '#1C1C1C';
+/** HeyZubi eye colour (brand.json color.props.eye). */
+const INK = '#0B0A0F';
 
 function Eyes({ def, size }: { def: ShapeDef; size: number }) {
   const { y, dx, s } = def.eyes;

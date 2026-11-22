@@ -158,10 +158,10 @@
 
 /* ---------- live thinking block: mascot on a dark pill, caption, timer ---------- */
 .thinking {
-  --thinking-pill: #1C1C1C; --thinking-name: #FFFFFF; --thinking-status: #FFFFFF99;
+  --thinking-pill: #1B1622; --thinking-name: #FFFFFF; --thinking-status: #FFFFFF99;
   display: flex; align-items: flex-end; gap: 12px; max-width: 100%; padding: 2px 4px 0; animation: rise 200ms var(--ease-out);
 }
-:root[data-theme='dark'] .thinking { --thinking-pill: #262626; }
+:root[data-theme='dark'] .thinking { --thinking-pill: #231B3A; }
 .thinking__badge { position: relative; display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
 .thinking__mascot { position: relative; z-index: 1; display: inline-flex; margin-bottom: -15px; animation: bob 2.4s ease-in-out infinite; }
 .thinking__pill {

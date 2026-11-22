@@ -6,19 +6,25 @@ import type { AvatarColor } from '@shared/types';
  */
 export interface BotPalette { fill: string; bubble: string; action: string; hover: string }
 
+/**
+ * HeyZubi character colours (brand.json color.character) as the fills. `bubble`, `action` and
+ * `hover` are darker shades of the same hue so white text on them keeps at least 4.6:1.
+ * red = Waty, orange = Cleo, yellow = Zubi's gold, green = Costo, cyan = Addy, blue = Grant,
+ * violet = Zubi, magenta = Iris, gray = Marko.
+ */
 export const BOT_COLORS: Record<AvatarColor, BotPalette> = {
-  // Black follows the theme (ink on light, light ink on dark), so it uses tokens instead of hex.
-  black: { fill: '#000000', bubble: 'var(--color-bubble-user)', action: 'var(--color-primary)', hover: 'var(--color-bg-primary-hover)' },
-  brown: { fill: '#A06B39', bubble: '#86592E', action: '#9D6937', hover: '#86592E' },
-  red: { fill: '#FB2B3E', bubble: '#C82532', action: '#E72E3B', hover: '#C82532' },
-  orange: { fill: '#FD690F', bubble: '#D2550A', action: '#EE620D', hover: '#D2550A' },
-  yellow: { fill: '#F59312', bubble: '#C2730B', action: '#DA830E', hover: '#C2730B' },
-  green: { fill: '#14C16F', bubble: '#0D9655', action: '#10AB61', hover: '#0D9655' },
-  cyan: { fill: '#13B7A2', bubble: '#0D9381', action: '#10A693', hover: '#0D9381' },
-  blue: { fill: '#1E86FC', bubble: '#126FD4', action: '#1680F3', hover: '#126FD4' },
-  violet: { fill: '#8F59F9', bubble: '#7442D1', action: '#8351E4', hover: '#7442D1' },
-  magenta: { fill: '#F93498', bubble: '#C82779', action: '#E52F8B', hover: '#C82779' },
-  gray: { fill: '#959595', bubble: '#6E6E6E', action: '#7A7A7A', hover: '#6E6E6E' },
+  // Black follows the theme (ink bubble, violet accent), so it uses tokens instead of hex.
+  black: { fill: '#1B1622', bubble: 'var(--color-bubble-user)', action: 'var(--color-primary)', hover: 'var(--color-bg-primary-hover)' },
+  brown: { fill: '#A0703F', bubble: '#885F36', action: '#996B3C', hover: '#7A5530' },
+  red: { fill: '#E66556', bubble: '#C32E1D', action: '#DC3421', hover: '#AF291A' },
+  orange: { fill: '#EA943E', bubble: '#9A5611', action: '#AF6113', hover: '#8A4D0F' },
+  yellow: { fill: '#F0B429', bubble: '#866009', action: '#976C0B', hover: '#785608' },
+  green: { fill: '#3EBC80', bubble: '#277550', action: '#2C845A', hover: '#226847' },
+  cyan: { fill: '#35BCD9', bubble: '#197083', action: '#1C7F94', hover: '#166576' },
+  blue: { fill: '#4B94DD', bubble: '#2169B0', action: '#2677C8', hover: '#1E5E9F' },
+  violet: { fill: '#8B5CF6', bubble: '#6B3FE0', action: '#6B3FE0', hover: '#5A32C7' },
+  magenta: { fill: '#E067BB', bubble: '#B9268C', action: '#D02A9D', hover: '#A6227D' },
+  gray: { fill: '#7E8EAF', bubble: '#56678B', action: '#62759D', hover: '#4D5D7C' },
 };
 
 /** Swatch order in the Create New Bot picker. */
