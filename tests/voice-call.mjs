@@ -9,7 +9,7 @@ const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome'
   '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', `--use-file-for-fake-audio-capture=${S}/ask-fixed.wav`, '--autoplay-policy=no-user-gesture-required'] });
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, permissions: ['microphone'] });
 await ctx.addInitScript((bot) => {
-  localStorage.setItem('bothq.selectedBot', bot); localStorage.setItem('bothq.detailsOpen', '1');
+  localStorage.setItem('heyzubi.selectedBot', bot); localStorage.setItem('heyzubi.detailsOpen', '1');
   window.__audio = { starts: 0, seconds: 0 };
   const orig = AudioBufferSourceNode.prototype.start;
   AudioBufferSourceNode.prototype.start = function (...a) { window.__audio.starts++; window.__audio.seconds += this.buffer?.duration ?? 0; return orig.apply(this, a); };

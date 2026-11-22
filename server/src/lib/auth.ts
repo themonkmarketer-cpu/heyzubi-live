@@ -7,9 +7,9 @@ import { db, now } from '../db.js';
 import { token } from './ids.js';
 import type { User } from '../types.js';
 
-const COOKIE = 'bothq_session';
-/** The cookie's name before the project was renamed; still read so existing sign-ins keep working. */
-const LEGACY_COOKIE = 'grokbot_session';
+const COOKIE = 'heyzubi_live_session';
+/** The cookie's names before the project was renamed (Bot HQ, Grokbot); still read so existing sign-ins keep working. */
+const LEGACY_COOKIES = ['bothq_session', 'grokbot_session'];
 const TTL_MS = 30 * 24 * 3600 * 1000;
 
 export type AuthVars = { Variables: { user: User } };
@@ -22,7 +22,7 @@ export function createSession(c: Context, userId: string, opts: { owner?: boolea
 }
 
 export function destroySession(c: Context) {
-  for (const name of [COOKIE, LEGACY_COOKIE]) {
+  for (const name of [COOKIE, ...LEGACY_COOKIES]) {
     const t = getCookie(c, name);
     if (t) db.prepare('DELETE FROM auth_sessions WHERE token=?').run(t);
     if (t !== undefined) deleteCookie(c, name, { path: '/' });
@@ -47,7 +47,7 @@ export function userFromToken(t: string | undefined): User | null {
 
 export function userFromCookieHeader(cookieHeader: string | undefined): User | null {
   const parts = cookieHeader?.split(/;\s*/) ?? [];
-  for (const name of [COOKIE, LEGACY_COOKIE]) {
+  for (const name of [COOKIE, ...LEGACY_COOKIES]) {
     const m = parts.find((p) => p.startsWith(`${name}=`));
     const u = m ? userFromToken(decodeURIComponent(m.slice(name.length + 1))) : null;
     if (u) return u;
@@ -56,7 +56,8 @@ export function userFromCookieHeader(cookieHeader: string | undefined): User | n
 }
 
 export const requireUser: MiddlewareHandler<AuthVars> = async (c, next) => {
-  const u = userFromToken(getCookie(c, COOKIE)) ?? userFromToken(getCookie(c, LEGACY_COOKIE));
+  let u: User | null = null;
+  for (const name of [COOKIE, ...LEGACY_COOKIES]) { u = userFromToken(getCookie(c, name)); if (u) break; }
   if (!u) return c.json({ error: 'unauthenticated' }, 401);
   c.set('user', u);
   await next();

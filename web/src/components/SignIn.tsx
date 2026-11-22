@@ -24,10 +24,10 @@ export function SignIn() {
       <div className="signin__chrome"><BrandLive /></div>
       <div className="signin__card">
         <div className="signin__hero">
-          <BotAvatar shape="blob" color="black" size={84} />
+          <BotAvatar shape="blob" color="black" size={84} mascot title="Zubi" />
         </div>
-        <h1 className="signin__title">Bot HQ</h1>
-        <p className="signin__sub">AI teammates with their own computers. Hand them a task and they get it done.</p>
+        <h1 className="signin__title">HeyZubi</h1>
+        <p className="signin__sub">Hire an AI team you can talk to. One place for customer replies, content, operations and approvals.</p>
         <a className="btn btn--primary signin__google" href="/api/auth/google/start">
           <GoogleG /> Sign in with Google
         </a>

@@ -39,16 +39,20 @@ export function isLoopbackUrl(u: string): boolean {
   }
 }
 
-/** BOTHQ_<name>, or GROKBOT_<name> as set up before the project was renamed. */
+/** HEYZUBI_<name>, or the names from before the project was renamed: BOTHQ_<name>, then GROKBOT_<name>. */
 export function compatEnv(name: string): string | undefined {
-  return process.env[`BOTHQ_${name}`] ?? process.env[`GROKBOT_${name}`];
+  return process.env[`HEYZUBI_${name}`] ?? process.env[`BOTHQ_${name}`] ?? process.env[`GROKBOT_${name}`];
 }
 
-/** Default database file. One made before the rename (data/grokbot.db) keeps being used. */
+/** Default database file. One made under an earlier name of the project (data/bothq.db, data/grokbot.db) keeps being used. */
 function defaultDbPath(): string {
-  const current = new URL('../../data/bothq.db', import.meta.url).pathname;
-  const legacy = new URL('../../data/grokbot.db', import.meta.url).pathname;
-  return !fs.existsSync(current) && fs.existsSync(legacy) ? legacy : current;
+  const current = new URL('../../data/heyzubi.db', import.meta.url).pathname;
+  if (fs.existsSync(current)) return current;
+  for (const old of ['bothq.db', 'grokbot.db']) {
+    const p = new URL(`../../data/${old}`, import.meta.url).pathname;
+    if (fs.existsSync(p)) return p;
+  }
+  return current;
 }
 
 const hermesHome = process.env.HERMES_HOME_PRIMARY ?? path.join(os.homedir(), '.hermes');
@@ -92,8 +96,8 @@ export const env = {
   mcpBaseUrl: (process.env.MCP_BASE_URL ?? `http://127.0.0.1:${process.env.PORT ?? 8787}`).replace(/\/+$/, ''),
   /** Extra MCP servers every managed bot gets, as a JSON object of Hermes `mcp_servers` entries (e.g. X's XMCP). */
   extraMcpServers: process.env.EXTRA_MCP_SERVERS ?? '',
-  primaryBotName: process.env.PRIMARY_BOT_NAME ?? 'Doug',
-  primaryBotLabel: process.env.PRIMARY_BOT_LABEL ?? 'Chief of Staff',
+  primaryBotName: process.env.PRIMARY_BOT_NAME ?? 'Zubi',
+  primaryBotLabel: process.env.PRIMARY_BOT_LABEL ?? 'Team lead',
 
   // ---- the one shared computer ----
   /**

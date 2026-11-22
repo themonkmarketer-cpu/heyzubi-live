@@ -63,7 +63,7 @@ applyTheme(readTheme());
 darkQuery?.addEventListener?.('change', () => { if (useConfigUI.getState().theme === 'system') applyTheme('system'); });
 
 // store.ts forwards events it doesn't handle itself as a DOM event.
-window.addEventListener('bothq:event', (e) => {
+window.addEventListener('heyzubi:event', (e) => {
   const ev = (e as CustomEvent<ServerEvent>).detail;
   const { bump } = useConfigUI.getState();
   if (ev.type === 'tasks') { bump('tasks'); bump(`tasks:${ev.botId}`); }

@@ -1,10 +1,10 @@
-# Bot HQ beside an existing Hermes container, with local screens instead of Orgo (HQ_SCREENS=local).
+# HeyZubi beside an existing Hermes container, with local screens instead of Orgo (HQ_SCREENS=local).
 #
 # Built on the same image as the Hermes agent it serves, so the extra bots run the very same Hermes.
 # Runs as a sidecar that shares that agent's network (compose: network_mode "service:hermes"), so the
 # agent reaches /mcp on 127.0.0.1 and the app reaches the agent's API on 127.0.0.1.
 #
-#   docker build -t local/bot-hq:local-screens --build-arg HERMES_IMAGE=docker.io/nousresearch/hermes-agent:v0.22.5 .
+#   docker build -t local/heyzubi-live:local-screens --build-arg HERMES_IMAGE=docker.io/nousresearch/hermes-agent:v0.22.5 .
 #
 # Needs hq-app.tgz (scripts/pack.sh) next to this file.
 ARG HERMES_IMAGE=docker.io/nousresearch/hermes-agent:v0.22.5

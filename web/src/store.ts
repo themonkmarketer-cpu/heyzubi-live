@@ -170,7 +170,7 @@ export const useStore = create<State>((set, get) => ({
       case 'tasks':
       case 'memories':
         // Picked up by configStore.ts (Tasks view, Library/Tasks tabs, bot settings).
-        window.dispatchEvent(new CustomEvent('bothq:event', { detail: ev }));
+        window.dispatchEvent(new CustomEvent('heyzubi:event', { detail: ev }));
         return;
       case 'connections':
         set((st) => ({ connectionsVersion: st.connectionsVersion + 1 }));

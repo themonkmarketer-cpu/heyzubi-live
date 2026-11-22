@@ -63,12 +63,12 @@ export function openPopup(url: string) {
   const w = 520, h = 680;
   const left = window.screenX + (window.outerWidth - w) / 2;
   const top = window.screenY + (window.outerHeight - h) / 2;
-  connectPopup = window.open(url, 'bothq-connect', `width=${w},height=${h},left=${left},top=${top}`);
+  connectPopup = window.open(url, 'heyzubi-connect', `width=${w},height=${h},left=${left},top=${top}`);
   return connectPopup;
 }
 
 /** The "app connected" note from our OAuth callback page: it must come from the popup we opened or from this app's own origin. */
 export function isConnectedMessage(e: MessageEvent): boolean {
-  if ((e.data as { type?: string } | null)?.type !== 'bothq-connected') return false;
+  if ((e.data as { type?: string } | null)?.type !== 'heyzubi-connected') return false;
   return e.origin === window.location.origin || (connectPopup !== null && e.source === connectPopup);
 }

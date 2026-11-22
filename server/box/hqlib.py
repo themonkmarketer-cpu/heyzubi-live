@@ -22,11 +22,12 @@ LOGS = '/var/log/hq'
 
 
 def _data_root():
-    # Each bot's browser profile and Library files. Computers set up before the rename keep their old
-    # folder (same rule as server/src/paths.ts).
-    if not os.path.isdir('/root/bothq') and os.path.isdir('/root/grokbot'):
-        return '/root/grokbot'
-    return '/root/bothq'
+    # Each bot's browser profile and Library files. Computers set up before the project was renamed keep
+    # their old folder, /root/bothq (Bot HQ) or /root/grokbot (same rule as server/src/paths.ts).
+    for d in ('/root/heyzubi', '/root/bothq', '/root/grokbot'):
+        if os.path.isdir(d):
+            return d
+    return '/root/heyzubi'
 
 
 DATA = _data_root()

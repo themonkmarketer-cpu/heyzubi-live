@@ -4,14 +4,16 @@ import { env } from './env.js';
 
 /**
  * The folder on the shared computer that holds each bot's browser profile and Library files.
- * Computers set up before the project was renamed have `/root/grokbot`; they keep using it (moving it
- * would pull the folder out from under running browsers). server/box/hqlib.py applies the same rule.
+ * Computers set up before the project was renamed have `/root/bothq` (Bot HQ) or `/root/grokbot`; they
+ * keep using it (moving it would pull the folder out from under running browsers). server/box/hqlib.py
+ * applies the same rule.
  */
-const CURRENT = '/root/bothq';
-const LEGACY = '/root/grokbot';
-const pick = (hasCurrent: boolean, hasLegacy: boolean) => (!hasCurrent && hasLegacy ? LEGACY : CURRENT);
+const CURRENT = '/root/heyzubi';
+const LEGACY = ['/root/bothq', '/root/grokbot'];
+/** The current folder if it is there, else the first older one that is, else the current one. */
+const pick = (exists: (dir: string) => boolean) => (exists(CURRENT) ? CURRENT : LEGACY.find(exists) ?? CURRENT);
 
-let boxData = env.localBox ? pick(fs.existsSync(CURRENT), fs.existsSync(LEGACY)) : CURRENT;
+let boxData = env.localBox ? pick((d) => fs.existsSync(d)) : CURRENT;
 
 export const libraryRoot = () => `${boxData}/files`;
 export const profilesRoot = () => `${boxData}/profiles`;
@@ -19,6 +21,6 @@ export const profilesRoot = () => `${boxData}/profiles`;
 /** Without HQ_LOCAL the computer is reached through Orgo's API: ask it once which folder it has. */
 export async function resolveBoxData(): Promise<void> {
   if (env.localBox || !env.orgoComputerId) return;
-  const r = await box.bash(`[ -d ${CURRENT} ] && echo current; [ -d ${LEGACY} ] && echo legacy; true`, 30);
-  boxData = pick(/\bcurrent\b/.test(r.output), /\blegacy\b/.test(r.output));
+  const r = await box.bash([CURRENT, ...LEGACY].map((d) => `[ -d ${d} ] && echo has:${d};`).join(' ') + ' true', 30);
+  boxData = pick((d) => r.output.split('\n').includes(`has:${d}`));
 }

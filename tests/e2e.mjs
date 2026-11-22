@@ -1,7 +1,7 @@
 // End-to-end smoke test (real server, real Hermes engines, real Orgo computer).
 // Usage: node tests/e2e.mjs [baseUrl]   (default http://localhost:8787)
 // Signs in with dev login (E2E_EMAIL; only for a server on localhost with DEV_LOGIN=1) or with an
-// existing session (E2E_SESSION=<bothq_session cookie value>, e.g. from scripts/sign-in-link.sh). Creates a throwaway "QA" bot, which gets its own
+// existing session (E2E_SESSION=<heyzubi_live_session cookie value>, e.g. from scripts/sign-in-link.sh). Creates a throwaway "QA" bot, which gets its own
 // Hermes engine and screen, exercises the core flows, then deletes it.
 import { chromium } from 'playwright';
 import fs from 'node:fs';
@@ -27,17 +27,17 @@ const step = async (name, fn) => {
 let cookie = process.env.E2E_SESSION;
 if (!cookie) {
   const login = await fetch(`${BASE}/api/auth/dev`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: process.env.E2E_EMAIL ?? 'dev@example.com', name: 'Dev' }) });
-  cookie = (login.headers.get('set-cookie') ?? '').match(/bothq_session=([^;]+)/)?.[1];
+  cookie = (login.headers.get('set-cookie') ?? '').match(/heyzubi_live_session=([^;]+)/)?.[1];
   if (!cookie) throw new Error('dev login failed: ' + login.status);
 }
-const api = (p, init = {}) => fetch(`${BASE}${p}`, { ...init, headers: { 'content-type': 'application/json', cookie: `bothq_session=${cookie}`, ...(init.headers ?? {}) } });
+const api = (p, init = {}) => fetch(`${BASE}${p}`, { ...init, headers: { 'content-type': 'application/json', cookie: `heyzubi_live_session=${cookie}`, ...(init.headers ?? {}) } });
 // The main bot is whatever agent already runs on the computer; its name comes from the server.
 const MAIN = (await (await api('/api/bots')).json()).bots.find((b) => b.isPrimary)?.name ?? 'Doug';
 
 const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox'] });
 const ctx = await browser.newContext({ viewport: { width: 1512, height: 864 } });
 const host = new URL(BASE).hostname;
-await ctx.addCookies([{ name: 'bothq_session', value: cookie, domain: host, path: '/' }]);
+await ctx.addCookies([{ name: 'heyzubi_live_session', value: cookie, domain: host, path: '/' }]);
 const page = await ctx.newPage();
 const consoleErrors = [];
 page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
@@ -82,8 +82,8 @@ await step('chat reply streams', async () => {
 });
 
 await step('bot uses its own computer (shell on its screen)', async () => {
-  await send('Use your shell tool to run `echo bothq-$((40+2))-e2e` and reply with only the output.');
-  await waitReply(/bothq-42-e2e/, 240000);
+  await send('Use your shell tool to run `echo heyzubi-$((40+2))-e2e` and reply with only the output.');
+  await waitReply(/heyzubi-42-e2e/, 240000);
   const comp = await (await api('/api/computer')).json();
   if (!comp.computer.screens.some((s) => s.botId === botId)) throw new Error('no screen leased for QA bot');
   await shot('04-computer-tool');

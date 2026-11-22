@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="assets/readme-banner.svg" alt="Bot HQ. Your team. Their own computers." width="100%">
+  <img src="assets/readme-banner.svg" alt="HeyZubi. Your team. Their own computers." width="100%">
 </p>
 
 <p align="center">
-  A team of AI agents you chat with, each with its own screen on one cloud computer.<br>
-  <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a> runs the bots, <a href="https://orgo.ai">Orgo</a> gives them screens, <a href="https://composio.dev">Composio</a> connects their apps, and <a href="https://x.ai">xAI</a> gives them a voice and research on X.
+  A team of AI agents you chat with, each with its own screen on one computer: an Orgo cloud computer, or your own server with local screens.<br>
+  <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a> runs the bots, <a href="https://orgo.ai">Orgo</a> (or your own server) gives them screens, <a href="https://composio.dev">Composio</a> connects their apps, and <a href="https://x.ai">xAI</a> gives them a voice and research on X.
 </p>
 
 <p align="center">
@@ -37,7 +37,7 @@ Give a bot a job, connect the apps it needs, and follow its work in chat. Each b
 
 Every bot is a Hermes agent, so it can run on the model subscriptions you already pay for (Claude, ChatGPT, Grok and others) or on API keys.
 
-> Bot HQ is an independent, unofficial open-source project. It is not affiliated with, endorsed by or sponsored by xAI, Nous Research, Composio or the other third-party companies named here. See the [disclaimer](#disclaimer).
+> HeyZubi is a fork of [Bot HQ](https://github.com/nickvasilescu/bot-hq) by Nick Vasilescu, rebranded and extended to run without Orgo. It is an independent, unofficial open-source project. It is not affiliated with, endorsed by or sponsored by xAI, Nous Research, Composio or the other third-party companies named here. See the [disclaimer](#disclaimer).
 
 ## What you get
 
@@ -59,7 +59,7 @@ Every bot is a Hermes agent, so it can run on the model subscriptions you alread
 
 ```mermaid
 flowchart LR
-  B["Browser<br/>chat · viewer · voice"] -- "HTTP + SSE" --> S["Bot HQ server<br/>Node · Hono · SQLite"]
+  B["Browser<br/>chat · viewer · voice"] -- "HTTP + SSE" --> S["HeyZubi server<br/>Node · Hono · SQLite"]
   B -- "WebSocket (VNC)" --> S
   S -- "POST /v1/responses" --> H1["Hermes gateway<br/>first bot (already running)"]
   S -- "POST /v1/responses" --> H2["Hermes gateway<br/>one per extra bot"]
@@ -80,9 +80,9 @@ More detail is in the [architecture guide](docs/ARCHITECTURE.md).
 
 ### How this relates to Hermes Bot Mode
 
-Hermes Desktop has its own Bot Mode. Bot HQ uses the same Hermes engine but does **not** use Bot Mode: it has its own bot layer on top of the gateway's HTTP API.
+Hermes Desktop has its own Bot Mode. HeyZubi uses the same Hermes engine but does **not** use Bot Mode: it has its own bot layer on top of the gateway's HTTP API.
 
-| | Bot HQ | Hermes Bot Mode |
+| | HeyZubi | Hermes Bot Mode |
 |---|---|---|
 | A bot is | A separate Hermes home (the first bot is the default profile) | A Hermes profile |
 | Gateways | One per extra bot | One, serving every profile |
@@ -94,7 +94,7 @@ So bots made here do not show up in Hermes Desktop's Bots tab, and bots made the
 
 ## Install on the computer
 
-The app is meant to run on the same Orgo computer as Hermes.
+The app is meant to run on the same computer as Hermes: an Orgo computer (below), or your own server where Hermes runs in Docker, with local screens instead of Orgo (`HQ_SCREENS=local`, see [deploy/hermes-box](deploy/hermes-box/README.md)).
 
 1. On your machine: `npm ci && scripts/pack.sh hq-app.tgz`. Copy `hq-app.tgz` and `scripts/install-on-computer.sh` to the computer.
 2. In Orgo, create a public URL for port `8787` on that computer.
@@ -119,7 +119,7 @@ On the computer:
 python3 /opt/hq/hq-screen.py undress 99                      # main screen back to how it was (99 = its X display)
 python3 /opt/hq/app/scripts/add-hq-to-hermes.py --remove     # take the tools out of Hermes
 supervisorctl stop hq-app && supervisorctl remove hq-app
-rm -rf /etc/supervisor/conf.d/hq-app.conf /opt/hq /var/log/hq /root/bothq /root/grokbot /etc/opt/chrome/policies/managed/hq.json
+rm -rf /etc/supervisor/conf.d/hq-app.conf /opt/hq /var/log/hq /root/heyzubi /root/bothq /root/grokbot /etc/opt/chrome/policies/managed/hq.json
 ```
 
 Then delete the public URL in Orgo. Screens of the other bots are released when you delete those bots in the app.
@@ -135,15 +135,15 @@ Run the install script again with a newer `hq-app.tgz`; settings and data are ke
 - **Bots ask before every app action.** Actions whose name sounded read-only (get, list, search, fetch and the like) used to run without asking; now each asks the first time, as do Composio's sandbox tools. Choose **Always allow** on the card for the ones you trust. Choices you made before are kept. A routine that runs while nobody is there waits for its card (up to 25 minutes) and is skipped if it is not answered, so allow what your routines use.
 - **Sign-in attempts are limited per address.** Ten Google sign-in starts (and ten dev sign-ins) in ten minutes, and five wrong sign-in links or owner keys; after that the route answers 429 until the ten minutes have passed. The count is by connecting address, so behind a forwarder that connects from one address it is shared by everyone, and it starts again when the server restarts.
 - **`/mcp` and the owner sign-in only answer on the computer itself.** A call has to come from a loopback address and must not have been passed on by a proxy. The defaults already work this way (`MCP_BASE_URL` is `http://127.0.0.1:<port>`, and `scripts/sign-in-link.sh` calls `127.0.0.1`); an agent that reaches `/mcp` through the public URL or from another machine or container is refused with a 403.
-- **The project used to be called "Grokbot".** Old names keep working: `GROKBOT_*` environment variables are read when the `BOTHQ_*` ones are unset, an existing `data/grokbot.db` stays the default database, a computer that has `/root/grokbot` keeps using it for browser profiles and Library files, and old sign-in cookies and browser settings are still read.
+- **The project used to be called "Bot HQ", and before that "Grokbot".** Old names keep working: `HEYZUBI_*` environment variables are read first, then `BOTHQ_*`, then `GROKBOT_*`; an existing `data/bothq.db` or `data/grokbot.db` stays the default database; a computer that has `/root/bothq` or `/root/grokbot` keeps using it for browser profiles and Library files; and sign-in cookies and browser settings saved under the old names are still read, so nobody is signed out and no setting is lost.
 
 ## Run it locally
 
 You need **Node.js 22 or newer** and a Hermes gateway with its API server on (`API_SERVER_KEY` in `~/.hermes/.env`).
 
 ```bash
-git clone https://github.com/nickvasilescu/bot-hq.git
-cd bot-hq
+git clone https://github.com/themonkmarketer-cpu/heyzubi-live.git
+cd heyzubi-live
 npm ci
 cp .env.example .env      # fill in the keys; comments in the file explain each one
 npm run dev -w server     # API on :8787
@@ -198,11 +198,11 @@ docs/               architecture; the Orgo and xAI/Composio guides predate the H
 
 Available under the [MIT license](LICENSE). The bot characters, icons and screenshots in this repository were made for the project (icons from [Lucide](https://lucide.dev)); app logos are loaded at runtime and belong to their owners. See [third-party notices](THIRD_PARTY_NOTICES.md).
 
-Bot HQ grew out of [Orgo Teammates](https://github.com/nickvasilescu/orgo-teammates). Built with [Hermes Agent](https://github.com/NousResearch/hermes-agent) (MIT), [Orgo](https://orgo.ai), [Composio](https://composio.dev), and the [xAI API](https://x.ai).
+HeyZubi is a fork of [Bot HQ](https://github.com/nickvasilescu/bot-hq) by Nick Vasilescu, which grew out of [Orgo Teammates](https://github.com/nickvasilescu/orgo-teammates). The HeyZubi brand (name, Zubi mascot, colours and type) comes from the HeyZubi brand guide. Built with [Hermes Agent](https://github.com/NousResearch/hermes-agent) (MIT), [Orgo](https://orgo.ai), [Composio](https://composio.dev), and the [xAI API](https://x.ai).
 
 ## Disclaimer
 
-- **Independent and unofficial.** Bot HQ is an independent open-source project. It is not affiliated with, endorsed by or sponsored by xAI, X Corp, SpaceX, Meta, OpenAI, Anthropic, Google, Cursor/Anysphere, Nous Research, Composio, or any other company or product named in this repository, apart from Orgo (Organic Intelligence, Inc.), which the author co-founded. Third-party names are trademarks of their respective owners and are used only to describe compatibility. Hermes Agent is used under its MIT license.
+- **Independent and unofficial.** HeyZubi is an independent open-source project. It is not affiliated with, endorsed by or sponsored by xAI, X Corp, SpaceX, Meta, OpenAI, Anthropic, Google, Cursor/Anysphere, Nous Research, Composio, or any other company or product named in this repository, apart from Orgo (Organic Intelligence, Inc.), which the original Bot HQ author co-founded. Third-party names are trademarks of their respective owners and are used only to describe compatibility. Hermes Agent is used under its MIT license.
 - **Written from scratch.** This project was written from scratch and contains no code, assets, prompts or other material from xAI's products. It talks only to public, documented APIs, using your own keys.
 - **Educational and experimental.** It is provided "as is", without warranty of any kind, under the [MIT license](LICENSE). Expect bugs and breaking changes.
 - **You are responsible for how you use it.** That includes your API keys and the costs they incur, complying with the terms of service of every provider you connect (model providers, Orgo, Composio, X and the apps your bots use) and with applicable law, and supervising agents that act on real accounts. Bots can send messages, spend money and change data on your behalf.

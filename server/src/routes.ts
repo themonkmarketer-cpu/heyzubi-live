@@ -533,7 +533,7 @@ api.get('/apps/callback', async (c) => {
     }
   }
   // Data embedded in an inline <script> must not be able to close the tag, so escape `<` (and U+2028/2029).
-  const payload = jsonForScript({ type: 'bothq-connected', slug, ok });
+  const payload = jsonForScript({ type: 'heyzubi-connected', slug, ok });
   const target = jsonForScript(new URL(env.appUrl).origin);
   c.header('Cache-Control', 'no-store');
   c.header('X-Content-Type-Options', 'nosniff');

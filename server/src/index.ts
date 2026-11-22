@@ -58,14 +58,14 @@ if (fs.existsSync(webDist)) {
   app.get('*', (c) => c.html(fs.readFileSync(path.join(webDist, 'index.html'), 'utf8')));
 }
 
-const server = serve({ fetch: app.fetch, port: env.port, hostname: env.host }, (info) => console.log(`[bothq] server on http://localhost:${info.port} (listening on ${env.host ?? 'every interface'})`));
+const server = serve({ fetch: app.fetch, port: env.port, hostname: env.host }, (info) => console.log(`[heyzubi] server on http://localhost:${info.port} (listening on ${env.host ?? 'every interface'})`));
 attachVncRelay(server as unknown as Server);
-// BOTHQ_NO_SCHEDULER=1 for extra dev/test servers sharing a database copy, so routines and triggers don't fire twice.
+// HEYZUBI_NO_SCHEDULER=1 for extra dev/test servers sharing a database copy, so routines and triggers don't fire twice.
 if (compatEnv('NO_SCHEDULER') !== '1') {
   initRoutines(enqueue);
   void initTriggers(enqueue);
 initProactive(enqueue);
-} else console.log('[bothq] scheduler disabled (BOTHQ_NO_SCHEDULER=1)');
+} else console.log('[heyzubi] scheduler disabled (HEYZUBI_NO_SCHEDULER=1)');
 startIdleWatcher();
-resolveBoxData().catch((e) => console.warn('[bothq] could not check the computer for its data folder:', e?.message ?? e));
+resolveBoxData().catch((e) => console.warn('[heyzubi] could not check the computer for its data folder:', e?.message ?? e));
 initEngines();

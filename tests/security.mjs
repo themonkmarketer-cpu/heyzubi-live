@@ -17,7 +17,7 @@ import Database from 'better-sqlite3';
 const ROOT = path.resolve(new URL('.', import.meta.url).pathname, '..');
 const ENTRY = path.join(ROOT, 'server/dist/index.js');
 if (!fs.existsSync(ENTRY)) throw new Error('server/dist/index.js is missing: run `npm run build -w server` first');
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'bothq-security-'));
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'heyzubi-security-'));
 const SECRET = crypto.randomBytes(32).toString('hex');
 const PUBLIC_URL = 'https://hq.example.test';
 
@@ -106,7 +106,7 @@ const serverEnv = (extra) => ({
   PORT: String(PORT), HOST: '127.0.0.1', SESSION_SECRET: SECRET, DB_PATH: path.join(TMP, 'hq.db'),
   XAI_API_KEY: 'test-not-a-key', COMPOSIO_API_KEY: 'test-not-a-key', COMPOSIO_BASE_URL: COMPOSIO, ORGO_API_KEY: 'test-not-a-key',
   HERMES_URL: DEAD, HERMES_HOME_PRIMARY: path.join(TMP, 'hermes'), HERMES_BIN: path.join(TMP, 'no-hermes'),
-  ENGINES_DIR: path.join(TMP, 'engines'), ENGINE_PORT_BASE: String(ENGINE_PORT_BASE), MAX_BOTS: '20', BOTHQ_NO_SCHEDULER: '1',
+  ENGINES_DIR: path.join(TMP, 'engines'), ENGINE_PORT_BASE: String(ENGINE_PORT_BASE), MAX_BOTS: '20', HEYZUBI_NO_SCHEDULER: '1',
   ...extra,
 });
 // no-outbound.mjs fails any connection the server's code makes to another machine and names it on stderr.
@@ -141,7 +141,7 @@ const PUBLIC = { APP_URL: PUBLIC_URL, SERVER_URL: PUBLIC_URL, DEV_LOGIN: '0' };
 const req = (p, { cookie, headers, body, method, base = BASE } = {}) => fetch(`${base}${p}`, {
   method: method ?? (body === undefined ? 'GET' : 'POST'),
   redirect: 'manual',
-  headers: { ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...(cookie ? { cookie: `bothq_session=${cookie}` } : {}), ...(headers ?? {}) },
+  headers: { ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...(cookie ? { cookie: `heyzubi_live_session=${cookie}` } : {}), ...(headers ?? {}) },
   body: body === undefined ? undefined : JSON.stringify(body),
 });
 /** Passes when nothing listens at `url`. */
@@ -152,7 +152,7 @@ async function refused(url) {
   }
   throw new Error(`${url} answered`);
 }
-const sessionOf = (res) => (res.headers.get('set-cookie') ?? '').match(/bothq_session=([^;]+)/)?.[1];
+const sessionOf = (res) => (res.headers.get('set-cookie') ?? '').match(/heyzubi_live_session=([^;]+)/)?.[1];
 const me = async (cookie) => (await (await req('/api/auth/me', { cookie })).json()).user?.email ?? null;
 const hmac = (what) => crypto.createHmac('sha256', SECRET).update(what).digest('hex');
 const asOwner = { authorization: `Bearer ${hmac('owner-login')}` };
@@ -269,7 +269,7 @@ try {
   await start({ ...LOCAL, HOST: undefined });
   await step('local app, HOST unset: listens on 127.0.0.1 and answers as localhost', async () => {
     eq((await fetch(`http://localhost:${PORT}/api/health`)).status, 200, 'http://localhost');
-    if (!log.includes('listening on 127.0.0.1')) throw new Error(`start-up line does not name 127.0.0.1: ${log.split('\n').find((l) => l.includes('[bothq] server')) ?? '(none)'}`);
+    if (!log.includes('listening on 127.0.0.1')) throw new Error(`start-up line does not name 127.0.0.1: ${log.split('\n').find((l) => l.includes('[heyzubi] server')) ?? '(none)'}`);
   });
   await step('local app, HOST unset: not offered on the network address', async () => refused(`${needLan()}/api/health`));
   if (LAN) await start({ ...LOCAL, HOST: LAN_IP }, LAN);
@@ -357,7 +357,7 @@ try {
   await step('signed out: the callback itself and the sign-in routes still answer', async () => {
     const page = await req('/api/apps/callback?slug=gmail');
     eq(page.status, 200, 'GET /api/apps/callback');
-    if (!(await page.text()).includes('bothq-connected')) throw new Error('the callback page lost its script');
+    if (!(await page.text()).includes('heyzubi-connected')) throw new Error('the callback page lost its script');
     eq((await req('/api/auth/me')).status, 200, 'GET /api/auth/me');
     eq((await req('/api/auth/logout', { body: {} })).status, 200, 'POST /api/auth/logout');
     eq((await req('/api/health')).status, 200, 'GET /api/health');
@@ -409,7 +409,7 @@ try {
     };
     // The event stream answers before it has anything to send; its headers are enough here.
     const gone = new AbortController();
-    answers['GET /api/events (stream)'] = await fetch(`${BASE}/api/events`, { headers: { cookie: `bothq_session=${cookies.listed}` }, signal: gone.signal });
+    answers['GET /api/events (stream)'] = await fetch(`${BASE}/api/events`, { headers: { cookie: `heyzubi_live_session=${cookies.listed}` }, signal: gone.signal });
     eq(answers['GET /api/events (stream)'].status, 200, 'event stream');
     for (const [what, res] of Object.entries(answers)) {
       eq(res.headers.get('x-frame-options'), 'DENY', `${what}: X-Frame-Options`);
@@ -422,7 +422,7 @@ try {
 
   // With the scheduler on, so a routine that runs every second shows whether its schedule is alive.
   // Each run starts a turn that fails at once (no engine listens), which is all it needs to do here.
-  await start({ ...LOCAL, BOTHQ_NO_SCHEDULER: undefined });
+  await start({ ...LOCAL, HEYZUBI_NO_SCHEDULER: undefined });
   const mainBot = async (cookie) => (await (await req('/api/bots', { cookie })).json()).bots.find((b) => b.isPrimary).id;
   const routineOf = async (cookie, botId, id) => (await (await req(`/api/bots/${botId}/routines`, { cookie })).json()).routines.find((r) => r.id === id);
   let owner, other, routineId;
