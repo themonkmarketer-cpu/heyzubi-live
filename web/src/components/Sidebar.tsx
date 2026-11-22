@@ -7,18 +7,22 @@ import { displayName, useStore } from '../store';
 import { api } from '../lib/api';
 import { Icon } from './Icon';
 import { Menu } from './Menu';
+import zubiMark from '../assets/zubi-live.svg';
 
 function initials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase() || '?';
 }
 
-export function TrafficLights() {
+/** The HeyZubi LIVE logo (as in Zubi HQ): the Zubi mark, the HeyZubi wordmark and a red LIVE. */
+export function BrandLive() {
   return (
-    <div className="traffic-lights" aria-hidden>
-      <span style={{ background: '#FF5F57' }} />
-      <span style={{ background: '#FEBC2E' }} />
-      <span style={{ background: '#28C840' }} />
+    <div className="brand-live" role="img" aria-label="HeyZubi Live">
+      <img className="brand-live__mark" src={zubiMark} alt="" width={30} height={30} />
+      <span className="brand-live__text" aria-hidden>
+        <b className="brand-live__word">HeyZubi</b>
+        <span className="brand-live__live">LIVE</span>
+      </span>
     </div>
   );
 }
@@ -68,7 +72,7 @@ export function Sidebar() {
   return (
     <aside className={`sidebar${collapsed ? ' is-collapsed' : ''}`}>
       <div className="sidebar__titlebar">
-        <TrafficLights />
+        <BrandLive />
         <div className="sidebar__controls">
           <button type="button" className="icon-btn icon-btn--plain" onClick={() => set({ sidebarCollapsed: !collapsed })} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} title="Toggle sidebar (⌘B)">
             <Icon name="sidebar" opacity={0.66} />

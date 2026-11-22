@@ -311,6 +311,10 @@ api.post('/bots/:id/primary', (c) => {
   const b = ownBot(user.id, c.req.param('id'));
   if (!b) return c.json({ error: 'not found' }, 404);
   db.prepare('UPDATE bots SET is_primary = (id = ?) WHERE user_id=?').run(b.id, user.id);
+  // The main bot's screen shows Zubi: dress the screens again so the old and new main bot swap looks.
+  for (const s of db.prepare('SELECT bot_id FROM screens WHERE user_id=?').all(user.id) as any[]) {
+    readyScreen(user.id, s.bot_id, { redress: true }).catch((e) => console.warn('[computer] redress failed', e?.message ?? e));
+  }
   hub.emit(user.id, { type: 'roster' });
   return c.json({ ok: true });
 });

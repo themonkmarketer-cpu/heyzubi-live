@@ -2,6 +2,7 @@ import type { AvatarColor, AvatarShape, Bot } from '@shared/types';
 import { palette } from '../lib/colors';
 import { Icon } from '../components/Icon';
 import { SHAPES, type ShapeDef } from '@shared/avatar-shapes';
+import zubiMark from '../assets/zubi-live.svg';
 
 export function shapeDef(shape: AvatarShape | string): ShapeDef {
   return SHAPES[shape as AvatarShape] ?? SHAPES.blob;
@@ -20,6 +21,8 @@ interface Props {
   ring?: boolean;
   className?: string;
   title?: string;
+  /** Draw the HeyZubi mascot (Zubi) instead of the shape: used for the main bot. */
+  mascot?: boolean;
 }
 
 /** The part of the 100×100 drawing box that maps onto the slot. */
@@ -47,18 +50,24 @@ function Eyes({ def, size }: { def: ShapeDef; size: number }) {
   );
 }
 
-export function BotAvatar({ shape, color, size, star, ring, className, title }: Props) {
+export function BotAvatar({ shape, color, size, star, ring, className, title, mascot }: Props) {
   const def = shapeDef(shape);
   const fill = palette(color).fill;
   const unit = VIEW.w / size; // viewBox units per CSS px
   return (
     <span className={`bot-avatar ${className ?? ''}`} style={{ width: size, height: size }} title={title} role="img" aria-label={title}>
+      {mascot ? (
+        // The mark's own viewBox has 10 units of padding; scale it up a little so Zubi fills the slot like a shape does.
+        <img src={zubiMark} alt="" width={size} height={size} draggable={false}
+          style={{ position: 'absolute', inset: 0, width: size, height: size, transform: 'scale(1.18)', pointerEvents: 'none' }} />
+      ) : (
       <svg width={size} height={size} viewBox={`${VIEW.x} ${VIEW.x} ${VIEW.w} ${VIEW.w}`} style={{ position: 'absolute', inset: 0, overflow: 'visible' }} aria-hidden>
         {ring && <path d={def.d} fill="#1C1C1C3D" stroke="#1C1C1C3D" strokeWidth={unit * 2 * 3.4} strokeLinejoin="round" />}
         {ring && <path d={def.d} fill="#FFFFFF" stroke="#FFFFFF" strokeWidth={unit * 2 * 2.4} strokeLinejoin="round" />}
         <path d={def.d} fill={fill} />
         <Eyes def={def} size={size} />
       </svg>
+      )}
       {star && (
         <span className="bot-avatar__star" style={{ width: size * 0.2667, height: size * 0.2667 }}>
           <Icon name="star" size={size * 0.1333} color="#FFFFFF" />
@@ -69,5 +78,5 @@ export function BotAvatar({ shape, color, size, star, ring, className, title }: 
 }
 
 export function BotAvatarFor({ bot, size, star, className }: { bot: Pick<Bot, 'avatarShape' | 'avatarColor' | 'name'> & { isPrimary?: boolean }; size: number; star?: boolean; className?: string }) {
-  return <BotAvatar shape={bot.avatarShape} color={bot.avatarColor} size={size} star={star} className={className} title={bot.name} />;
+  return <BotAvatar shape={bot.avatarShape} color={bot.avatarColor} size={size} star={star} className={className} title={bot.name} mascot={!!bot.isPrimary} />;
 }

@@ -114,8 +114,8 @@ export function ensureComputer(userId: string): Promise<string> {
 }
 
 function deskBot(botId: string): DeskBot | null {
-  const b = db.prepare('SELECT id, name, label, avatar_shape, avatar_color FROM bots WHERE id=?').get(botId) as any;
-  return b ? { id: b.id, name: b.name, label: b.label ?? '', avatarShape: b.avatar_shape, avatarColor: b.avatar_color } : null;
+  const b = db.prepare('SELECT id, name, label, avatar_shape, avatar_color, is_primary FROM bots WHERE id=?').get(botId) as any;
+  return b ? { id: b.id, name: b.name, label: b.label ?? '', avatarShape: b.avatar_shape, avatarColor: b.avatar_color, mascot: !!b.is_primary } : null;
 }
 
 const isPrimaryEngine = (botId: string) => (db.prepare('SELECT engine FROM bots WHERE id=?').get(botId) as any)?.engine === 'primary';

@@ -4,6 +4,7 @@ import { gzipSync } from 'node:zlib';
 import { box, displayFor } from './box.js';
 import { SHAPES } from './avatar-shapes.js';
 import type { AvatarShape } from './types.js';
+import { ZUBI_MASCOT_SVG, ZUBI_VIOLET } from './zubi-mascot.js';
 
 /**
  * The desk: what makes one screen of the shared computer look like one bot's own tidy computer.
@@ -15,7 +16,7 @@ import type { AvatarShape } from './types.js';
  * computer, so it works the same through Orgo's API and with HQ_LOCAL=1.
  */
 
-export interface DeskBot { id: string; name: string; label: string; avatarShape: string; avatarColor: string }
+export interface DeskBot { id: string; name: string; label: string; avatarShape: string; avatarColor: string; /** Main bot: drawn as Zubi. */ mascot?: boolean }
 
 const ROOT = '/opt/hq';
 const SCRIPT = `${ROOT}/hq-screen.py`;
@@ -287,13 +288,14 @@ function avatarSvg(shape: string, fill: string): string {
 // ---------------------------------------------------------------- the look of one screen
 
 function lookFor(bot: DeskBot, manageChrome: boolean): { stamp: string; payload: string } {
-  const hex = colorHex(bot.avatarColor);
+  // The main bot is drawn as Zubi, the HeyZubi mascot, on a Zubi-violet screen.
+  const hex = bot.mascot ? ZUBI_VIOLET : colorHex(bot.avatarColor);
   const p = paletteFor(hex);
   const look = {
     manageChrome,
     bot: { id: bot.id, name: bot.name, label: bot.label ?? '', avatarShape: bot.avatarShape, avatarColor: bot.avatarColor },
     colors: { accent: p.accent, ink: p.ink, wash: p.wash, washDeep: p.washDeep },
-    avatarSvg: avatarSvg(bot.avatarShape, hex),
+    avatarSvg: bot.mascot ? ZUBI_MASCOT_SVG : avatarSvg(bot.avatarShape, hex),
     wallSvg: wallpaperSvg(p, bot.id),
   };
   const stamp = sha(`${bundle().hash}\n${JSON.stringify(look)}`).slice(0, 20);
