@@ -7,6 +7,8 @@ import { Menu } from './Menu';
 import { endCall, isCallActive, startCall, useVoice } from '../voice/call';
 import { useDictation } from '../voice/dictation';
 import { speakReply, stopSpeaking, useSpeak } from '../voice/speak';
+import { Camera } from 'lucide-react';
+import { toggleCamera, useCamera } from './CameraBubble';
 
 const MAX_H = 200;
 /** Replies up to this long are read aloud after a voice message; longer ones get a Listen button instead. */
@@ -92,6 +94,7 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
   };
   const dictation = useDictation(insertText, setError, bot.voiceLanguage, 'dictation');
   const inCall = useVoice((s) => isCallActive(s) && s.botId === bot.id);
+  const camOn = useCamera((s) => s.on);
 
   // Voice message (the cheap default): hold the main button, talk, let go. It is transcribed and sent to the bot's
   // usual (text) agent; a short reply is then read aloud. No live call is opened, so silences cost nothing.
@@ -167,6 +170,16 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
           />
         </div>
         <div className="composer__right">
+          <button
+            type="button"
+            className={`composer__btn${camOn ? ' is-cam-on' : ''}`}
+            onClick={toggleCamera}
+            aria-pressed={camOn}
+            aria-label={camOn ? 'Turn camera off' : 'Turn camera on'}
+            title={camOn ? 'Turn camera off' : 'Camera: a preview just for you (nothing is recorded or sent)'}
+          >
+            <Camera size={18} strokeWidth={1.8} style={{ opacity: camOn ? 1 : 0.56 }} aria-hidden />
+          </button>
           <button
             type="button"
             className={`composer__btn${dictation.state === 'recording' ? ' is-recording' : dictation.state === 'transcribing' ? ' is-transcribing' : ''}`}

@@ -1,0 +1,31 @@
+/* Zubi HQ's camera preview (theme.css .ccam), in HeyZubi's colours. */
+.ccam { position: fixed; z-index: 61; display: flex; align-items: center; gap: 42px; cursor: grab; touch-action: none; user-select: none; }
+.ccam.is-drag { cursor: grabbing; }
+.ccam__w { position: relative; flex: none; width: 200px; height: 200px; }
+.ccam__c {
+  position: absolute; inset: 0; border-radius: 50%; overflow: hidden; background: #000;
+  border: 3px solid var(--color-brand); box-shadow: 0 10px 36px rgba(0, 0, 0, 0.5), 0 0 44px rgba(139, 92, 246, 0.3);
+}
+.ccam__r { position: absolute; inset: -14px; border-radius: 50%; border: 1px solid rgba(139, 92, 246, 0.4); pointer-events: none; animation: ccam-spin 14s linear infinite; animation-delay: -2s; }
+.ccam__r.is-r2 { inset: -28px; animation-duration: 22s; animation-direction: reverse; animation-delay: -8s; opacity: 0.7; }
+.ccam__r::before { content: ''; position: absolute; top: -4px; left: 50%; margin-left: -4px; width: 8px; height: 8px; border-radius: 50%; background: var(--color-brand); box-shadow: 0 0 10px var(--color-brand); }
+@keyframes ccam-spin { to { transform: rotate(360deg); } }
+.ccam video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(var(--m, -1)) scale(var(--z, 1)); display: block; pointer-events: none; }
+.ccam__v { display: flex; flex-direction: column; gap: 8px; padding: 8px 6px; border-radius: 999px; background: rgba(14, 16, 30, 0.88); border: 1px solid var(--color-border-secondary); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); }
+.ccam__b { width: 32px; height: 32px; border-radius: 50%; border: 0; background: rgba(255, 255, 255, 0.08); color: #FFFFFF; font-size: 19px; line-height: 1; padding: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.ccam__b:hover:not(:disabled) { background: var(--color-brand); }
+.ccam__b:disabled { opacity: 0.35; cursor: default; }
+.ccam__flip[aria-pressed='true'] { background: var(--color-brand); }
+.ccam__b:focus-visible, .ccam__close:focus-visible { outline: 2px solid #FFFFFF; outline-offset: 1px; }
+.ccam__m {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center;
+  padding: 30px 24px; font-size: 12px; line-height: 1.35; background: var(--color-bg-elevated); color: var(--color-text-primary);
+}
+.ccam__close { padding: 4px 12px; border-radius: 999px; background: var(--color-bg-subtle); font-size: 12px; font-weight: 600; color: var(--color-text-primary); }
+.ccam.is-err video { display: none; }
+
+/* the camera button in the message box, while the camera is on */
+.composer__btn.is-cam-on { background: var(--color-brand); color: #FFFFFF; }
+.composer__btn.is-cam-on > * { opacity: 1 !important; }
+
+@media (prefers-reduced-motion: reduce) { .ccam__r { animation: none !important; } }

@@ -15,6 +15,7 @@ import { ConfigLayer } from './components/config/ConfigLayer';
 import { TasksView } from './components/config/TasksView';
 import { useConfigUI } from './configStore';
 import { WhatsAppWindow } from './components/WhatsAppWindow';
+import { CameraBubble } from './components/CameraBubble';
 
 function Shell() {
   const detailsOpen = useStore((s) => s.detailsOpen);
@@ -68,6 +69,7 @@ function Shell() {
       {modal === 'apps' && <ConnectAppsModal />}
       {viewerOpen && <ComputerViewer />}
       {waOpen && <WhatsAppWindow />}
+      <CameraBubble />
       <ConfigLayer />
     </div>
   );
