@@ -87,3 +87,11 @@
 .panel-row--call { gap: 8px; color: var(--color-ink); font-size: 13px; }
 .panel-row--call.is-active { color: var(--color-danger); }
 .voice-error { padding: 4px 12px 8px; font-size: 12px; color: var(--color-danger); }
+
+/* xAI today: spend by service (estimates) */
+.xai-usage { margin: 4px 8px 8px; padding: 10px 12px; border-radius: 12px; background: var(--color-bg-subtle); font-size: 12px; line-height: 18px; color: var(--color-text-secondary); }
+.xai-usage__head { display: flex; justify-content: space-between; margin-bottom: 4px; color: var(--color-text-primary); font-weight: var(--font-weight-semibold); font-size: 13px; }
+.xai-usage__row { display: grid; grid-template-columns: 1fr auto 54px; gap: 8px; }
+.xai-usage__row > span:last-child { text-align: right; color: var(--color-text-primary); }
+.xai-usage__qty { color: var(--color-text-tertiary); }
+.xai-usage__note { margin-top: 6px; font-size: 11px; color: var(--color-text-tertiary); }

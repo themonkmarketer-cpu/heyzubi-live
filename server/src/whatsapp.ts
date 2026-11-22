@@ -2,14 +2,21 @@ import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { Hono } from 'hono';
 import { env } from './env.js';
-import type { Policy, ToolCtx, ToolResult } from './agent/tools.js';
+import { hub } from './lib/hub.js';
+import type { AuthVars } from './lib/auth.js';
+import { getBotRow } from './store.js';
+import type { ToolCtx, ToolResult } from './agent/tools.js';
+import type { WaDraft } from './types.js';
 
 /**
  * WhatsApp, send-only, shared with Zubi HQ's command center: the same Baileys bridge in the main
  * agent's Hermes home (`whatsapp-send`), the same paired account, the same send history, and so the
- * same daily cap and gap between messages. Pairing stays in Zubi HQ. Every message is shown to the
- * user on an approval card first and goes out only on "Allow"; there is no "Always allow".
+ * same daily cap and gap between messages. Pairing stays in Zubi HQ.
+ *
+ * A team member can only draft: the draft opens in the WhatsApp window in the app, where the owner
+ * picks or checks who gets it, previews and presses Confirm. Only that Confirm sends, once.
  */
 const DIR = path.join(env.hermesHome, 'whatsapp-send');
 const SESSION = path.join(DIR, 'session');
@@ -20,6 +27,7 @@ const NODE = process.env.HQ_WA_NODE ?? '/usr/local/bin/node';
 export const WA_CAP = 20;
 const GAP_MS = 5000;
 const TEXT_MAX = 4000;
+const PREVIEW_MS = 10 * 60_000;
 
 async function call(method: string, p: string, body?: unknown, timeoutMs = 20_000): Promise<{ status: number; data: any }> {
   try {
@@ -99,61 +107,130 @@ function msSinceLastSend(): number {
   return last ? Date.now() - last : Infinity;
 }
 
-// ---------- the tool ----------
+// ---------- groups ----------
 
-interface Target { kind: 'group' | 'person'; label: string; jid: string }
-
-async function resolve(a: { to_group?: string; to_number?: string }): Promise<Target | string> {
-  if (a.to_group && String(a.to_group).trim()) {
-    const want = String(a.to_group).trim().toLowerCase();
-    const { status, data } = await call('GET', '/groups', undefined, 25_000);
-    if (status !== 200) return 'Could not read the WhatsApp group list. Try again in a moment.';
-    const groups: any[] = data?.groups ?? [];
-    const exact = groups.filter((g) => String(g.name).toLowerCase() === want);
-    const near = exact.length ? exact : groups.filter((g) => String(g.name).toLowerCase().includes(want));
-    if (near.length === 0) return `No WhatsApp group named "${a.to_group}". Ask the owner which group.`;
-    if (near.length > 1) return `Several groups match "${a.to_group}": ${near.slice(0, 8).map((g) => g.name).join(', ')}. Ask the owner which one.`;
-    return { kind: 'group', label: `Group: ${near[0].name} (${near[0].size} members)`, jid: near[0].id };
-  }
-  const num = String(a.to_number ?? '').replace(/[\s()+-]/g, '');
-  if (!num) return 'Say who it goes to: a group name (to_group) or a phone number with its country code (to_number).';
-  if (!/^[1-9]\d{7,14}$/.test(num)) return 'Give the number with its country code, digits only, for example 919783555153 (no leading 0).';
-  const { status, data } = await call('POST', '/check', { number: num }, 20_000);
-  if (status !== 200) return String(data?.error ?? 'Could not check that number on WhatsApp.');
-  if (!data?.exists) return 'That number is not on WhatsApp.';
-  return { kind: 'person', label: `+${num}`, jid: data.jid };
+interface Group { id: string; name: string; size: number }
+let groupCache: { at: number; groups: Group[] } | null = null;
+async function groups(): Promise<Group[] | string> {
+  if (groupCache && Date.now() - groupCache.at < 60_000) return groupCache.groups;
+  const { status, data } = await call('GET', '/groups', undefined, 25_000);
+  if (status !== 200) return 'Could not read the WhatsApp group list. Try again in a moment.';
+  const list: Group[] = (data?.groups ?? []).map((g: any) => ({ id: String(g.id), name: String(g.name ?? ''), size: Number(g.size) || 0 }));
+  groupCache = { at: Date.now(), groups: list };
+  return list;
 }
 
-export async function whatsappSend(a: { to_group?: string; to_number?: string; text?: string }, ctx: ToolCtx): Promise<ToolResult> {
+// ---------- the tool: a team member drafts, the window opens ----------
+
+const drafts = new Map<string, WaDraft>(); // latest draft per owner
+
+export async function whatsappDraft(a: { to_group?: string; to_number?: string; text?: string }, ctx: ToolCtx): Promise<ToolResult> {
   const text = String(a.text ?? '').trim();
-  if (!text) return { output: 'Write the message first.', summary: 'No text' };
-  if (text.length > TEXT_MAX) return { output: `A WhatsApp message can be up to ${TEXT_MAX} characters (this one is ${text.length}).`, summary: 'Too long' };
-  if (!(await ensureBridge())) return { output: 'WhatsApp is not connected. Ask the owner to connect it in Zubi HQ (Zubi Live, WhatsApp), then try again. Nothing was sent.', summary: 'Not connected' };
+  if (text.length > TEXT_MAX) return { output: `A WhatsApp message can be up to ${TEXT_MAX} characters (this one is ${text.length}). Shorten it.`, summary: 'Too long' };
+  const bot = getBotRow(ctx.botId);
+  const group = String(a.to_group ?? '').trim();
+  const number = String(a.to_number ?? '').replace(/\D/g, '');
+  const draft: WaDraft = {
+    id: crypto.randomBytes(6).toString('hex'),
+    botId: ctx.botId,
+    botName: bot?.name ?? 'Your teammate',
+    to: group ? { kind: 'group', name: group.slice(0, 120), number: '' } : number ? { kind: 'person', name: '', number: number.slice(0, 15) } : { kind: '', name: '', number: '' },
+    text,
+    at: Date.now(),
+  };
+  drafts.set(ctx.userId, draft);
+  hub.emit(ctx.userId, { type: 'whatsapp', draft });
+  const where = hub.isOnline(ctx.userId) ? 'It is open in the WhatsApp window in the app now' : 'It will open in the WhatsApp window when the owner opens the app';
+  return {
+    output: `${where}. The owner checks who gets it, previews and presses Confirm there; you cannot send it, so never say it was sent. Tell them the draft is waiting in the WhatsApp window.`,
+    summary: 'Drafted a WhatsApp message',
+  };
+}
+
+/** Close (hide) the WhatsApp window in the app. The draft stays, so opening it again shows the same message. */
+export function whatsappClose(userId: string): ToolResult {
+  hub.emit(userId, { type: 'whatsapp-close' });
+  return { output: 'The WhatsApp window is closed. The draft is kept; nothing was sent.', summary: 'Closed the WhatsApp window' };
+}
+
+// ---------- the window's routes ----------
+
+interface Preview { userId: string; kind: 'group' | 'person'; label: string; jid: string; text: string; exp: number }
+const previews = new Map<string, Preview>();
+
+export const whatsappApi = new Hono<AuthVars>();
+
+whatsappApi.get('/status', async (c) => {
+  const paired = waPaired();
+  const ok = paired && (await ensureBridge());
+  const h = ok ? await call('GET', '/health', undefined, 3000) : { status: 0, data: null };
+  const state = !paired ? 'not_paired' : !ok ? 'offline' : String(h.data?.status ?? 'offline');
+  return c.json({ state, phone: h.data?.me ? `+${h.data.me}` : '', sentToday: sentToday(), cap: WA_CAP });
+});
+
+whatsappApi.get('/groups', async (c) => {
+  if (!(await ensureBridge())) return c.json({ error: 'WhatsApp is not connected. Connect it in Zubi HQ (Zubi Live, WhatsApp).' }, 409);
+  const g = await groups();
+  return typeof g === 'string' ? c.json({ error: g }, 502) : c.json({ groups: g });
+});
+
+/** The latest draft from a team member, so a window opened later still shows it. */
+whatsappApi.get('/draft', (c) => c.json({ draft: drafts.get(c.get('user').id) ?? null }));
+
+whatsappApi.get('/history', (c) => {
+  const h = history().slice(-10).reverse().map((e) => ({ ts: String(e.ts ?? ''), to: String(e.to ?? ''), text: String(e.text ?? ''), result: String(e.result ?? ''), via: String(e.via ?? '') }));
+  return c.json({ history: h });
+});
+
+whatsappApi.post('/preview', async (c) => {
+  const user = c.get('user');
+  const b = await c.req.json<{ kind?: string; group?: string; number?: string; text?: string }>().catch(() => ({} as any));
+  const text = String(b.text ?? '').trim();
+  if (!text) return c.json({ error: 'Write the message first.' }, 400);
+  if (text.length > TEXT_MAX) return c.json({ error: `Up to ${TEXT_MAX} characters.` }, 400);
+  if (!(await ensureBridge())) return c.json({ error: 'WhatsApp is not connected. Connect it in Zubi HQ (Zubi Live, WhatsApp).' }, 409);
+  let target: Omit<Preview, 'userId' | 'text' | 'exp'>;
+  if (b.kind === 'group') {
+    const g = await groups();
+    if (typeof g === 'string') return c.json({ error: g }, 502);
+    const hit = g.find((x) => x.id === String(b.group ?? ''));
+    if (!hit) return c.json({ error: 'Pick the group from the list.' }, 400);
+    target = { kind: 'group', label: `Group: ${hit.name} (${hit.size} members)`, jid: hit.id };
+  } else {
+    const num = String(b.number ?? '').replace(/\D/g, '');
+    if (!/^[1-9]\d{7,14}$/.test(num)) return c.json({ error: 'Give the number with its country code, digits only, for example 919783555153.' }, 400);
+    const r = await call('POST', '/check', { number: num }, 20_000);
+    if (r.status !== 200) return c.json({ error: String(r.data?.error ?? 'Could not check that number on WhatsApp.') }, 502);
+    if (!r.data?.exists) return c.json({ error: `+${num} is not on WhatsApp.` }, 400);
+    target = { kind: 'person', label: `+${num}`, jid: String(r.data.jid) };
+  }
+  for (const [k, v] of previews) if (v.exp < Date.now() || v.userId === user.id) previews.delete(k); // one live preview per owner
+  const token = crypto.randomBytes(16).toString('hex');
+  previews.set(token, { ...target, userId: user.id, text, exp: Date.now() + PREVIEW_MS });
+  return c.json({ token, recipient: target.label, text, remaining: Math.max(0, WA_CAP - sentToday()) });
+});
+
+whatsappApi.post('/send', async (c) => {
+  const user = c.get('user');
+  const b = await c.req.json<{ token?: string; confirm?: boolean }>().catch(() => ({} as any));
+  const p = b.token ? previews.get(String(b.token)) : undefined;
+  if (!b.confirm || !p || p.userId !== user.id) return c.json({ ok: false, result: 'failed', error: 'Preview again, then confirm.' }, 400);
+  previews.delete(String(b.token)); // one use, whatever happens next
+  if (p.exp < Date.now()) return c.json({ ok: false, result: 'failed', error: 'The preview expired. Preview again.' }, 400);
+  if (sentToday() >= WA_CAP) return c.json({ ok: false, result: 'failed', error: `The daily limit of ${WA_CAP} is reached (shared with Zubi HQ). It resets at midnight.` }, 429);
   const health = await call('GET', '/health', undefined, 3000);
-  if (health.data?.status !== 'connected') return { output: 'WhatsApp is reconnecting. Try again in a minute. Nothing was sent.', summary: 'Reconnecting' };
-  if (sentToday() >= WA_CAP) return { output: `The daily limit of ${WA_CAP} WhatsApp messages is reached (shared with Zubi HQ). It resets at midnight. Nothing was sent.`, summary: 'Daily limit' };
-  const target = await resolve(a);
-  if (typeof target === 'string') return { output: `${target} Nothing was sent.`, summary: 'Not sent' };
-
-  // The owner sees exactly who and what, and decides. No "Always allow": `asks` is empty.
-  const { requestApproval } = await import('./agent/loop.js');
-  const pol: Policy = { decision: 'ask', key: 'whatsapp_send', toolkit: 'whatsapp', title: 'WhatsApp: send this WhatsApp message', asks: [] };
-  const answer = await requestApproval({ userId: ctx.userId, botId: ctx.botId }, pol, { to: target.label, message: text }, null);
-  if (answer !== 'allow') return { output: 'The owner did not approve it. Nothing was sent.', summary: 'Not approved' };
-
-  if (sentToday() >= WA_CAP) return { output: `The daily limit of ${WA_CAP} was reached while waiting. Nothing was sent.`, summary: 'Daily limit' };
+  if (health.data?.status !== 'connected') return c.json({ ok: false, result: 'failed', error: 'WhatsApp is reconnecting. Nothing was sent; try again in a minute.' }, 503);
   const wait = GAP_MS - msSinceLastSend();
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   const entry: Record<string, unknown> = {
-    id: crypto.randomBytes(5).toString('hex'), ts: stamp(), day: day(), kind: target.kind, to: target.label, jid: target.jid,
-    type: 'text', text: text.slice(0, 200), image: '', via: 'heyzubi',
+    id: crypto.randomBytes(5).toString('hex'), ts: stamp(), day: day(), kind: p.kind, to: p.label, jid: p.jid,
+    type: 'text', text: p.text.slice(0, 200), image: '', via: 'heyzubi',
   };
-  const r = await call('POST', '/send', { chatId: target.jid, message: text }, 60_000);
+  const r = await call('POST', '/send', { chatId: p.jid, message: p.text }, 60_000);
   if (r.status === 200 && r.data?.success) Object.assign(entry, { result: 'sent', message_id: r.data?.messageId ?? '' });
   else if (r.status === 0) Object.assign(entry, { result: 'unknown', error: 'No answer from WhatsApp. It may or may not have been sent: check the chat before sending again' });
   else Object.assign(entry, { result: 'failed', error: String(r.data?.error ?? `HTTP ${r.status}`).slice(0, 200) });
   addHistory(entry);
-  const left = Math.max(0, WA_CAP - sentToday());
-  if (entry.result === 'sent') return { output: `Sent to ${target.label}. ${left} WhatsApp messages left today.`, summary: `Sent to ${target.label}` };
-  return { output: `Not confirmed as sent (${entry.result}): ${entry.error}. Do not send it again before the owner checks the chat.`, summary: 'Not sent' };
-}
+  if (entry.result === 'sent') drafts.delete(user.id);
+  return c.json({ ok: entry.result === 'sent', result: entry.result, error: entry.error ?? null, to: p.label, left: Math.max(0, WA_CAP - sentToday()) });
+});

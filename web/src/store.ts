@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Bot, ComputerState, LiveState, Routine, Row, ServerEvent, User } from '@shared/types';
+import type { Bot, ComputerState, LiveState, Routine, Row, ServerEvent, User, WaDraft } from '@shared/types';
 import { api } from './lib/api';
 import { lsGet, lsSet } from './lib/storage';
 
@@ -30,6 +30,9 @@ interface State {
   viewerMode: 'watch' | 'control';
   /** One line shown under the large computer view while the person is driving (e.g. a sign-in to finish). */
   viewerHint: string | null;
+  /** The floating WhatsApp window, and the latest draft a team member put in it. */
+  waOpen: boolean;
+  waDraft: WaDraft | null;
 
   checkAuth(): Promise<void>;
   loadBots(): Promise<void>;
@@ -65,6 +68,8 @@ export const useStore = create<State>((set, get) => ({
   viewerOpen: false,
   viewerMode: 'watch',
   viewerHint: null,
+  waOpen: false,
+  waDraft: null,
 
   async checkAuth() {
     try {
@@ -174,6 +179,14 @@ export const useStore = create<State>((set, get) => ({
         return;
       case 'connections':
         set((st) => ({ connectionsVersion: st.connectionsVersion + 1 }));
+        return;
+      case 'whatsapp':
+        // A team member drafted a WhatsApp message: open the window with it.
+        set({ waOpen: true, waDraft: ev.draft });
+        return;
+      case 'whatsapp-close':
+        // Asked to close it: hide the window; the draft stays for next time.
+        set({ waOpen: false });
         return;
     }
   },

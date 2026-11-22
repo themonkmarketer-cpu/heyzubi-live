@@ -10,7 +10,8 @@ import { scheduleRoutine, unscheduleRoutine } from '../routines.js';
 import { createEventRoutine, deleteEventTrigger, describeEvent, listTriggerTypes } from '../triggers.js';
 import { setCheckins } from '../proactive.js';
 import { createRoom, postToRoom } from './rooms.js';
-import { whatsappSend } from '../whatsapp.js';
+import { whatsappClose, whatsappDraft } from '../whatsapp.js';
+import { usage } from '../usage.js';
 import type { ActivityKind } from '../types.js';
 import { Cron } from 'croner';
 
@@ -47,7 +48,7 @@ function botByName(userId: string, name: string) {
 }
 
 /** Live X research through xAI's search tool. Returns the answer text followed by the posts it cites. */
-async function xSearch(a: any): Promise<string> {
+async function xSearch(a: any, userId: string): Promise<string> {
   const clean = (v: unknown) => (Array.isArray(v) ? v.map((h) => String(h).replace(/^@/, '').trim()).filter(Boolean).slice(0, 10) : []);
   const tool: Record<string, unknown> = { type: 'x_search' };
   const only = clean(a.handles);
@@ -73,6 +74,7 @@ async function xSearch(a: any): Promise<string> {
   });
   if (!res.ok) throw new Error(`X search failed (${res.status}): ${(await res.text()).slice(0, 300)}`);
   const data: any = await res.json();
+  usage.grok(userId, data.usage, 'X search');
   const parts: string[] = [];
   const links = new Set<string>();
   for (const item of data.output ?? []) {
@@ -115,8 +117,8 @@ export const TOOLS: ToolDef[] = [
     }, ['query']),
     activity: 'searching_web',
     label: 'Searching X',
-    impl: async (a) => {
-      const r = await xSearch(a);
+    impl: async (a, ctx) => {
+      const r = await xSearch(a, ctx.userId);
       return { output: r, summary: 'Searched X' };
     },
   },
@@ -315,12 +317,20 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
-    name: 'whatsapp_send',
-    description: "Send a WhatsApp text message from the owner's own WhatsApp (send-only, the account connected in Zubi HQ). Give to_group (the group's name) or to_number (phone number with country code, digits only), and the exact text. The owner sees the recipient and text on an approval card and nothing is sent unless they allow it; never say a message was sent unless this tool says so. At most 20 a day, shared with Zubi HQ.",
-    parameters: obj({ to_group: { type: 'string', description: 'WhatsApp group name' }, to_number: { type: 'string', description: 'Phone number with country code, digits only' }, text: { type: 'string', description: 'The exact message' } }, ['text']),
+    name: 'whatsapp_draft',
+    description: "Open the floating WhatsApp window in the HeyZubi app with a message drafted for the owner's own WhatsApp (send-only, the account connected in Zubi HQ). Use it whenever the owner asks for WhatsApp in this app: to send, write or draft a message, or just \"open WhatsApp\" / \"open the WhatsApp window\" (then leave text empty). This tool IS the WhatsApp window: never open Zubi HQ or a browser for WhatsApp, and never change Hermes settings for it. Give to_group (the group's name) or to_number (phone number with country code, digits only; Indian numbers start with 91) when you know who, and the text. The owner checks it, previews and presses Confirm in that window; you cannot send, so never say a message was sent. At most 20 sends a day, shared with Zubi HQ.",
+    parameters: obj({ to_group: { type: 'string', description: 'WhatsApp group name' }, to_number: { type: 'string', description: 'Phone number with country code, digits only' }, text: { type: 'string', description: 'The message (may be empty to just open WhatsApp)' } }, []),
     activity: 'connecting_service',
-    label: 'Using WhatsApp',
-    impl: async (a, ctx) => whatsappSend(a, ctx),
+    label: 'Opening WhatsApp',
+    impl: async (a, ctx) => whatsappDraft(a, ctx),
+  },
+  {
+    name: 'whatsapp_close',
+    description: 'Close the floating WhatsApp window in the HeyZubi app when the owner asks to close or hide it. The draft is kept and nothing is sent.',
+    parameters: obj({}, []),
+    activity: 'connecting_service',
+    label: 'Closing WhatsApp',
+    impl: async (_a, ctx) => whatsappClose(ctx.userId),
   },
   {
     name: 'request_app_connection',

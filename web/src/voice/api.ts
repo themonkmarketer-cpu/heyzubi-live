@@ -17,6 +17,13 @@ export interface VoiceSession {
 
 export interface VoiceOptions { voices: VoiceOption[]; languages: { code: string; name: string }[]; speeds: number[] }
 
+export interface XaiUsage {
+  day: string;
+  total: number;
+  note: string;
+  by: Record<'live_call' | 'transcription' | 'spoken_reply' | 'grok', { usd: number; qty: number; unit: string; uses: number }>;
+}
+
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`/api/voice${path}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (!res.ok) {
@@ -47,9 +54,26 @@ export const voiceApi = {
     const buf = await res.arrayBuffer();
     return new Int16Array(buf, 0, buf.byteLength >> 1);
   },
-  async transcribe(blob: Blob, language?: string): Promise<string> {
+  /** One of the bot's replies, read aloud (mp3). */
+  async speak(botId: string, text: string): Promise<Blob> {
+    const res = await fetch('/api/voice/speak', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ botId, text }) });
+    if (!res.ok) {
+      let msg = 'Could not read it aloud';
+      try { msg = ((await res.json()) as { error?: string }).error ?? msg; } catch { /* not json */ }
+      throw new Error(msg);
+    }
+    return res.blob();
+  },
+  /** Today's xAI spend by service (estimates). */
+  usage: () => fetch('/api/voice/usage', { credentials: 'include' }).then((r) => {
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json() as Promise<XaiUsage>;
+  }),
+  async transcribe(blob: Blob, language?: string, meta?: { ms?: number; what?: string }): Promise<string> {
     const fd = new FormData();
     if (language) fd.append('language', language);
+    if (meta?.ms) fd.append('ms', String(Math.round(meta.ms)));
+    if (meta?.what) fd.append('what', meta.what);
     const ext = blob.type.includes('ogg') ? 'ogg' : blob.type.includes('mp4') ? 'm4a' : 'webm';
     fd.append('file', blob, `dictation.${ext}`);
     const res = await fetch('/api/voice/stt', { method: 'POST', credentials: 'include', body: fd });

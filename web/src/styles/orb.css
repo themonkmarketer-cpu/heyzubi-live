@@ -1,0 +1,75 @@
+/* Zubi HQ's orb and capability ring, scaled into the sidebar (see SidebarOrb.tsx). */
+.sorb { position: relative; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; padding: 4px 12px 2px; }
+/* The team list fades out above the orb now (the profile row's own fade would cover the ring). */
+.sorb::before { content: ''; position: absolute; left: 0; right: 0; top: -40px; height: 40px; pointer-events: none; background: linear-gradient(180deg, transparent 0%, var(--color-bg-sidebar) 100%); }
+.sorb + .sidebar__footer .sidebar__fade { display: none; }
+.sorb__stage { position: relative; }
+.sorb__lines { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+.sorb__track { fill: none; stroke: var(--color-border-tertiary); stroke-width: 1; stroke-dasharray: 2 5; }
+
+/* the line from the orb to the capability in use, with particles going both ways through it */
+.sorb__pipe { fill: none; stroke: currentColor; stroke-width: 7; stroke-linecap: round; opacity: 0.16; animation: sorb-pipe 0.35s ease-out both; }
+.sorb__core { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; opacity: 0.85; filter: drop-shadow(0 0 3px currentColor); stroke-dasharray: 220; animation: sorb-draw 0.45s ease-out both; }
+.sorb__atom { fill: #FFFFFF; filter: drop-shadow(0 0 3px currentColor) drop-shadow(0 0 6px currentColor); }
+@keyframes sorb-pipe { from { opacity: 0; } }
+@keyframes sorb-draw { from { stroke-dashoffset: 220; } to { stroke-dashoffset: 0; } }
+
+/* the orb (Zubi HQ .corb / .cring / .cball) */
+.sorb__orb { position: absolute; transform: translate(-50%, -50%); z-index: 2; }
+.sorb__ring { position: absolute; inset: 10px; border-radius: 50%; border: 1px solid var(--color-border-secondary); animation: sorb-spin 14s linear infinite; }
+.sorb__ring.is-r2 { inset: 0; animation-duration: 22s; animation-direction: reverse; opacity: 0.7; }
+.sorb__ring::before { content: ''; position: absolute; top: -3px; left: 50%; width: 6px; height: 6px; border-radius: 50%; background: var(--color-brand); box-shadow: 0 0 8px var(--color-brand); }
+.sorb__ball {
+  position: absolute; inset: 19px; border-radius: 50%; display: grid; place-items: center; color: #FFFFFF;
+  background: radial-gradient(circle at 36% 30%, #FFFFFF 0%, var(--cc) 48%, color-mix(in srgb, var(--cc) 40%, #0B0A0F) 135%);
+  box-shadow: 0 0 26px var(--cc), 0 0 60px color-mix(in srgb, var(--cc) 35%, transparent);
+  transition: background 0.4s, box-shadow 0.4s;
+}
+.sorb__ic { display: grid; place-items: center; width: 24px; height: 24px; filter: drop-shadow(0 1px 2px #0006); }
+.sorb__ic svg { width: 24px; height: 24px; }
+.sorb__check { font-size: 22px; font-weight: 800; text-shadow: 0 1px 3px #0005; }
+@keyframes sorb-spin { to { transform: rotate(360deg); } }
+.sorb__orb[data-m='idle'] .sorb__ball { animation: sorb-breath 4s ease-in-out infinite; }
+.sorb__orb[data-m='thinking'] .sorb__ring, .sorb__orb[data-m='tool'] .sorb__ring { animation-duration: 3s; }
+.sorb__orb[data-m='thinking'] .sorb__ball { animation: sorb-breath 1.6s ease-in-out infinite; }
+.sorb__orb[data-m='tool'] .sorb__ball { animation: sorb-pulse 0.9s ease-in-out infinite; }
+.sorb__orb[data-m='waiting'] .sorb__ball { animation: sorb-pulse 1.4s ease-in-out infinite; --cc: var(--color-warn); }
+.sorb__orb[data-m='done'] .sorb__ball { --cc: var(--color-success); }
+@keyframes sorb-breath { 50% { transform: scale(1.04); } }
+@keyframes sorb-pulse { 50% { transform: scale(1.1); } }
+
+/* capability nodes (Zubi HQ .cnode), 32px instead of 42px */
+.sorb__node { position: absolute; transform: translate(-50%, -50%) scale(var(--s, 1)); transition: transform 0.28s cubic-bezier(0.3, 1.5, 0.5, 1); z-index: 3; }
+.sorb__node i {
+  display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px;
+  border: 1px solid var(--color-border-secondary); background: var(--color-bg-elevated); box-shadow: var(--shadow-pill); transition: 0.25s;
+}
+.sorb__node i svg { width: 20px; height: 20px; }
+.sorb__node:hover { --s: 1.12; }
+.sorb__node:hover i { border-color: var(--color-brand); }
+.sorb__node.is-no i { opacity: 0.55; }
+.sorb__node.is-on { --s: 1.22; z-index: 4; }
+.sorb__node.is-on i { opacity: 1; background: var(--nc); border-color: var(--nc); box-shadow: 0 0 14px var(--nc), 0 0 34px color-mix(in srgb, var(--nc) 45%, transparent); }
+.sorb__node:focus-visible i { outline: 2px solid var(--color-brand); outline-offset: 2px; }
+
+.sorb__tip {
+  position: absolute; left: 50%; top: -6px; transform: translate(-50%, -100%); z-index: 10; width: 250px; padding: 10px 12px; border-radius: 12px;
+  background: var(--color-bg-elevated); border: 1px solid var(--color-border-secondary); box-shadow: var(--shadow-popover);
+  display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; line-height: 1.45; color: var(--color-text-primary); pointer-events: none;
+}
+.sorb__tip b { color: var(--color-brand); }
+.sorb__tip small { color: var(--color-text-tertiary); }
+
+.sorb__line {
+  max-width: 100%; margin-top: -2px; font-size: 12px; line-height: 16px; color: var(--color-text-tertiary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; gap: 6px; align-items: center;
+}
+.sorb__line b { font-size: 10px; letter-spacing: 0.08em; color: var(--cc); }
+.sorb__line.is-tool, .sorb__line.is-thinking { color: var(--color-text-secondary); }
+.sorb__line.is-waiting { color: var(--color-warn-text); }
+
+.sidebar.is-collapsed .sorb { display: none; }
+@media (max-height: 700px) { .sorb { display: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .sorb__ring, .sorb__ball, .sorb__pipe, .sorb__core { animation: none !important; }
+}

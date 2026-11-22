@@ -15,13 +15,16 @@ function pickMime(): string | undefined {
   return undefined;
 }
 
-export function useDictation(onText: (text: string) => void, onError: (msg: string) => void, language?: string) {
+export function useDictation(onText: (text: string) => void, onError: (msg: string) => void, language?: string, what?: 'dictation' | 'voice-message') {
   const [state, setState] = useState<DictationState>('idle');
+  /** Recording was started with a tap (not held): it goes on until the button is tapped again. */
+  const [tap, setTap] = useState(false);
   const rec = useRef<{ mr: MediaRecorder; stream: MediaStream; chunks: Blob[]; downAt: number; cancelled: boolean; timer: ReturnType<typeof setTimeout> } | null>(null);
   const starting = useRef(false);
   const toggleMode = useRef(false);
-  const cb = useRef({ onText, onError, language });
-  cb.current = { onText, onError, language };
+  const stopWhenOpen = useRef(false);
+  const cb = useRef({ onText, onError, language, what });
+  cb.current = { onText, onError, language, what };
 
   const finish = useCallback((cancel = false) => {
     const r = rec.current;
@@ -48,10 +51,11 @@ export function useDictation(onText: (text: string) => void, onError: (msg: stri
         stream.getTracks().forEach((t) => t.stop());
         rec.current = null;
         toggleMode.current = false;
+        setTap(false);
         if (r.cancelled || !r.chunks.length || Date.now() - r.downAt < 250) { setState('idle'); return; }
         setState('transcribing');
         try {
-          const text = await voiceApi.transcribe(new Blob(r.chunks, { type: mr.mimeType || mime || 'audio/webm' }), cb.current.language);
+          const text = await voiceApi.transcribe(new Blob(r.chunks, { type: mr.mimeType || mime || 'audio/webm' }), cb.current.language, { ms: Date.now() - r.downAt, what: cb.current.what });
           if (text) cb.current.onText(text);
         } catch (e) {
           cb.current.onError((e as Error).message || 'Transcription failed');
@@ -61,6 +65,7 @@ export function useDictation(onText: (text: string) => void, onError: (msg: stri
       };
       mr.start(250);
       setState('recording');
+      if (stopWhenOpen.current) { stopWhenOpen.current = false; finish(); } // key let go while the mic was opening
     } catch (e) {
       cb.current.onError(micErrorMessage(e));
       setState('idle');
@@ -82,11 +87,11 @@ export function useDictation(onText: (text: string) => void, onError: (msg: stri
     const r = rec.current;
     if (!r) {
       // Still waiting on the permission prompt: treat as a tap.
-      if (starting.current) toggleMode.current = true;
+      if (starting.current) { toggleMode.current = true; setTap(true); }
       return;
     }
     if (toggleMode.current) return;
-    if (Date.now() - r.downAt < HOLD_MS) toggleMode.current = true; // tap: keep recording
+    if (Date.now() - r.downAt < HOLD_MS) { toggleMode.current = true; setTap(true); } // tap: keep recording
     else finish();
   }, [finish]);
 
@@ -94,7 +99,7 @@ export function useDictation(onText: (text: string) => void, onError: (msg: stri
     if (e.key !== 'Enter' && e.key !== ' ') return;
     e.preventDefault();
     if (rec.current) finish();
-    else { toggleMode.current = true; void begin(); }
+    else { toggleMode.current = true; setTap(true); void begin(); }
   }, [begin, finish]);
 
   // Esc cancels; unmount stops.
@@ -106,5 +111,12 @@ export function useDictation(onText: (text: string) => void, onError: (msg: stri
   }, [state, finish]);
   useEffect(() => () => finish(true), [finish]);
 
-  return { state, onPointerDown, onPointerUp, onKeyDown, cancel: () => finish(true) };
+  // For a held key: start on press, stop (and transcribe) on release.
+  const start = useCallback(() => { toggleMode.current = false; stopWhenOpen.current = false; void begin(); }, [begin]);
+  const stop = useCallback(() => {
+    if (rec.current) finish();
+    else if (starting.current) stopWhenOpen.current = true;
+  }, [finish]);
+
+  return { state, tap, onPointerDown, onPointerUp, onKeyDown, start, stop, cancel: () => finish(true) };
 }

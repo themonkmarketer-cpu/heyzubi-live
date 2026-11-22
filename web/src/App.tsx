@@ -14,9 +14,11 @@ import { SearchModal } from './components/modals/SearchModal';
 import { ConfigLayer } from './components/config/ConfigLayer';
 import { TasksView } from './components/config/TasksView';
 import { useConfigUI } from './configStore';
+import { WhatsAppWindow } from './components/WhatsAppWindow';
 
 function Shell() {
   const detailsOpen = useStore((s) => s.detailsOpen);
+  const waOpen = useStore((s) => s.waOpen);
   const modal = useStore((s) => s.modal);
   const viewerOpen = useStore((s) => s.viewerOpen);
   const collapsed = useStore((s) => s.sidebarCollapsed);
@@ -65,6 +67,7 @@ function Shell() {
       {modal === 'search' && <SearchModal />}
       {modal === 'apps' && <ConnectAppsModal />}
       {viewerOpen && <ComputerViewer />}
+      {waOpen && <WhatsAppWindow />}
       <ConfigLayer />
     </div>
   );

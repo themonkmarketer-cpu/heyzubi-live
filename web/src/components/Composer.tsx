@@ -1,14 +1,23 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { Bot } from '@shared/types';
+import type { Bot, MessageBody } from '@shared/types';
 import { api } from '../lib/api';
 import { displayName, useStore } from '../store';
 import { Icon } from './Icon';
 import { Menu } from './Menu';
 import { endCall, isCallActive, startCall, useVoice } from '../voice/call';
 import { useDictation } from '../voice/dictation';
+import { speakReply, stopSpeaking, useSpeak } from '../voice/speak';
 
 const MAX_H = 200;
+/** Replies up to this long are read aloud after a voice message; longer ones get a Listen button instead. */
+const AUTO_SPEAK_MAX = 600;
 const drafts = new Map<string, string>();
+
+/** Put a starter request in a bot's message box (the orb's capability icons use it), ready to finish and send. */
+export function prefillComposer(botId: string, text: string) {
+  drafts.set(botId, text);
+  window.dispatchEvent(new CustomEvent('heyzubi:compose', { detail: { botId, text } }));
+}
 
 export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
   const [text, setText] = useState(() => drafts.get(bot.id) ?? '');
@@ -21,6 +30,16 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
   // Per-bot drafts.
   useEffect(() => { setText(drafts.get(bot.id) ?? ''); setError(null); ref.current?.focus(); }, [bot.id]);
   useEffect(() => { drafts.set(bot.id, text); }, [bot.id, text]);
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<{ botId: string; text: string }>).detail;
+      if (d?.botId !== bot.id) return;
+      setText(d.text);
+      setTimeout(() => { const el = ref.current; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 0);
+    };
+    window.addEventListener('heyzubi:compose', on);
+    return () => window.removeEventListener('heyzubi:compose', on);
+  }, [bot.id]);
 
   // Auto-grow.
   useLayoutEffect(() => {
@@ -71,8 +90,40 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
       return before + pre + t + post + after;
     });
   };
-  const dictation = useDictation(insertText, setError, bot.voiceLanguage);
+  const dictation = useDictation(insertText, setError, bot.voiceLanguage, 'dictation');
   const inCall = useVoice((s) => isCallActive(s) && s.botId === bot.id);
+
+  // Voice message (the cheap default): hold the main button, talk, let go. It is transcribed and sent to the bot's
+  // usual (text) agent; a short reply is then read aloud. No live call is opened, so silences cost nothing.
+  const awaitSpeak = useRef<number | null>(null); // the voice message whose reply gets read aloud
+  const [vmNote, setVmNote] = useState<string | null>(null);
+  const sendVoice = async (t: string) => {
+    const said = t.trim();
+    if (!said) return;
+    setError(null); setVmNote(null); stopSpeaking();
+    try { const { row } = await api.send(bot.id, said, true); awaitSpeak.current = row.seq; }
+    catch (e) { setError((e as Error).message || 'Voice message failed to send'); }
+  };
+  const voiceMsg = useDictation((t) => void sendVoice(t), setError, bot.voiceLanguage, 'voice-message');
+  const liveState = useStore((s) => s.live[bot.id]);
+  const rowsBySeq = useStore((s) => s.transcripts[bot.id]?.bySeq);
+  useEffect(() => {
+    const after = awaitSpeak.current;
+    if (after === null || !rowsBySeq || liveState?.isRunning) return;
+    const replies = Object.values(rowsBySeq)
+      .filter((r) => r.seq > after && r.body.type === 'message' && r.body.role === 'assistant' && !r.body.streaming && !!r.body.text?.trim())
+      .sort((a, b) => a.seq - b.seq);
+    if (!replies.length) return;
+    awaitSpeak.current = null;
+    const said = replies.map((r) => (r.body as MessageBody).text).join('\n\n');
+    const last = replies[replies.length - 1];
+    if (said.length <= AUTO_SPEAK_MAX) void speakReply(bot.id, said, `${bot.id}:${last.seq}`);
+    else setVmNote(`${displayName(bot)}’s reply is long, so it wasn’t read aloud. Press the speaker next to it to listen.`);
+  }, [rowsBySeq, liveState?.isRunning, bot]);
+  useEffect(() => { awaitSpeak.current = null; setVmNote(null); }, [bot.id]);
+  const speakError = useSpeak((s) => s.error);
+  useEffect(() => { if (speakError) { setError(speakError); useSpeak.setState({ error: null }); } }, [speakError]);
+  useEffect(() => { if (!vmNote) return; const t = setTimeout(() => setVmNote(null), 9000); return () => clearTimeout(t); }, [vmNote]);
 
   const hasText = text.trim().length > 0;
   const multiline = text.includes('\n') || (ref.current?.scrollHeight ?? 0) > 30;
@@ -80,6 +131,10 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
   return (
     <div className="composer-area">
       {error && <div className="composer__error">{error} <button type="button" className="link-btn" onClick={() => setError(null)}>Dismiss</button></div>}
+      {!error && vmNote && <div className="composer__note" role="status">{vmNote}</div>}
+      {!error && !vmNote && voiceMsg.state !== 'idle' && <div className="composer__note" role="status">{voiceMsg.state === 'recording'
+          ? voiceMsg.tap ? 'Listening… tap the red button again to send (Esc cancels)' : 'Listening… let go to send (Esc cancels)'
+          : 'Transcribing and sending your voice message…'}</div>}
       <div className={`composer${multiline ? ' is-multiline' : ''}`}>
         <div className="composer__left">
           <span className="composer__plus-anchor">
@@ -93,6 +148,7 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
                 items={[
                   { label: 'New conversation', onSelect: fresh },
                   { label: 'Connect apps', onSelect: () => setModal('apps') },
+                  { label: inCall ? 'End live call' : 'Start a live call · $0.08/min', onSelect: () => (inCall ? endCall() : startCall(bot.id)) },
                 ]}
               />
             )}
@@ -133,16 +189,24 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
             <button type="button" className="composer__cta" onClick={stop} aria-label="Stop" title="Stop">
               <Icon name="stop" size={14} />
             </button>
+          ) : hasText ? (
+            <button type="button" className="composer__cta" onClick={send} disabled={sending} aria-label="Send" title="Send (Enter)">
+              <Icon name="arrow_up" size={16} />
+            </button>
           ) : (
             <button
               type="button"
-              className="composer__cta"
-              onClick={hasText ? send : () => startCall(bot.id)}
-              disabled={hasText && sending}
-              aria-label={hasText ? 'Send' : `Start voice chat with ${bot.name}`}
-              title={hasText ? 'Send (Enter)' : 'Start voice chat'}
+              className={`composer__cta composer__vm${voiceMsg.state === 'recording' ? ' is-recording' : voiceMsg.state === 'transcribing' ? ' is-transcribing' : ''}`}
+              disabled={voiceMsg.state === 'transcribing'}
+              onPointerDown={voiceMsg.onPointerDown}
+              onPointerUp={voiceMsg.onPointerUp}
+              onKeyDown={voiceMsg.onKeyDown}
+              onContextMenu={(e) => e.preventDefault()}
+              aria-pressed={voiceMsg.state === 'recording'}
+              aria-label={voiceMsg.state === 'recording' ? 'Release to send the voice message' : `Hold to send ${bot.name} a voice message`}
+              title={voiceMsg.state === 'recording' ? 'Let go (or click) to send · Esc cancels' : voiceMsg.state === 'transcribing' ? 'Sending…' : `Voice message: hold to talk, let go to send (or tap to start, tap to stop). A live call is in the + menu.`}
             >
-              <Icon name={hasText ? 'arrow_up' : 'voice_a'} size={16} />
+              <Icon name={voiceMsg.state === 'recording' ? 'stop' : 'mic'} size={16} />
             </button>
           )}
         </div>

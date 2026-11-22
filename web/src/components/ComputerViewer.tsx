@@ -8,6 +8,7 @@ import { computerStatusText, screenSize, screensFull } from '../lib/computer';
 import { configApi } from '../lib/configApi';
 import { useSelectedBot, useStore } from '../store';
 import { Icon } from './Icon';
+import { ClickyOverlay, useClicky } from './ClickyLayer';
 
 export type ScreenMode = 'watch' | 'control';
 type Conn = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
@@ -218,6 +219,45 @@ export function ComputerScreen({ bot, variant, initialMode = 'watch', hint, paus
     finally { setResetting(false); setResetAsk(false); }
   };
 
+  // Clicky: only in the large view, so the small panel never listens for the shortcut.
+  const clicky = useClicky(bot, phase === 'live' && large);
+  const asking = clicky.phase !== 'idle';
+  const askBtn = (cls: string) => (
+    <button
+      type="button" className={`${cls} screen__ask${clicky.phase === 'listening' ? ' is-on' : ''}`}
+      onPointerDown={clicky.button.onPointerDown} onPointerUp={clicky.button.onPointerUp} onKeyDown={clicky.button.onKeyDown}
+      onMouseDown={(e) => e.preventDefault()}
+      aria-label={`Ask ${bot.name} about this screen: hold to talk, or hold Ctrl+Alt`}
+      title={`Ask ${bot.name}: hold to talk (or hold Ctrl+Alt). ${bot.name} answers out loud and points at what to click.`}
+    >
+      <Icon name="mic" size={14} />{clicky.phase === 'listening' ? 'Listening' : 'Ask'}
+    </button>
+  );
+  // Typing instead of talking: a box in the controls; Enter asks, Escape closes.
+  const [typeAsk, setTypeAsk] = useState(false);
+  const [typeText, setTypeText] = useState('');
+  const closeType = () => { setTypeAsk(false); setTypeText(''); };
+  const typeBtn = (cls: string) => (
+    <button type="button" className={cls} onClick={() => setTypeAsk(true)} aria-label={`Type a question for ${bot.name}`} title={`Type a question for ${bot.name} instead of talking`}>
+      <Icon name="edit" size={15} />
+    </button>
+  );
+  const typeBox = (
+    <input
+      className="screen__paste-input clicky__type" autoFocus autoComplete="off" maxLength={500}
+      aria-label={`Ask ${bot.name} about this screen, then press Enter`}
+      placeholder={`Ask ${bot.name} about this screen, then Enter`}
+      value={typeText}
+      onChange={(e) => setTypeText(e.target.value)}
+      onKeyDown={(e) => {
+        e.stopPropagation(); // keys here are for the box, not the screen or the viewer
+        if (e.key === 'Enter') { e.preventDefault(); clicky.ask(typeText); closeType(); }
+        if (e.key === 'Escape') { e.preventDefault(); closeType(); }
+      }}
+      onBlur={closeType}
+    />
+  );
+
   const canFullscreen = typeof document !== 'undefined' && document.fullscreenEnabled;
   const expandable = variant === 'panel' && !fullscreen && phase === 'live';
   const mascot = large ? 64 : 40;
@@ -287,9 +327,11 @@ export function ComputerScreen({ bot, variant, initialMode = 'watch', hint, paus
             </div>
           )}
 
+          {phase === 'live' && large && <ClickyOverlay bot={bot} clicky={clicky} />}
+
           {phase === 'live' && !driving && (
-            <div className={`screen__pill${resetAsk || note ? ' is-pinned' : ''}`} role="toolbar" aria-label="Screen controls">
-              {note ? <span className="screen__pill-text" role="status">{note}</span> : resetAsk ? (
+            <div className={`screen__pill${resetAsk || note || asking || typeAsk ? ' is-pinned' : ''}`} role="toolbar" aria-label="Screen controls">
+              {note ? <span className="screen__pill-text" role="status">{note}</span> : typeAsk ? typeBox : resetAsk ? (
                 <>
                   <span className="screen__pill-text">Close all windows?</span>
                   <button type="button" className="screen__pill-btn is-danger" onClick={reset} disabled={resetting}>{resetting ? 'Resetting…' : 'Reset'}</button>
@@ -302,6 +344,8 @@ export function ComputerScreen({ bot, variant, initialMode = 'watch', hint, paus
                     <button type="button" className="screen__seg-btn" aria-pressed="false" onClick={takeControl}>{large && <Icon name="pointer" size={14} />}Take control</button>
                   </div>
                   <span className="screen__pill-rule" aria-hidden />
+                  {large && askBtn('screen__pill-btn')}
+                  {large && typeBtn('screen__pill-icon')}
                   {canFullscreen && (
                     <button type="button" className="screen__pill-icon" onClick={toggleFullscreen} aria-label={fullscreen ? 'Leave full screen' : 'Full screen'} title={fullscreen ? 'Leave full screen' : 'Full screen'}>
                       <Icon name={fullscreen ? 'shrink' : 'expand'} size={15} />
@@ -323,6 +367,7 @@ export function ComputerScreen({ bot, variant, initialMode = 'watch', hint, paus
               <span>{hint || 'You’re driving'}</span>
             </span>
             <span className="screen__chin-actions">
+              {large && (typeAsk ? typeBox : <>{askBtn('screen__chin-btn')}{typeBtn('screen__chin-icon')}</>)}
               {pasteBox ? (
                 <input
                   className="screen__paste-input" type="password" autoFocus autoComplete="off" spellCheck={false}

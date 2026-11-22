@@ -8,6 +8,7 @@ import { ThinkingBlock } from './ActivityLine';
 import { CardRow } from './cards/Cards';
 import { Icon } from './Icon';
 import { Markdown } from './Markdown';
+import { speakReply, stopSpeaking, useSpeak } from '../voice/speak';
 
 type Item =
   | { kind: 'divider'; key: string; ts: number }
@@ -73,17 +74,38 @@ const Bubble = memo(function Bubble({ row, side, pos }: { row: Row; side: 'left'
           </div>
         )}
       </div>
+      {side === 'left' && b.role === 'assistant' && !b.streaming && b.text?.trim() && <ListenButton row={row} text={b.text} />}
       <span className="bubble__time">{clock(row.createdAt)}</span>
     </div>
   );
 });
+
+/** Read this reply aloud (text to speech in the bot's voice); press again to stop. */
+function ListenButton({ row, text }: { row: Row; text: string }) {
+  const key = `${row.botId}:${row.seq}`;
+  const phase = useSpeak((s) => (s.key === key ? s.phase : 'idle'));
+  const on = phase !== 'idle';
+  return (
+    <button
+      type="button" className={`bubble__listen${on ? ' is-on' : ''}`}
+      onClick={() => (on ? stopSpeaking() : void speakReply(row.botId, text, key))}
+      aria-label={on ? 'Stop reading aloud' : 'Read this reply aloud'} title={phase === 'loading' ? 'Getting the audio… (press to stop)' : on ? 'Stop' : 'Listen'}
+    >
+      {on ? (
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor" /></svg>
+      ) : (
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z" fill="currentColor" stroke="none" /><path d="M15.5 9a4 4 0 0 1 0 6" /><path d="M18 6.5a7.5 7.5 0 0 1 0 11" /></svg>
+      )}
+    </button>
+  );
+}
 
 function SenderLabel({ from }: { from: NonNullable<MessageBody['from']> }) {
   const bot = useStore((s) => (from.kind === 'bot' ? s.bots.find((b) => b.id === from.id) : undefined));
   return (
     <div className="sender-label">
       {bot ? <BotAvatarFor bot={bot} size={16} /> : from.kind === 'routine' ? <Icon name="clock" size={12} opacity={0.56} /> : from.kind === 'voice' ? <Icon name="voice_a" size={12} opacity={0.56} /> : <BotAvatar shape="blob" color="gray" size={16} />}
-      <span>{from.kind === 'routine' ? `Routine · ${from.name}` : from.kind === 'voice' ? 'Asked on a voice call' : `From ${from.name}`}</span>
+      <span>{from.kind === 'routine' ? `Routine · ${from.name}` : from.kind === 'voice' ? (from.id === 'voice-message' ? 'Voice message' : 'Asked on a voice call') : `From ${from.name}`}</span>
     </div>
   );
 }

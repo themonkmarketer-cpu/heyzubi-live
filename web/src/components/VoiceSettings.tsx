@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Bot } from '@shared/types';
 import { useStore } from '../store';
-import { voiceApi, type VoiceOptions } from '../voice/api';
+import { voiceApi, type VoiceOptions, type XaiUsage } from '../voice/api';
 import { endCall, isCallActive, previewVoice, startCall, useVoice } from '../voice/call';
 import { Icon } from './Icon';
 
@@ -85,10 +85,50 @@ export function VoiceSettings({ bot }: { bot: Bot }) {
         <span>Language</span>
         <NativeSelect label="Language" value={bot.voiceLanguage} options={opts.languages.map((l) => ({ value: l.code, label: l.name }))} onChange={(voiceLanguage) => save({ voiceLanguage })} />
       </div>
-      <button type="button" className={`panel-row panel-row--action panel-row--call${inCall ? ' is-active' : ''}`} onClick={() => (inCall ? endCall() : startCall(bot.id))}>
-        <Icon name="voice_a" size={14} opacity={inCall ? 1 : 0.56} /> {inCall ? 'End voice chat' : 'Start voice chat'}
+      <button type="button" className={`panel-row panel-row--action panel-row--call${inCall ? ' is-active' : ''}`} onClick={() => (inCall ? endCall() : startCall(bot.id))}
+        title="A live call is billed for every minute it is open, silences included. The mic button in the message box (voice message) costs far less.">
+        <Icon name="voice_a" size={14} opacity={inCall ? 1 : 0.56} /> {inCall ? 'End live call' : 'Start live call · $0.08/min'}
       </button>
+      <UsageToday />
       {error && <div className="voice-error">{error}</div>}
+    </div>
+  );
+}
+
+const USAGE_ROWS: { k: keyof XaiUsage['by']; label: string; qty: (q: number) => string }[] = [
+  { k: 'live_call', label: 'Live calls', qty: (q) => `${q.toFixed(1)} min` },
+  { k: 'transcription', label: 'Voice messages & dictation', qty: (q) => `${Math.round(q)} s` },
+  { k: 'spoken_reply', label: 'Spoken replies', qty: (q) => `${Math.round(q).toLocaleString()} chars` },
+  { k: 'grok', label: 'Grok (summaries, Clicky, X search)', qty: (q) => `${Math.round(q).toLocaleString()} tokens` },
+];
+const usd = (n: number) => (n > 0 && n < 0.01 ? '<$0.01' : `$${n.toFixed(2)}`);
+
+/** Today's xAI spend by service, from the app's own log (estimates; the exact bill is in xAI's console). */
+function UsageToday() {
+  const [u, setU] = useState<XaiUsage | null>(null);
+  const callStatus = useVoice((s) => s.status);
+  useEffect(() => {
+    let on = true;
+    const load = () => voiceApi.usage().then((r) => { if (on) setU(r); }).catch(() => {});
+    load();
+    const t = setInterval(load, 60_000);
+    return () => { on = false; clearInterval(t); };
+  }, [callStatus]);
+  if (!u) return null;
+  return (
+    <div className="xai-usage" title={u.note}>
+      <div className="xai-usage__head"><span>xAI today</span><b>{usd(u.total)}</b></div>
+      {USAGE_ROWS.map((r) => {
+        const s = u.by[r.k];
+        return (
+          <div key={r.k} className="xai-usage__row">
+            <span>{r.label}</span>
+            <span className="xai-usage__qty">{s.uses ? r.qty(s.qty) : '—'}</span>
+            <span>{s.uses ? usd(s.usd) : '$0.00'}</span>
+          </div>
+        );
+      })}
+      <div className="xai-usage__note">Estimates from xAI’s prices · exact bill at console.x.ai · Claude is billed separately</div>
     </div>
   );
 }

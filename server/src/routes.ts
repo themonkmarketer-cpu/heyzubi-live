@@ -17,6 +17,8 @@ import { runRoutine, scheduleRoutine, unscheduleRoutine } from './routines.js';
 import { deleteEventTrigger } from './triggers.js';
 import { dispatchRoomMessage } from './agent/rooms.js';
 import { voiceApi } from './voice.js';
+import { clickyApi } from './clicky.js';
+import { whatsappApi } from './whatsapp.js';
 import type { AvatarColor, AvatarShape, Toolkit } from './types.js';
 
 export const api = new Hono<AuthVars>();
@@ -339,13 +341,14 @@ api.get('/bots/:id/rows', (c) => {
 api.post('/bots/:id/messages', async (c) => {
   const b = ownBot(c.get('user').id, c.req.param('id'));
   if (!b) return c.json({ error: 'not found' }, 404);
-  const { text } = await c.req.json<{ text: string }>();
+  const { text, voice } = await c.req.json<{ text: string; voice?: boolean }>();
   if (!text?.trim()) return c.json({ error: 'empty' }, 400);
-  const row = appendRow(b.id, 'message', { type: 'message', role: 'user', text: text.trim() });
+  // A voice message (held mic, transcribed) shows as the owner's message, marked as spoken.
+  const row = appendRow(b.id, 'message', { type: 'message', role: 'user', text: text.trim(), ...(voice ? { from: { kind: 'voice' as const, id: 'voice-message', name: 'Voice message' } } : {}) });
   // Group chats dispatch to their member Bots instead of running their own loop.
   if (b.kind === 'room') dispatchRoomMessage(b.id, text.trim(), enqueue);
-  // Any pending question card is answered by a free-text message.
-  else enqueue(b.id, { type: 'user', text: text.trim() });
+  // Any pending question card is answered by a free-text message. A voice message's reply may be read aloud.
+  else enqueue(b.id, { type: 'user', text: voice ? `[Voice message: the owner said this out loud in the app (you get it as a transcript) and short replies are played back to them in your voice, so this works like talking. Don't mention transcripts or that you can't hear. Lead with the answer in a few plain sentences; skip markdown, tables and links unless asked.]\n${text.trim()}` : text.trim() });
   return c.json({ row });
 });
 
@@ -553,3 +556,5 @@ api.delete('/policies/:tool', (c) => {
 });
 
 api.route('/voice', voiceApi);
+api.route('/clicky', clickyApi);
+api.route('/whatsapp', whatsappApi);

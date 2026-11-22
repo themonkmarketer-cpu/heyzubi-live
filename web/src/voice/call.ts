@@ -59,6 +59,8 @@ type Json = Record<string, any>;
 
 interface PendingTask { seq: number; request: string; since: number; startedBusy: boolean; sawRunning: boolean; awaitingNoted: boolean; doneSince: number | null }
 
+const IDLE_MS = 2 * 60_000;
+
 class VoiceCall {
   ended = false;
   readonly ctx: AudioContext;
@@ -81,6 +83,9 @@ class VoiceCall {
   private unsubStore: (() => void) | null = null;
   private checkTimer: ReturnType<typeof setTimeout> | null = null;
   private connectTimer: ReturnType<typeof setTimeout> | null = null;
+  /** A live call is billed for every open minute: after IDLE_MS with nobody talking and nothing running, hang up. */
+  private lastActive = Date.now();
+  private idleTimer: ReturnType<typeof setInterval> | null = null;
   private onUnload = () => { if (this.sess && !this.ended) voiceApi.endBeacon(this.botId, this.sess.callId, this.transcript()); };
 
   constructor(readonly botId: string) {
@@ -155,6 +160,12 @@ class VoiceCall {
           this.ready = true;
           if (this.connectTimer) clearTimeout(this.connectTimer);
           setV({ status: 'live', startedAt: Date.now() });
+          this.lastActive = Date.now();
+          this.idleTimer = setInterval(() => {
+            const busy = this.userSpeaking || this.player.playing || this.responseActive || this.inflight.size > 0;
+            if (busy) { this.lastActive = Date.now(); return; }
+            if (Date.now() - this.lastActive > IDLE_MS) this.end('Hung up after 2 minutes of silence, to save cost. Any work you handed off still finishes in the chat.');
+          }, 5000);
           this.watchTranscript();
           this.send({ type: 'response.create' }); // the bot greets first
         }
@@ -411,6 +422,7 @@ class VoiceCall {
     window.removeEventListener('pagehide', this.onUnload);
     if (this.connectTimer) clearTimeout(this.connectTimer);
     if (this.checkTimer) clearTimeout(this.checkTimer);
+    if (this.idleTimer) clearInterval(this.idleTimer);
     this.unsubStore?.();
     try { this.ws?.close(1000, 'call ended'); } catch { /* ignore */ }
     this.mic?.stop();

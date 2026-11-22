@@ -5,6 +5,9 @@ import { botVars } from '../lib/colors';
 import { useStore } from '../store';
 import { callLevels, endCall, toggleMute, useVoice } from '../voice/call';
 
+/** xAI's live voice price (docs.x.ai pricing, 2026-11-23): billed for the whole time the call is open. */
+const LIVE_CALL_PER_MIN = 0.08;
+
 function MicGlyph({ off }: { off?: boolean }) {
   return off ? <MicOff size={16} aria-hidden /> : <Mic size={16} aria-hidden />;
 }
@@ -87,7 +90,11 @@ export function VoiceCallBar() {
         <div className="vcall__info">
           <div className="vcall__title">
             <span className="vcall__name">{bot.name}</span>
-            {v.status === 'live' && v.startedAt && <span className="vcall__time">{fmt(now - v.startedAt)}</span>}
+            {v.status === 'live' && v.startedAt && (
+              <span className="vcall__time" title="A live call is billed by xAI for every minute it is open ($0.08/min), silences included. It hangs up by itself after 2 minutes of silence.">
+                {fmt(now - v.startedAt)} · ≈${(((now - v.startedAt) / 60000) * LIVE_CALL_PER_MIN).toFixed(2)}
+              </span>
+            )}
           </div>
           <div className={`vcall__status${working && !v.speaking && !v.listening ? ' vcall__shimmer' : ''}`} aria-live="polite">
             {status}

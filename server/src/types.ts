@@ -217,8 +217,20 @@ export interface Toolkit {
   managedAuth: boolean; noAuth: boolean; connected: boolean;
 }
 
+/** A WhatsApp message a team member drafted; the owner checks it in the WhatsApp window and confirms there. */
+export interface WaDraft {
+  id: string;
+  botId: string;
+  botName: string;
+  to: { kind: 'group' | 'person' | ''; name: string; number: string };
+  text: string;
+  at: number;
+}
+
 /** Server-sent events on GET /api/events */
 export type ServerEvent =
+  | { type: 'whatsapp'; draft: WaDraft }
+  | { type: 'whatsapp-close' }
   | { type: 'hello'; serverTime: number }
   | { type: 'rows'; botId: string; generation: number; rows: Row[] }
   | { type: 'cleared'; botId: string; generation: number }

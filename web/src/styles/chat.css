@@ -47,6 +47,15 @@
 }
 .bubble-wrap.is-right .bubble__time { transform: translateX(4px); }
 .bubble-wrap:hover .bubble__time { opacity: 1; transform: none; }
+/* Listen: read one of the agent's replies aloud (shows on hover, stays while it plays) */
+.bubble__listen {
+  flex-shrink: 0; display: grid; place-items: center; width: 28px; height: 28px; margin-bottom: 4px; border-radius: 50%;
+  color: var(--color-text-tertiary); opacity: 0; transition: opacity 160ms, background-color 120ms;
+}
+.bubble-wrap:hover .bubble__listen, .bubble__listen:focus-visible, .bubble__listen.is-on { opacity: 1; }
+.bubble__listen:hover { background: var(--color-bg-hover); color: var(--color-text-primary); }
+.bubble__listen.is-on { color: var(--color-brand); }
+@media (hover: none) { .bubble__listen { opacity: 1; } }
 
 .bubble {
   max-width: 560px; min-width: 0; padding: 7px 12px; border-radius: var(--radius-bubble);
@@ -248,3 +257,8 @@
   max-width: 960px; margin: 0 auto 8px; padding: 6px 12px; border-radius: 12px; background: var(--color-danger-bg); color: var(--color-danger-text);
   font-size: 13px; line-height: 18px; display: flex; align-items: center; justify-content: space-between; gap: 8px;
 }
+.composer__note { max-width: 960px; margin: 0 auto 8px; padding: 6px 12px; border-radius: 12px; background: var(--color-accent-soft); color: var(--color-text-secondary); font-size: 13px; line-height: 18px; }
+/* Voice message: hold the main button */
+.composer__vm { touch-action: none; user-select: none; }
+.composer__vm.is-recording { background: var(--color-danger); animation: breathe 1.2s ease-in-out infinite; }
+.composer__vm.is-transcribing { opacity: 0.6; }
