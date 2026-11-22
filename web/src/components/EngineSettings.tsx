@@ -6,6 +6,14 @@ import { Icon } from './Icon';
 
 const KIND: Record<EngineProvider['kind'], string> = { subscription: 'Subscription', api_key: 'API key' };
 const STATUS: Record<EngineInfo['status'], string> = { ready: 'ready', starting: 'starting', stopped: 'stopped', error: 'error' };
+/** Value of the "Other model…" choice in the model list. */
+const OTHER = '__other__';
+const EFFORTS: { value: Bot['effort']; label: string }[] = [
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+  { value: 'xhigh', label: 'Max' },
+];
 
 /** Connected providers first; otherwise the server's order. */
 function sortProviders(list: EngineProvider[]): EngineProvider[] {
@@ -24,7 +32,10 @@ export function EngineSettings({ bot }: { bot: Bot }) {
   const [phase, setPhase] = useState<'loading' | 'ok' | 'unavailable'>('loading');
   const [provider, setProvider] = useState('');
   const [model, setModel] = useState('');
-  const [busy, setBusy] = useState<'save' | 'signin' | 'restart' | 'screen' | null>(null);
+  const [busy, setBusy] = useState<'save' | 'effort' | 'signin' | 'restart' | 'screen' | null>(null);
+  const [effort, setEffort] = useState<Bot['effort']>(bot.effort ?? 'medium');
+  const [custom, setCustom] = useState(false);
+  useEffect(() => { setEffort(bot.effort ?? 'medium'); }, [bot.effort]);
   const [note, setNote] = useState<string | null>(null);
   const [signingIn, setSigningIn] = useState(false);
   const dirty = useRef(false);
@@ -83,25 +94,49 @@ export function EngineSettings({ bot }: { bot: Bot }) {
   const providers = sortProviders(engine.providers ?? []);
   const selected = providers.find((p) => p.id === provider) ?? null;
   const suggestions = selected?.models ?? [];
-  const wantProvider = provider && provider !== (engine.provider ?? '') ? provider : undefined;
-  const wantModel = model.trim() && model.trim() !== (engine.model ?? '') ? model.trim() : undefined;
-  const changed = !!wantProvider || !!wantModel;
+  const current = engine.model ?? '';
+  // The models offered: the provider's list, plus whatever the bot uses now if it is not on that list.
+  const modelOptions = current && !suggestions.includes(current) ? [current, ...suggestions] : suggestions;
+  const wantModel = model.trim() && model.trim() !== current ? model.trim() : undefined;
   const openSubscriptions = providers.filter((p) => p.kind === 'subscription' && !p.connected);
   const signInTo = selected && selected.kind === 'subscription' && !selected.connected ? selected : null;
   const listId = `engine-models-${botId}`;
 
+  /** Provider and model apply as soon as they are picked, as in the HeyZubi dashboard. */
+  const saveEngine = async (p: { provider?: string; model?: string }) => {
+    if (busy) return;
+    setBusy('save'); setNote(null);
+    try { const r = await configApi.setEngine(botId, p); dirty.current = false; setCustom(false); apply(r.engine); }
+    catch (e) { setNote(`Couldn’t save: ${(e as Error).message || 'the engine did not answer'}`); }
+    finally { setBusy(null); }
+  };
+
   const pickProvider = (id: string) => {
     dirty.current = true; setNote(null); setProvider(id);
     const next = providers.find((p) => p.id === id);
-    // A model from another provider will not work here, so start from this provider's first suggestion.
-    if (next?.models.length && !next.models.includes(model.trim())) setModel(next.models[0]);
+    // A model from another provider will not work there, so start from that provider's first model.
+    const m = next?.models.length && !next.models.includes(model.trim()) ? next.models[0] : model.trim();
+    setModel(m);
+    void saveEngine({ provider: id, ...(m && m !== current ? { model: m } : {}) });
   };
 
-  const save = async () => {
-    if (!changed || busy) return;
-    setBusy('save'); setNote(null);
-    try { const r = await configApi.setEngine(botId, { ...(wantProvider ? { provider: wantProvider } : {}), ...(wantModel ? { model: wantModel } : {}) }); dirty.current = false; apply(r.engine); }
-    catch (e) { setNote(`Couldn’t save: ${(e as Error).message || 'the engine did not answer'}`); }
+  const pickModel = (v: string) => {
+    setNote(null);
+    if (v === OTHER) { dirty.current = true; setCustom(true); setModel(''); return; }
+    setCustom(false); setModel(v);
+    if (v !== current) void saveEngine({ model: v });
+  };
+
+  const saveCustom = () => { if (wantModel) void saveEngine({ model: wantModel }); };
+
+  const pickEffort = async (v: Bot['effort']) => {
+    if (v === effort || busy) return;
+    const before = effort;
+    setEffort(v); setBusy('effort'); setNote(null);
+    try {
+      const { bot: next } = await configApi.updateBot(botId, { effort: v });
+      useStore.setState((s) => ({ bots: s.bots.map((b) => (b.id === next.id ? { ...b, effort: next.effort } : b)) }));
+    } catch (e) { setEffort(before); setNote(`Couldn’t save: ${(e as Error).message || 'the bot did not answer'}`); }
     finally { setBusy(null); }
   };
 
@@ -153,19 +188,46 @@ export function EngineSettings({ bot }: { bot: Bot }) {
         </div>
       )}
       <div className="panel-row panel-row--setting">
-        <label htmlFor={`${listId}-input`}>Model</label>
-        <input
-          id={`${listId}-input`} className="engine__model" list={listId} value={model} spellCheck={false} autoComplete="off"
-          placeholder={suggestions[0] ?? 'Model id'}
-          onChange={(e) => { dirty.current = true; setNote(null); setModel(e.target.value); }}
-          onKeyDown={(e) => { if (e.key === 'Enter') save(); }}
-        />
-        <datalist id={listId}>{suggestions.map((m) => <option key={m} value={m} />)}</datalist>
+        <span>Model</span>
+        <span className="mini-select mini-select--native engine__select">
+          <span>{custom ? 'Other model…' : (current || 'Agent default')}</span>
+          <Icon name="chev_down" size={10} opacity={0.66} />
+          <select aria-label="Model" value={custom ? OTHER : current} onChange={(e) => pickModel(e.target.value)} disabled={busy === 'save'}>
+            {!current && <option value="">Agent default</option>}
+            {modelOptions.map((m) => <option key={m} value={m}>{m}</option>)}
+            <option value={OTHER}>Other model…</option>
+          </select>
+        </span>
       </div>
-      <div className="engine__actions">
-        <button type="button" className="btn btn--sm btn--bot" onClick={save} disabled={!changed || busy === 'save'}>{busy === 'save' ? 'Saving…' : 'Save'}</button>
-        {changed && <button type="button" className="link-btn link-btn--small" onClick={() => { dirty.current = false; setNote(null); setProvider(engine.provider ?? ''); setModel(engine.model ?? ''); }}>Undo</button>}
+      {custom && (
+        <div className="panel-row panel-row--setting">
+          <label htmlFor={`${listId}-input`}>Model id</label>
+          <input
+            id={`${listId}-input`} name={`${listId}-id`} className="engine__model" value={model} spellCheck={false}
+            autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other"
+            placeholder={suggestions[0] ?? 'e.g. claude-sonnet-5-5'} autoFocus
+            onChange={(e) => { dirty.current = true; setNote(null); setModel(e.target.value); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') saveCustom(); if (e.key === 'Escape') { setCustom(false); setModel(current); } }}
+          />
+        </div>
+      )}
+      {custom && (
+        <div className="engine__actions">
+          <button type="button" className="btn btn--sm btn--bot" onClick={saveCustom} disabled={!wantModel || busy === 'save'}>{busy === 'save' ? 'Saving…' : 'Use this model'}</button>
+          <button type="button" className="link-btn link-btn--small" onClick={() => { dirty.current = false; setCustom(false); setModel(current); }}>Cancel</button>
+        </div>
+      )}
+      <div className="panel-row panel-row--setting">
+        <span>Reasoning effort</span>
+        <span className="mini-select mini-select--native engine__select">
+          <span>{EFFORTS.find((x) => x.value === effort)?.label ?? 'Medium'}</span>
+          <Icon name="chev_down" size={10} opacity={0.66} />
+          <select aria-label="Reasoning effort" value={effort} onChange={(e) => pickEffort(e.target.value as Bot['effort'])} disabled={busy === 'effort'}>
+            {EFFORTS.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
+          </select>
+        </span>
       </div>
+      {busy === 'save' && <div className="engine__saving">Saving…</div>}
       {(signInTo || openSubscriptions.length > 0) && (
         <button type="button" className="panel-row panel-row--action engine__signin" onClick={signIn} disabled={busy === 'signin'}>
           <Icon name="monitor" size={14} opacity={0.56} />
