@@ -51,6 +51,9 @@ export function ComputerScreen({ bot, variant, initialMode = 'watch', hint, paus
   const [resetAsk, setResetAsk] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  // Paste box: shown when the browser won't let the page read the clipboard; normal Ctrl+V works in it.
+  const [pasteBox, setPasteBox] = useState(false);
+  const [pasteText, setPasteText] = useState('');
 
   const status = computer?.status;
   const running = status === 'running';
@@ -119,6 +122,48 @@ export function ComputerScreen({ bot, variant, initialMode = 'watch', hint, paus
   }, [bot.id, wantLive, mode, attempt]);
 
   useEffect(() => { onModeChange?.(mode); }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * Paste into the bot's screen: put the text on its clipboard, then press Ctrl+V there. Without this,
+   * Ctrl+V only reaches the screen as a key press and pastes whatever its own clipboard holds.
+   * The text goes straight to the screen over the viewer's connection; it is not stored or logged.
+   */
+  const pasteToScreen = useCallback((text: string) => {
+    const rfb = rfbRef.current;
+    if (!rfb || !text) return;
+    rfb.clipboardPasteFrom(text);
+    setTimeout(() => {
+      const r = rfbRef.current;
+      if (!r) return;
+      r.sendKey(0xffe3, 'ControlLeft', true);
+      r.sendKey(0x0076, 'KeyV', true);
+      r.sendKey(0x0076, 'KeyV', false);
+      r.sendKey(0xffe3, 'ControlLeft', false);
+      r.focus();
+    }, 150);
+  }, []);
+
+  const paste = useCallback(async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) { pasteToScreen(text); return; }
+    } catch { /* not allowed: use the paste box */ }
+    setPasteText(''); setPasteBox(true);
+  }, [pasteToScreen]);
+
+  // While driving, Ctrl+V (Cmd+V on a Mac) on the screen pastes from this computer's clipboard.
+  useEffect(() => {
+    if (!driving) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'v') return;
+      if (!canvasRef.current || !(e.target instanceof Node) || !canvasRef.current.contains(e.target)) return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      void paste();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [driving, paste]);
+  useEffect(() => { if (!driving) setPasteBox(false); }, [driving]);
 
   const handBack = useCallback(() => {
     setMode('watch');
@@ -278,6 +323,25 @@ export function ComputerScreen({ bot, variant, initialMode = 'watch', hint, paus
               <span>{hint || 'You’re driving'}</span>
             </span>
             <span className="screen__chin-actions">
+              {pasteBox ? (
+                <input
+                  className="screen__paste-input" type="password" autoFocus autoComplete="off" spellCheck={false}
+                  aria-label={`Paste here, then press Enter to send it to ${bot.name}'s screen`}
+                  placeholder="Paste here (Ctrl+V), then Enter"
+                  value={pasteText}
+                  onChange={(e) => setPasteText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); pasteToScreen(pasteText); setPasteText(''); setPasteBox(false); }
+                    if (e.key === 'Escape') { setPasteText(''); setPasteBox(false); rfbRef.current?.focus(); }
+                  }}
+                  onBlur={() => { setPasteText(''); setPasteBox(false); }}
+                />
+              ) : (
+                <button type="button" className="screen__chin-btn" onMouseDown={(e) => e.preventDefault()} onClick={() => void paste()}
+                  title={`Paste from this computer into ${bot.name}'s screen (or press Ctrl+V on the screen)`}>
+                  Paste
+                </button>
+              )}
               {canFullscreen && (
                 <button type="button" className="screen__chin-icon" onClick={toggleFullscreen} aria-label={fullscreen ? 'Leave full screen' : 'Full screen'} title={fullscreen ? 'Leave full screen' : 'Full screen'}>
                   <Icon name={fullscreen ? 'shrink' : 'expand'} size={15} />

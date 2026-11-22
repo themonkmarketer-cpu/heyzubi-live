@@ -140,3 +140,7 @@
    scaled frame would leave the picture slightly too small until the next resize. */
 .viewer__stage .screen__body { pointer-events: auto; animation: rise 200ms var(--ease-out); }
 @media (prefers-reduced-motion: reduce) { .viewer__stage .screen__body { animation: none; } }
+.screen__chin-btn { height: 34px; padding: 0 14px; border-radius: 999px; font-size: 13px; font-weight: 600; color: inherit; background: color-mix(in srgb, currentColor 14%, transparent); }
+.screen__chin-btn:hover { background: color-mix(in srgb, currentColor 22%, transparent); }
+.screen__paste-input { height: 34px; width: 240px; padding: 0 12px; border-radius: 999px; border: 1px solid color-mix(in srgb, currentColor 35%, transparent); background: color-mix(in srgb, currentColor 8%, transparent); color: inherit; font: inherit; font-size: 13px; outline: none; }
+.screen__paste-input::placeholder { color: inherit; opacity: 0.65; }

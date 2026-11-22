@@ -15,5 +15,9 @@ declare module '@novnc/novnc' {
     focus(): void;
     blur(): void;
     sendCtrlAltDel(): void;
+    /** Press (down=true) or release a key on the remote screen. */
+    sendKey(keysym: number, code: string | null, down?: boolean): void;
+    /** Put text on the remote screen's clipboard. */
+    clipboardPasteFrom(text: string): void;
   }
 }
