@@ -34,12 +34,17 @@ const app = new Hono();
 // response says so, in both the current form and the one older browsers know. A route that sets a
 // Content-Security-Policy of its own keeps it: frame-ancestors is added to it unless it names one
 // (no route does yet; the app-connection callback page sets none and its inline script is unaffected).
+// One exception, by setting only: HQ_FRAME_ANCESTORS lists exact https origins allowed to show the app in a frame
+// (Zubi HQ shows HeyZubi as its Live tab). X-Frame-Options can't name a site, so it is left out then; browsers use
+// frame-ancestors. Anything that isn't a plain https origin is ignored, and with none set nothing changes.
+const frameOrigins = String(process.env.HQ_FRAME_ANCESTORS ?? '').split(/[\s,]+/).filter((o) => /^https:\/\/[a-z0-9.-]+(:\d{1,5})?$/i.test(o));
+const frameAncestors = frameOrigins.length ? `frame-ancestors 'self' ${frameOrigins.join(' ')}` : "frame-ancestors 'none'";
 app.use('*', async (c, next) => {
   await next();
   const csp = c.res.headers.get('Content-Security-Policy');
-  if (!csp) c.res.headers.set('Content-Security-Policy', "frame-ancestors 'none'");
-  else if (!/(^|;)\s*frame-ancestors(\s|;|$)/i.test(csp)) c.res.headers.set('Content-Security-Policy', `${csp.replace(/[;\s]+$/, '')}; frame-ancestors 'none'`);
-  if (!c.res.headers.has('X-Frame-Options')) c.res.headers.set('X-Frame-Options', 'DENY');
+  if (!csp) c.res.headers.set('Content-Security-Policy', frameAncestors);
+  else if (!/(^|;)\s*frame-ancestors(\s|;|$)/i.test(csp)) c.res.headers.set('Content-Security-Policy', `${csp.replace(/[;\s]+$/, '')}; ${frameAncestors}`);
+  if (!frameOrigins.length && !c.res.headers.has('X-Frame-Options')) c.res.headers.set('X-Frame-Options', 'DENY');
 });
 // Cookie-authenticated writes must come from the app's own pages (CSRF; see sameOriginWrites).
 app.use('/api/*', sameOriginWrites);
