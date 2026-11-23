@@ -184,6 +184,10 @@ export const useStore = create<State>((set, get) => ({
         // A team member drafted a WhatsApp message: open the window with it.
         set({ waOpen: true, waDraft: ev.draft });
         return;
+      case 'panel':
+        // A team member opened or closed the Calendar / Gmail window (LivePanels listens).
+        window.dispatchEvent(new CustomEvent('heyzubi:panel', { detail: { panel: ev.panel, open: ev.open } }));
+        return;
       case 'whatsapp-close':
         // Asked to close it: hide the window; the draft stays for next time.
         set({ waOpen: false });

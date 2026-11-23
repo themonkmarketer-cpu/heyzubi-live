@@ -59,13 +59,40 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
     return () => window.removeEventListener('keydown', k);
   }, []);
 
+  // Pictures dropped or pasted into the box: saved into Generations (refs/) so the team member can use them
+  // (look at one, put it on WhatsApp…). The message names each file so the agent knows where it is.
+  const [pics, setPics] = useState<{ rel: string; name: string; url: string }[]>([]);
+  const picRef = useRef<HTMLInputElement>(null);
+  const [picBusy, setPicBusy] = useState(0);
+  const [dropping, setDropping] = useState(false);
+  useEffect(() => { setPics([]); }, [bot.id]);
+  const addPictures = async (files: File[]) => {
+    const imgs = files.filter((f) => /^image\/(png|jpeg|webp|gif)$/.test(f.type));
+    if (!imgs.length) { if (files.length) setError('Only PNG, JPG, WebP or GIF pictures can be attached.'); return; }
+    for (const f of imgs.slice(0, 6)) {
+      if (f.size > 15 * 1024 * 1024) { setError(`${f.name}: pictures up to 15 MB.`); continue; }
+      setPicBusy((n) => n + 1);
+      try {
+        const data = await new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsDataURL(f); });
+        const name = f.name && f.name !== 'image.png' ? f.name : `pasted-${Date.now().toString(36)}.${f.type.split('/')[1].replace('jpeg', 'jpg')}`;
+        const r = await fetch('/api/generations/refs', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, data }) });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || 'Upload failed');
+        setPics((p) => [...p, { rel: j.rel, name: String(j.rel).split('/').pop() ?? name, url: data }]);
+      } catch (e) { setError((e as Error).message); }
+      finally { setPicBusy((n) => n - 1); }
+    }
+  };
+
   const send = async () => {
-    const t = text.trim();
-    if (!t || sending) return;
+    const typed = text.trim();
+    if ((!typed && !pics.length) || sending || picBusy) return;
+    const note = pics.map((p) => `[Attached picture: ${p.rel} — in Generations, ~/.hermes/generations/${p.rel}. To send it on WhatsApp use whatsapp_draft image="${p.rel}".]`).join('\n');
+    const t = [typed || (pics.length ? 'Here is a picture.' : ''), note].filter(Boolean).join('\n\n');
     setSending(true); setError(null);
     try {
       await api.send(bot.id, t);
-      setText('');
+      setText(''); setPics([]);
       drafts.delete(bot.id);
     } catch (e) {
       setError((e as Error).message || 'Message failed to send');
@@ -128,11 +155,29 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
   useEffect(() => { if (speakError) { setError(speakError); useSpeak.setState({ error: null }); } }, [speakError]);
   useEffect(() => { if (!vmNote) return; const t = setTimeout(() => setVmNote(null), 9000); return () => clearTimeout(t); }, [vmNote]);
 
-  const hasText = text.trim().length > 0;
+  const hasText = text.trim().length > 0 || pics.length > 0;
   const multiline = text.includes('\n') || (ref.current?.scrollHeight ?? 0) > 30;
 
   return (
-    <div className="composer-area">
+    <div
+      className={`composer-area${dropping ? ' is-dropping' : ''}`}
+      onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDropping(true); } }}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropping(false); }}
+      onDrop={(e) => { if (!e.dataTransfer.files.length) return; e.preventDefault(); setDropping(false); void addPictures(Array.from(e.dataTransfer.files)); }}
+    >
+      {dropping && <div className="composer__drop">Drop pictures for {bot.name}</div>}
+      <input ref={picRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden onChange={(e) => { if (e.target.files) void addPictures(Array.from(e.target.files)); e.target.value = ''; }} />
+      {(pics.length > 0 || picBusy > 0) && (
+        <div className="composer__pics" aria-label="Attached pictures">
+          {pics.map((p) => (
+            <span key={p.rel} className="composer__pic" title={`${p.name} (saved in Generations)`}>
+              <img src={p.url} alt={p.name} />
+              <button type="button" onClick={() => setPics((l) => l.filter((x) => x.rel !== p.rel))} aria-label={`Remove ${p.name}`}>×</button>
+            </span>
+          ))}
+          {picBusy > 0 && <span className="composer__pic is-busy">Uploading…</span>}
+        </div>
+      )}
       {error && <div className="composer__error">{error} <button type="button" className="link-btn" onClick={() => setError(null)}>Dismiss</button></div>}
       {!error && vmNote && <div className="composer__note" role="status">{vmNote}</div>}
       {!error && !vmNote && voiceMsg.state !== 'idle' && <div className="composer__note" role="status">{voiceMsg.state === 'recording'
@@ -149,6 +194,7 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
                 placement="above"
                 onClose={() => setMenu(false)}
                 items={[
+                  { label: 'Attach a picture', onSelect: () => picRef.current?.click() },
                   { label: 'New conversation', onSelect: fresh },
                   { label: 'Connect apps', onSelect: () => setModal('apps') },
                   { label: inCall ? 'End live call' : 'Start a live call · $0.08/min', onSelect: () => (inCall ? endCall() : startCall(bot.id)) },
@@ -163,6 +209,10 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
             value={text}
             placeholder={`Message ${displayName(bot)}`}
             onChange={(e) => setText(e.target.value)}
+            onPaste={(e) => {
+              const files = Array.from(e.clipboardData.files ?? []).filter((f) => f.type.startsWith('image/'));
+              if (files.length) { e.preventDefault(); void addPictures(files); }
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); }
             }}

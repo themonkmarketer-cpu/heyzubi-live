@@ -15,9 +15,10 @@ export const RATES = {
   ttsPerMChars: 15, // text to speech
   grokInPerM: 2, // grok-4.7 text, under 200k tokens
   grokOutPerM: 6,
+  imagePerImage: 0.04, // grok-imagine-image-2.0, 1K/2K
 };
 
-export type Service = 'live_call' | 'transcription' | 'spoken_reply' | 'grok';
+export type Service = 'live_call' | 'transcription' | 'spoken_reply' | 'grok' | 'image';
 
 const FILE = path.join(path.dirname(env.dbPath), 'xai-usage.jsonl');
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -40,6 +41,9 @@ export const usage = {
   speech(userId: string, chars: number, what = 'Spoken reply') {
     log(userId, 'spoken_reply', chars, 'chars', (chars / 1e6) * RATES.ttsPerMChars, what);
   },
+  image(userId: string, n: number, what = 'Created image') {
+    log(userId, 'image', n, 'images', n * RATES.imagePerImage, what);
+  },
   /** `u` is the `usage` object of an xAI responses call. */
   grok(userId: string, u: any, what: string) {
     const inTok = Number(u?.input_tokens ?? u?.prompt_tokens ?? 0);
@@ -56,6 +60,7 @@ export function usageToday(userId: string) {
     transcription: { usd: 0, qty: 0, unit: 's', uses: 0 },
     spoken_reply: { usd: 0, qty: 0, unit: 'chars', uses: 0 },
     grok: { usd: 0, qty: 0, unit: 'tokens', uses: 0 },
+    image: { usd: 0, qty: 0, unit: 'images', uses: 0 },
   };
   let text = '';
   try { text = fs.readFileSync(FILE, 'utf8'); } catch { /* nothing logged yet */ }

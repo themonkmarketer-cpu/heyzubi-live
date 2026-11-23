@@ -88,6 +88,13 @@
 .panel-row--call.is-active { color: var(--color-danger); }
 .voice-error { padding: 4px 12px 8px; font-size: 12px; color: var(--color-danger); }
 
+/* Noise guard: the mic was paused because the room sounded noisy */
+.vcall__paused {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 8px 10px 0; padding: 8px 10px;
+  border-radius: 10px; background: var(--color-warn-bg); color: var(--color-warn-text); font-size: 12px; line-height: 16px;
+}
+.vcall__resume { flex-shrink: 0; height: 28px; padding: 0 12px; border-radius: 999px; background: var(--color-warn); color: #1A1200; font-size: 12px; font-weight: 700; }
+
 /* xAI today: spend by service (estimates) */
 .xai-usage { margin: 4px 8px 8px; padding: 10px 12px; border-radius: 12px; background: var(--color-bg-subtle); font-size: 12px; line-height: 18px; color: var(--color-text-secondary); }
 .xai-usage__head { display: flex; justify-content: space-between; margin-bottom: 4px; color: var(--color-text-primary); font-weight: var(--font-weight-semibold); font-size: 13px; }

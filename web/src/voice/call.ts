@@ -27,12 +27,44 @@ interface VoiceState {
   captions: Caption[];
   error: string | null;
   startedAt: number | null;
+  /** The noise guard paused the mic, and why (resume with resumeMic). */
+  paused: string | null;
 }
 
 export const useVoice = create<VoiceState>(() => ({
   status: 'idle', botId: null, callId: null, muted: false, speaking: false, listening: false, thinking: false,
-  working: [], captions: [], error: null, startedAt: null,
+  working: [], captions: [], error: null, startedAt: null, paused: null,
 }));
+
+/**
+ * Noise guard (Zubi HQ's "smart mic"): the call can't tell who is speaking, but it can tell how the sound behaves.
+ * It pauses the mic only on signs of a messy room, never on a guess about the speaker:
+ * - speech that never pauses for 20 s, or sound filling over 92% of the last 15 s: background talk, a video or music;
+ * - 3 interruptions of the bot within 12 s: more than one voice, or noise, cutting in;
+ * - one turn of over 600 characters of transcript: not a short request.
+ */
+function makeNoiseGate() {
+  const g = { cont: 0, quiet: 0, win: [] as { ms: number; v: boolean }[], winMs: 0, voicedMs: 0, floor: 0.004, ints: [] as number[] };
+  return {
+    frame(rms: number, ms: number): string | null {
+      const thr = Math.max(0.012, g.floor * 3);
+      const v = rms > thr;
+      if (!v) g.floor = g.floor * 0.995 + rms * 0.005;
+      if (v) { g.cont += ms; g.quiet = 0; } else { g.quiet += ms; if (g.quiet >= 700) g.cont = 0; }
+      g.win.push({ ms, v }); g.winMs += ms; if (v) g.voicedMs += ms;
+      while (g.winMs > 15000 && g.win.length) { const o = g.win.shift()!; g.winMs -= o.ms; if (o.v) g.voicedMs -= o.ms; }
+      if (g.cont >= 20000) return 'Speech that never pauses for 20 seconds sounds like background conversation, a video or music.';
+      if (g.winMs >= 14500 && g.voicedMs / g.winMs > 0.92) return 'Sound that never stops for 15 seconds sounds like a noisy room.';
+      return null;
+    },
+    interrupt(now: number): string | null {
+      g.ints = g.ints.filter((t) => now - t < 12000); g.ints.push(now);
+      return g.ints.length >= 3 ? 'Several interruptions in a row: more than one voice, or noise, is cutting in.' : null;
+    },
+    turnText: (n: number) => (n > 600 ? 'That was a long stretch of speech, not a short request.' : null),
+    reset() { g.cont = g.quiet = g.winMs = g.voicedMs = 0; g.win = []; g.ints = []; },
+  };
+}
 
 const setV = (p: Partial<VoiceState>) => useVoice.setState(p);
 
@@ -49,7 +81,12 @@ export function startCall(botId: string) {
 }
 
 export function endCall() { current?.end(); }
-export function toggleMute() { current?.setMuted(!useVoice.getState().muted); }
+export function toggleMute() {
+  if (useVoice.getState().paused) { current?.resumeMic(); return; }
+  current?.setMuted(!useVoice.getState().muted);
+}
+/** Turn the mic back on after the noise guard paused it. */
+export function resumeMic() { current?.resumeMic(); }
 export function callLevels(): { out: number; mic: number } {
   return current && !current.ended ? { out: current.player.level(), mic: current.micLevel() } : { out: 0, mic: 0 };
 }
@@ -86,6 +123,7 @@ class VoiceCall {
   /** A live call is billed for every open minute: after IDLE_MS with nobody talking and nothing running, hang up. */
   private lastActive = Date.now();
   private idleTimer: ReturnType<typeof setInterval> | null = null;
+  private gate = makeNoiseGate();
   private onUnload = () => { if (this.sess && !this.ended) voiceApi.endBeacon(this.botId, this.sess.callId, this.transcript()); };
 
   constructor(readonly botId: string) {
@@ -99,7 +137,7 @@ class VoiceCall {
   micLevel() { return useVoice.getState().muted ? 0 : this.mic?.level ?? 0; }
 
   async start() {
-    setV({ status: 'connecting', botId: this.botId, callId: null, muted: false, speaking: false, listening: false, thinking: false, working: [], captions: [], error: null, startedAt: null });
+    setV({ status: 'connecting', botId: this.botId, callId: null, muted: false, speaking: false, listening: false, thinking: false, working: [], captions: [], error: null, startedAt: null, paused: null });
     window.addEventListener('pagehide', this.onUnload);
     let stream: MediaStream;
     try {
@@ -142,6 +180,13 @@ class VoiceCall {
 
   private sendAudio(pcm: Int16Array) {
     if (!this.ready || this.ended || useVoice.getState().muted) return;
+    // The noise guard listens only while the bot is quiet and nothing is running, like Zubi HQ.
+    if (!this.player.playing && !this.responseActive && !this.inflight.size && pcm.length) {
+      let q = 0;
+      for (let i = 0; i < pcm.length; i++) { const s = pcm[i] / 32768; q += s * s; }
+      const why = this.gate.frame(Math.sqrt(q / pcm.length), (pcm.length / (this.sess?.sampleRate || 24000)) * 1000);
+      if (why) { this.pauseForNoise(why); return; }
+    }
     this.send({ type: 'input_audio_buffer.append', audio: pcmToBase64(pcm) });
   }
 
@@ -149,6 +194,19 @@ class VoiceCall {
     if (this.mic) this.mic.muted = m;
     if (m && this.ready) this.send({ type: 'input_audio_buffer.clear' });
     setV({ muted: m, listening: m ? false : useVoice.getState().listening });
+  }
+
+  private pauseForNoise(why: string) {
+    if (useVoice.getState().paused) return;
+    this.setMuted(true);
+    this.gate.reset();
+    setV({ paused: why });
+  }
+
+  resumeMic() {
+    this.gate.reset();
+    setV({ paused: null });
+    this.setMuted(false);
   }
 
   // ---------- realtime events ----------
@@ -174,7 +232,11 @@ class VoiceCall {
       case 'input_audio_buffer.speech_started':
         this.userSpeaking = true;
         setV({ listening: true });
-        // Barge-in: stop talking and listen.
+        // Barge-in: stop talking and listen. Three in quick succession sound like a noisy room.
+        if (this.player.playing || this.responseActive) {
+          const why = this.gate.interrupt(Date.now());
+          if (why) { this.player.clear(); if (this.responseActive) this.send({ type: 'response.cancel' }); this.pauseForNoise(why); return; }
+        }
         if (this.player.playing) this.player.clear();
         if (this.responseActive) {
           this.interruptedId = this.responseId;
@@ -204,9 +266,12 @@ class VoiceCall {
       case 'conversation.item.input_audio_transcription.delta':
         this.caption(ev.item_id, 'user', ev.delta ?? '', false, 'append');
         return;
-      case 'conversation.item.input_audio_transcription.completed':
+      case 'conversation.item.input_audio_transcription.completed': {
         this.caption(ev.item_id, 'user', ev.transcript ?? '', true, 'set');
+        const why = this.gate.turnText(String(ev.transcript ?? '').length);
+        if (why) this.pauseForNoise(why);
         return;
+      }
 
       case 'response.created':
         this.responseActive = true;
@@ -435,7 +500,7 @@ class VoiceCall {
       setV({ status: 'error', error, speaking: false, listening: false, thinking: false, working: [] });
       setTimeout(() => { if (useVoice.getState().status === 'error' && !current) setV({ status: 'idle', botId: null, error: null }); }, 6000);
     } else {
-      setV({ status: 'idle', botId: null, callId: null, speaking: false, listening: false, thinking: false, working: [], startedAt: null });
+      setV({ status: 'idle', botId: null, callId: null, speaking: false, listening: false, thinking: false, working: [], startedAt: null, paused: null, muted: false });
     }
   }
 }

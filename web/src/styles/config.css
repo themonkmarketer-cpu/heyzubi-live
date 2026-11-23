@@ -214,3 +214,30 @@
 
 /* knob contrasts with the "on" track (matters for black bots in dark mode) */
 .toggle.is-on .toggle__knob { background: var(--bot-on-action, #FFFFFF); }
+
+/* Settings → Status (after Zubi HQ's Settings page) */
+.st-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.st-card { padding: 12px 14px; border-radius: 12px; border: 1px solid var(--color-border-secondary); background: var(--color-bg-subtle); }
+.st-card__title { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
+.st-card__title i { width: 8px; height: 8px; border-radius: 50%; background: var(--color-text-quaternary); }
+.st-card.is-ok .st-card__title i { background: var(--color-success); box-shadow: 0 0 8px var(--color-success); }
+.st-card.is-bad .st-card__title i { background: var(--color-danger); }
+.st-card__state { margin-top: 6px; font-size: 15px; font-weight: 700; }
+.st-card.is-bad .st-card__state { color: var(--color-danger-text); }
+.st-card__line { margin-top: 2px; font-size: 12px; color: var(--color-text-tertiary); overflow-wrap: anywhere; }
+.st-mode { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-size: 13px; }
+.st-mode > span:nth-child(2) { flex: 1; }
+.st-mode__dot { width: 10px; height: 10px; border-radius: 50%; background: var(--color-warn); }
+.st-mode__dot.is-live { background: var(--color-success); }
+.st-engine { margin: 8px 0; border: 1px solid var(--color-border-secondary); border-radius: 12px; overflow: hidden; }
+.st-test { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.st-result { margin-top: 8px; padding: 8px 12px; border-radius: 10px; font-size: 13px; }
+.st-result.is-ok { background: var(--color-success-bg); color: var(--color-success-text); }
+.st-result.is-bad { background: var(--color-danger-bg); color: var(--color-danger-text); }
+.st-google { display: flex; align-items: center; gap: 14px; font-size: 13px; font-weight: 600; }
+.st-google .is-ok { color: var(--color-success-text); }
+.st-google .is-bad { color: var(--color-danger-text); }
+.theme-tile__art.is-navy .theme-tile__side { background: #0A1128; }
+.theme-tile__art.is-navy .theme-tile__pane { background: #121C3A; }
+.theme-tile__art.is-navy .theme-tile__pane i { background: #F1EEF61F; }
+.theme-tile__art.is-navy .theme-tile__pane b { background: #A98BFF; }

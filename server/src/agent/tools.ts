@@ -12,6 +12,8 @@ import { setCheckins } from '../proactive.js';
 import { createRoom, postToRoom } from './rooms.js';
 import { whatsappClose, whatsappDraft } from '../whatsapp.js';
 import { usage } from '../usage.js';
+import { createImage } from '../generations.js';
+import { panelArg, showPanel } from '../panels.js';
 import type { ActivityKind } from '../types.js';
 import { Cron } from 'croner';
 
@@ -319,10 +321,36 @@ export const TOOLS: ToolDef[] = [
   {
     name: 'whatsapp_draft',
     description: "Open the floating WhatsApp window in the HeyZubi app with a message drafted for the owner's own WhatsApp (send-only, the account connected in Zubi HQ). Use it whenever the owner asks for WhatsApp in this app: to send, write or draft a message, or just \"open WhatsApp\" / \"open the WhatsApp window\" (then leave text empty). This tool IS the WhatsApp window: never open Zubi HQ or a browser for WhatsApp, and never change Hermes settings for it. Give to_group (the group's name) or to_number (phone number with country code, digits only; Indian numbers start with 91) when you know who, and the text. The owner checks it, previews and presses Confirm in that window; you cannot send, so never say a message was sent. At most 20 sends a day, shared with Zubi HQ.",
-    parameters: obj({ to_group: { type: 'string', description: 'WhatsApp group name' }, to_number: { type: 'string', description: 'Phone number with country code, digits only' }, text: { type: 'string', description: 'The message (may be empty to just open WhatsApp)' } }, []),
+    parameters: obj({ to_group: { type: 'string', description: 'WhatsApp group name' }, to_number: { type: 'string', description: 'Phone number with country code, digits only' }, text: { type: 'string', description: 'The message, or the caption when there is an image (may be empty to just open WhatsApp)' }, image: { type: 'string', description: 'Optional: a picture to send, by its gallery name: from Generations ("poster.png", "refs/logo.png") or from the Zubi inbox on the owner’s network drive ("inbox/photo.jpg")' } }, []),
     activity: 'connecting_service',
     label: 'Opening WhatsApp',
     impl: async (a, ctx) => whatsappDraft(a, ctx),
+  },
+  {
+    name: 'open_window',
+    description: 'Open (or close) the Calendar, Gmail, YouTube or Instagram window in the HeyZubi app, so the owner sees it. Call it every time the owner asks about their calendar, schedule, meetings or day (window="calendar"), their inbox or emails (window="gmail"), their YouTube channel or videos (window="youtube") or their Instagram posts or reels (window="instagram"), as well as answering in words. Set close=true only when they ask to close it.',
+    parameters: obj({
+      window: { type: 'string', enum: ['calendar', 'gmail', 'youtube', 'instagram'], description: 'Which window' },
+      close: { type: 'boolean', description: 'Close it instead of opening it' },
+    }, ['window']),
+    activity: 'working',
+    label: 'Opening a window',
+    impl: async (a, ctx) => showPanel(ctx.userId, panelArg(a.window), a.close !== true),
+  },
+  {
+    name: 'create_image',
+    description: 'Create a picture from a description (xAI Grok Imagine, about $0.04 each) and save it into the Generations gallery (~/.hermes/generations). Use it when the owner asks for a picture, poster, greeting image and so on, including one to send on WhatsApp: then call whatsapp_draft with image set to the file name this returns, and the picture is attached to the draft. Describe it fully in the prompt (subject, style, any short text to show).',
+    parameters: obj({
+      prompt: { type: 'string', description: 'What the picture shows, its style, and any short text on it' },
+      aspect: { type: 'string', enum: ['1:1', '4:5', '3:4', '9:16', '16:9', '4:3'], description: 'Shape (default 1:1). 9:16 for a phone status, 16:9 for wide.' },
+    }, ['prompt']),
+    activity: 'drafting_file',
+    label: 'Creating an image',
+    impl: async (a, ctx) => {
+      const r = await createImage(ctx.userId, String(a.prompt ?? ''), a.aspect ? String(a.aspect) : undefined);
+      if ('error' in r) return { output: `No picture was made: ${r.error}`, summary: 'Image not made' };
+      return { output: `Created "${r.rel}" in Generations (~/.hermes/generations/${r.rel}). To send it on WhatsApp, call whatsapp_draft with image="${r.rel}".`, summary: `Created ${r.name}` };
+    },
   },
   {
     name: 'whatsapp_close',

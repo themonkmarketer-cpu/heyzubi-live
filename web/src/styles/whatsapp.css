@@ -70,3 +70,29 @@
 .waw__res.is-failed { background: var(--color-danger-bg); color: var(--color-danger-text); }
 
 @media (prefers-reduced-motion: reduce) { .waw { animation: none; } }
+
+/* Zubi HQ's WhatsApp page features: tabs, QR pairing, image with caption, disconnect, full history */
+.waw__tabs { display: flex; align-items: center; gap: 4px; border-bottom: 1px solid var(--color-border-tertiary); margin: -4px -14px 4px; padding: 0 14px; }
+.waw__tabs > button[role='tab'] { padding: 8px 10px; font-size: 13px; font-weight: 600; color: var(--color-text-tertiary); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.waw__tabs > button[aria-selected='true'] { color: var(--color-text-primary); border-bottom-color: #25D366; }
+.waw__tabs-sp { flex: 1; }
+.waw__link { font-size: 12px; color: var(--color-text-tertiary); }
+.waw__link.is-danger:hover { color: var(--color-danger-text); }
+.waw__confirm { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.waw__btn.is-danger { background: var(--color-danger); color: #FFFFFF; }
+.waw__lab.is-inline { margin: 0; }
+.waw__row.is-tight { flex-wrap: nowrap; }
+.waw__row.is-tight .waw__in { flex: 1; }
+.waw__mut.is-over { color: var(--color-danger-text); font-weight: 600; }
+.waw__pair { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.waw__qr { background: #FFFFFF; border-radius: 12px; padding: 10px; line-height: 0; align-self: center; }
+.waw__qr svg { width: 240px; height: 240px; display: block; }
+.waw__pick { display: flex; gap: 12px; align-items: center; font-size: 13px; }
+.waw__pick img { width: 84px; height: 84px; object-fit: cover; border-radius: 10px; border: 1px solid var(--color-border-secondary); }
+.waw__bubble img { display: block; max-width: 100%; border-radius: 8px; margin-bottom: 6px; }
+.waw__via { margin-left: 6px; font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--color-accent-soft); color: var(--color-text-secondary); }
+.waw__herr { font-size: 12px; color: var(--color-danger-text); }
+.waw__res.is-unknown { background: var(--color-warn-bg); color: var(--color-warn-text); }
+.waw__hist { max-height: 46vh; overflow: auto; }
+.waw__row.is-wrap { flex-wrap: wrap; }
+.waw__create { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 12px; border: 1px dashed var(--color-border-secondary); }

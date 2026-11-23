@@ -73,3 +73,12 @@
 @media (prefers-reduced-motion: reduce) {
   .sorb__ring, .sorb__ball, .sorb__pipe, .sorb__core { animation: none !important; }
 }
+
+/* Brand icons are the official files as images (own colours and proportions, no effects); the tile stays separate. */
+.sorb__img { display: block; width: calc(20px * var(--is, 1)); height: calc(20px * var(--is, 1)); object-fit: contain; }
+.sorb__ic .sorb__img { width: calc(24px * var(--is, 1)); height: calc(24px * var(--is, 1)); }
+.sorb__ic:has(.sorb__img) { filter: none; }
+/* Generic line icons (Phone, Profit): the Lucide file used as a mask, so it takes the ring colour (white when lit). */
+.sorb__mask { display: block; width: 19px; height: 19px; background: var(--nc, currentColor); -webkit-mask: var(--m) center / contain no-repeat; mask: var(--m) center / contain no-repeat; }
+.sorb__node.is-on .sorb__mask, .sorb__ic .sorb__mask { background: #fff; }
+.sorb__ic .sorb__mask { width: 22px; height: 22px; }

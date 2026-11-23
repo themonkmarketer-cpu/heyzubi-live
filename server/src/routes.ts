@@ -19,6 +19,10 @@ import { dispatchRoomMessage } from './agent/rooms.js';
 import { voiceApi } from './voice.js';
 import { clickyApi } from './clicky.js';
 import { whatsappApi } from './whatsapp.js';
+import { generationsApi } from './generations.js';
+import { panelsApi } from './panels.js';
+import { statusApi } from './status.js';
+import { openPanelsFor } from './panels.js';
 import type { AvatarColor, AvatarShape, Toolkit } from './types.js';
 
 export const api = new Hono<AuthVars>();
@@ -349,6 +353,8 @@ api.post('/bots/:id/messages', async (c) => {
   if (b.kind === 'room') dispatchRoomMessage(b.id, text.trim(), enqueue);
   // Any pending question card is answered by a free-text message. A voice message's reply may be read aloud.
   else enqueue(b.id, { type: 'user', text: voice ? `[Voice message: the owner said this out loud in the app (you get it as a transcript) and short replies are played back to them in your voice, so this works like talking. Don't mention transcripts or that you can't hear. Lead with the answer in a few plain sentences; skip markdown, tables and links unless asked.]\n${text.trim()}` : text.trim() });
+  // Asking about the calendar or the inbox opens that window right away (like WhatsApp).
+  openPanelsFor(c.get('user').id, text.replace(/\[Attached picture:[^\]]*\]/g, ''));
   return c.json({ row });
 });
 
@@ -558,3 +564,6 @@ api.delete('/policies/:tool', (c) => {
 api.route('/voice', voiceApi);
 api.route('/clicky', clickyApi);
 api.route('/whatsapp', whatsappApi);
+api.route('/generations', generationsApi);
+api.route('/panels', panelsApi);
+api.route('/status', statusApi);

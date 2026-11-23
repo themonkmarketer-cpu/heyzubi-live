@@ -3,7 +3,7 @@ import { Mic, MicOff, PhoneOff } from 'lucide-react';
 import { BotAvatarFor } from '../avatar/BotAvatar';
 import { botVars } from '../lib/colors';
 import { useStore } from '../store';
-import { callLevels, endCall, toggleMute, useVoice } from '../voice/call';
+import { callLevels, endCall, resumeMic, toggleMute, useVoice } from '../voice/call';
 
 /** xAI's live voice price (docs.x.ai pricing, 2026-11-23): billed for the whole time the call is open. */
 const LIVE_CALL_PER_MIN = 0.08;
@@ -69,6 +69,7 @@ export function VoiceCallBar() {
     : v.listening ? 'Listening'
     : working ? 'Working on it…'
     : v.thinking ? 'Thinking…'
+    : v.paused ? 'Mic paused: noisy room'
     : v.muted ? 'Muted'
     : 'Listening';
   const lines = v.captions.filter((c) => c.text.trim());
@@ -116,6 +117,12 @@ export function VoiceCallBar() {
           )}
         </div>
       </div>
+      {v.status === 'live' && v.paused && (
+        <div className="vcall__paused" role="alert">
+          <span>{v.paused} The mic is paused so {bot.name} doesn’t answer the room.</span>
+          <button type="button" className="vcall__resume" onClick={resumeMic}>Resume mic</button>
+        </div>
+      )}
       {v.status === 'live' && (
         expanded ? (
           <div className="vcall__log" ref={logRef}>

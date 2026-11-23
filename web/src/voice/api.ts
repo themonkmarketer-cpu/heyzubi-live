@@ -21,7 +21,7 @@ export interface XaiUsage {
   day: string;
   total: number;
   note: string;
-  by: Record<'live_call' | 'transcription' | 'spoken_reply' | 'grok', { usd: number; qty: number; unit: string; uses: number }>;
+  by: Record<'live_call' | 'transcription' | 'spoken_reply' | 'grok' | 'image', { usd: number; qty: number; unit: string; uses: number }>;
 }
 
 async function post<T>(path: string, body: unknown): Promise<T> {

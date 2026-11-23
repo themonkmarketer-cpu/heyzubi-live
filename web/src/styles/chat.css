@@ -47,6 +47,18 @@
 }
 .bubble-wrap.is-right .bubble__time { transform: translateX(4px); }
 .bubble-wrap:hover .bubble__time { opacity: 1; transform: none; }
+/* Quick Yes / No under a go-ahead question (Zubi HQ style) */
+.quick-replies { display: flex; gap: 8px; margin: 6px 0 4px 44px; }
+.quick-reply {
+  height: 32px; padding: 0 16px; border-radius: var(--radius-full); font-size: 13px; font-weight: 600;
+  background: var(--color-bg-subtle); color: var(--color-text-primary); border: 1px solid var(--color-border-secondary);
+  transition: background-color 120ms, transform 120ms;
+}
+.quick-reply:hover { background: var(--color-bg-hover); }
+.quick-reply:active { transform: scale(0.96); }
+.quick-reply.is-yes { background: var(--color-brand); color: #FFFFFF; border-color: transparent; }
+.quick-reply.is-yes:hover { filter: brightness(1.08); }
+
 /* Listen: read one of the agent's replies aloud (shows on hover, stays while it plays) */
 .bubble__listen {
   flex-shrink: 0; display: grid; place-items: center; width: 28px; height: 28px; margin-bottom: 4px; border-radius: 50%;
@@ -262,3 +274,14 @@
 .composer__vm { touch-action: none; user-select: none; }
 .composer__vm.is-recording { background: var(--color-danger); animation: breathe 1.2s ease-in-out infinite; }
 .composer__vm.is-transcribing { opacity: 0.6; }
+
+/* Pictures dropped or pasted into the message box */
+.composer-area { position: relative; }
+.composer__drop { position: absolute; inset: -6px; z-index: 5; display: grid; place-items: center; border: 2px dashed var(--color-brand); border-radius: 22px; background: color-mix(in srgb, var(--color-brand) 12%, var(--color-bg-pane)); font-size: 14px; font-weight: 600; pointer-events: none; }
+.composer__pics { max-width: 960px; margin: 0 auto 8px; display: flex; flex-wrap: wrap; gap: 8px; }
+.composer__pic { position: relative; width: 64px; height: 64px; border-radius: 12px; overflow: hidden; border: 1px solid var(--color-border-secondary); background: var(--color-bg-subtle); }
+.composer__pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.composer__pic button { position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border-radius: 50%; background: #000A; color: #FFFFFF; font-size: 13px; line-height: 1; display: grid; place-items: center; }
+.composer__pic.is-busy { width: auto; padding: 0 12px; display: grid; place-items: center; font-size: 12px; color: var(--color-text-tertiary); }
+.bubble__pics { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.bubble__pics img { max-width: 220px; max-height: 220px; border-radius: 12px; display: block; object-fit: cover; }

@@ -5,14 +5,15 @@ import { lsGet, lsSet } from './lib/storage';
 
 /** UI state for bot settings, app settings, the Tasks view and the theme. Kept apart from store.ts on purpose. */
 
-export type Theme = 'system' | 'light' | 'dark';
+export type Theme = 'system' | 'light' | 'dark' | 'navy';
 export type BotSettingsTab = 'general' | 'skills' | 'memories' | 'routines';
-export type AppSection = 'general' | 'computer' | 'permissions' | 'apps' | 'account';
+export type AppSection = 'status' | 'general' | 'computer' | 'permissions' | 'apps' | 'account';
+export type MainView = 'chat' | 'tasks' | 'generations';
 
 interface ConfigUI {
   botSettings: { botId: string; tab: BotSettingsTab } | null;
   appSettings: AppSection | null;
-  view: 'chat' | 'tasks';
+  view: MainView;
   theme: Theme;
   /** Bumped by server events (tasks, memories) so open views refetch. Keys: 'tasks', 'memories:<botId>'. */
   versions: Record<string, number>;
@@ -20,7 +21,7 @@ interface ConfigUI {
   closeBotSettings(): void;
   openAppSettings(section?: AppSection): void;
   closeAppSettings(): void;
-  setView(v: 'chat' | 'tasks'): void;
+  setView(v: MainView): void;
   setTheme(t: Theme): void;
   bump(key: string): void;
 }
@@ -28,14 +29,17 @@ interface ConfigUI {
 const LS_THEME = 'theme';
 const readTheme = (): Theme => {
   const t = lsGet(LS_THEME);
-  return t === 'light' || t === 'dark' ? t : 'system';
+  return t === 'light' || t === 'dark' || t === 'navy' ? t : 'system';
 };
 
 const darkQuery = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 
+/** Navy (from Zubi HQ) is a dark theme with a navy palette: it keeps every dark-theme rule and swaps the surfaces. */
 export function applyTheme(t: Theme) {
-  const resolved = t === 'system' ? (darkQuery?.matches ? 'dark' : 'light') : t;
+  const resolved = t === 'system' ? (darkQuery?.matches ? 'dark' : 'light') : t === 'navy' ? 'dark' : t;
   document.documentElement.dataset.theme = resolved;
+  if (t === 'navy') document.documentElement.dataset.palette = 'navy';
+  else delete document.documentElement.dataset.palette;
   document.documentElement.style.colorScheme = resolved;
 }
 
@@ -47,7 +51,7 @@ export const useConfigUI = create<ConfigUI>((set, get) => ({
   versions: {},
   openBotSettings: (botId, tab = 'general') => set({ botSettings: { botId, tab } }),
   closeBotSettings: () => set({ botSettings: null }),
-  openAppSettings: (section = 'general') => set({ appSettings: section }),
+  openAppSettings: (section = 'status') => set({ appSettings: section }),
   closeAppSettings: () => set({ appSettings: null }),
   setView: (view) => set({ view }),
   setTheme: (theme) => {

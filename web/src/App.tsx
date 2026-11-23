@@ -16,6 +16,8 @@ import { TasksView } from './components/config/TasksView';
 import { useConfigUI } from './configStore';
 import { WhatsAppWindow } from './components/WhatsAppWindow';
 import { CameraBubble } from './components/CameraBubble';
+import { GenerationsView } from './components/GenerationsView';
+import { CapabilityWatcher, LivePanels } from './components/LivePanels';
 
 function Shell() {
   const detailsOpen = useStore((s) => s.detailsOpen);
@@ -61,7 +63,7 @@ function Shell() {
   return (
     <div className={`app${collapsed ? ' is-sidebar-collapsed' : ''}${detailsOpen && hasBot && view === 'chat' ? ' has-details' : ''}`}>
       <Sidebar />
-      {view === 'tasks' ? <TasksView /> : <ChatView />}
+      {view === 'tasks' ? <TasksView /> : view === 'generations' ? <GenerationsView /> : <ChatView />}
       {detailsOpen && hasBot && view === 'chat' && <DetailsPanel />}
       {modal === 'create' && <CreateBotModal />}
       {modal === 'group' && <CreateGroupModal />}
@@ -70,6 +72,8 @@ function Shell() {
       {viewerOpen && <ComputerViewer />}
       {waOpen && <WhatsAppWindow />}
       <CameraBubble />
+      <CapabilityWatcher />
+      <LivePanels />
       <ConfigLayer />
     </div>
   );

@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import type { Bot, LiveState, ToolCallBody } from '@shared/types';
+import type { Bot, LiveState, PanelName, ToolCallBody } from '@shared/types';
 import { useStore } from '../store';
 import { useConfigUI } from '../configStore';
 import { prefillComposer } from './Composer';
+import { openPanel } from './LivePanels';
 import '../styles/orb.css';
+
+/** The icons that open a floating window when clicked (WhatsApp has its own). */
+const WINDOW_OF: Record<string, PanelName | undefined> = { email: 'gmail', calendar: 'calendar', youtube: 'youtube', instagram: 'instagram' };
 
 /**
  * Zubi HQ's orb and capability ring, at the bottom of the sidebar. The orb shows what the main team member
@@ -13,19 +17,35 @@ import '../styles/orb.css';
  * Icons, colours, patterns and prompts come from Zubi HQ (video-wiki-tools/console.js).
  */
 
-const L = {
-  email: '<svg viewBox="0 0 24 24"><rect x="2" y="4.5" width="20" height="15" rx="2" fill="#f5f5f5"/><path d="M3.6 18.5V7.6L12 14l8.4-6.4V18.5" fill="none" stroke="#d93025" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/><path d="M3.6 7.6L12 14l8.4-6.4" fill="none" stroke="#ea4335" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/></svg>',
-  calendar: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2.5" fill="#fff"/><path d="M3 5.5A2.5 2.5 0 0 1 5.5 3h13A2.5 2.5 0 0 1 21 5.5V8H3z" fill="#4285f4"/><path d="M3 18.5h4.5V21H5.5A2.5 2.5 0 0 1 3 18.5z" fill="#34a853"/><path d="M16.5 21v-4.5H21v2a2.5 2.5 0 0 1-2.5 2.5z" fill="#fbbc04"/><text x="12" y="17.2" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-weight="700" font-size="10.5" fill="#1a73e8">31</text></svg>',
-  whatsapp: '<svg viewBox="0 0 24 24"><path d="M12 2.2A9.8 9.8 0 0 0 3.6 17L2.2 21.8l4.9-1.3A9.8 9.8 0 1 0 12 2.2z" fill="#25d366"/><path d="M8.3 7.3c.3-.5.8-.4 1 0l.9 1.8c.1.3 0 .6-.2.8l-.5.6c.8 1.5 1.9 2.5 3.4 3.2l.6-.7c.2-.2.5-.3.8-.1l1.8.9c.4.2.4.7.1 1.1-.5.8-1.4 1.2-2.4 1-3.1-.7-5.4-3-6-6-.1-.9.1-1.8.5-2.6z" fill="#fff"/></svg>',
-  linkedin: '<svg viewBox="0 0 24 24"><rect x="2.5" y="2.5" width="19" height="19" rx="3" fill="#0a66c2"/><rect x="5.8" y="9.6" width="2.8" height="8.6" fill="#fff"/><circle cx="7.2" cy="6.6" r="1.7" fill="#fff"/><path d="M10.7 9.6h2.7v1.2c.5-.9 1.5-1.5 2.8-1.5 2.4 0 3 1.6 3 3.7v5.2h-2.8v-4.5c0-1.1-.2-1.9-1.4-1.9s-1.7.8-1.7 2v4.4h-2.6z" fill="#fff"/></svg>',
-  instagram: '<svg viewBox="0 0 24 24"><rect x="2.5" y="5.5" width="19" height="15" rx="2.5" fill="#d9c7a8"/><path d="M2.5 8a2.5 2.5 0 0 1 2.5-2.5h2.5L8.7 3.5h6.6l1.2 2H19A2.5 2.5 0 0 1 21.5 8v1.5h-19z" fill="#6b4a2f"/><rect x="2.5" y="9.5" width="19" height="2" fill="#e53935"/><rect x="2.5" y="11.5" width="19" height="1.1" fill="#fb8c00"/><rect x="2.5" y="12.6" width="19" height="1.1" fill="#fdd835"/><rect x="2.5" y="13.7" width="19" height="1.1" fill="#43a047"/><rect x="2.5" y="14.8" width="19" height="1.1" fill="#1e88e5"/><circle cx="12" cy="14.6" r="4.3" fill="#3b2a1e"/><circle cx="12" cy="14.6" r="2.7" fill="#1c1c24"/><circle cx="10.9" cy="13.5" r=".9" fill="#7aa7d8"/></svg>',
-  youtube: '<svg viewBox="0 0 24 24"><rect x="1.5" y="4.5" width="21" height="15" rx="4.5" fill="#f00"/><path d="M9.7 8.6v6.8l5.9-3.4z" fill="#fff"/></svg>',
-  excel: '<svg viewBox="0 0 24 24"><path d="M7 2.5h8.5L20.5 7.5v12.5A1.5 1.5 0 0 1 19 21.5H7A1.5 1.5 0 0 1 5.5 20V4A1.5 1.5 0 0 1 7 2.5z" fill="#21a366"/><path d="M15.5 2.5v5h5z" fill="#107c41"/><rect x="1.5" y="6.5" width="12.5" height="13" rx="1.8" fill="#107c41"/><path d="M4.5 9.8l5.5 6.8M10 9.8l-5.5 6.8" stroke="#fff" stroke-width="2.3" stroke-linecap="round"/></svg>',
-  profit: '<svg viewBox="0 0 24 24"><rect x="2.5" y="2.5" width="19" height="19" rx="4" fill="#12b886"/><path d="M6 16l4-4.5 3 2.5 5-6" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M14.5 8h3.5v3.5" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  phone: '<svg viewBox="0 0 24 24"><path d="M3.2 8.4C3 6.9 5.7 4.2 8 4.2c.8 0 1.2.4 1.5 1.1l1 2.6c.2.6 0 1.2-.5 1.6L8.8 10.4c.9 1.9 2.4 3.5 4.5 4.6l1.2-1.2c.4-.4 1-.6 1.6-.4l2.5.9c.8.3 1.2.7 1.2 1.5 0 2.4-2.7 5.1-4.2 4.9C8.6 19.9 3.6 14.1 3.2 8.4z" fill="#f2f2f2"/></svg>',
+/**
+ * Each capability's icon: the brand's own published file, kept unchanged in web/public/icons/integrations/ (sources
+ * and terms are listed in that folder's SOURCES.md). Phone and Profit are generic Lucide line icons, drawn through
+ * a mask so they take the ring's colour; brand logos are shown as images in their own colours.
+ */
+type CapKey = 'email' | 'calendar' | 'whatsapp' | 'linkedin' | 'youtube' | 'instagram' | 'profit' | 'excel' | 'phone';
+const ICONS: Record<CapKey, { src: string; mask?: boolean; size?: number }> = {
+  email: { src: '/icons/integrations/gmail.svg' },
+  calendar: { src: '/icons/integrations/google-calendar.svg' },
+  whatsapp: { src: '/icons/integrations/whatsapp.svg' },
+  linkedin: { src: '/icons/integrations/linkedin.png' },
+  youtube: { src: '/icons/integrations/youtube.png', size: 1.35 }, // the official file includes its clear space
+  instagram: { src: '/icons/integrations/instagram.png' },
+  profit: { src: '/icons/integrations/analytics.svg', mask: true },
+  excel: { src: '/icons/integrations/microsoft-excel.svg' },
+  phone: { src: '/icons/integrations/phone.svg', mask: true },
 };
 
-interface Cap { k: keyof typeof L; n: string; c: string; re: RegExp; h: string; can: string; ready: 'yes' | 'part' | 'no'; ask: string }
+/** A capability icon (decorative: the button or status line around it carries the name). */
+function CapIcon({ k }: { k: CapKey }) {
+  const ic = ICONS[k];
+  if (!ic) return null;
+  const st = ic.size ? ({ ['--is' as string]: ic.size } as CSSProperties) : undefined;
+  return ic.mask
+    ? <span className="sorb__mask" style={{ ...st, ['--m' as string]: `url(${ic.src})` } as CSSProperties} aria-hidden />
+    : <img className="sorb__img" src={ic.src} alt="" draggable={false} style={st} />;
+}
+
+interface Cap { k: CapKey; n: string; c: string; re: RegExp; h: string; can: string; ready: 'yes' | 'part' | 'no'; ask: string }
 
 // Same ring order, colours and wording as Zubi HQ. Patterns are Zubi HQ's, narrowed where HeyZubi's own tool
 // names would light the wrong icon (whatsapp_draft is not email; create_event_routine is not the calendar).
@@ -51,7 +71,7 @@ const POS = CAPS.map((_, i) => {
 type Mode = 'idle' | 'thinking' | 'tool' | 'waiting' | 'done';
 
 /** The capability a tool call belongs to: its name, the app tool slugs inside it, and the app the live line names. */
-function capFor(row: ToolCallBody | null, live: LiveState | undefined): Cap | null {
+export function capFor(row: ToolCallBody | null, live: LiveState | undefined): Cap | null {
   const parts: string[] = [];
   if (row) {
     parts.push(row.name, row.label);
@@ -63,8 +83,8 @@ function capFor(row: ToolCallBody | null, live: LiveState | undefined): Cap | nu
   return s ? CAPS.find((c) => c.re.test(s)) ?? null : null;
 }
 
-/** What the orb shows, from real activity only. */
-function useOrbState(bot: Bot | undefined): { mode: Mode; cap: Cap | null; line: string } {
+/** What the orb shows, from real activity only (also drives the Gmail and Calendar panels). */
+export function useOrbState(bot: Bot | undefined): { mode: Mode; cap: Cap | null; line: string } {
   const live = useStore((s) => (bot ? s.live[bot.id] : undefined));
   const rows = useStore((s) => (bot ? s.transcripts[bot.id]?.bySeq : undefined));
 
@@ -127,8 +147,10 @@ export function SidebarOrb() {
   if (!bot) return null;
 
   const pick = (c: Cap) => {
-    // Same as clicking a node in Zubi HQ: WhatsApp opens its window; the rest start a request to Zubi.
+    // WhatsApp, Email, Calendar, YouTube and Instagram open their windows; the rest start a request to Zubi.
     if (c.k === 'whatsapp') { useStore.getState().set({ waOpen: true }); return; }
+    const win = WINDOW_OF[c.k];
+    if (win) { openPanel(win); return; }
     useConfigUI.getState().setView('chat');
     useStore.getState().selectBot(bot.id);
     prefillComposer(bot.id, c.ask);
@@ -164,7 +186,7 @@ export function SidebarOrb() {
           <div className="sorb__ring" />
           <div className="sorb__ring is-r2" />
           <div className="sorb__ball">
-            {mode === 'done' ? <span className="sorb__check">✓</span> : cap ? <span className="sorb__ic" dangerouslySetInnerHTML={{ __html: L[cap.k] }} /> : null}
+            {mode === 'done' ? <span className="sorb__check">✓</span> : cap ? <span className="sorb__ic"><CapIcon k={cap.k} /></span> : null}
           </div>
         </div>
 
@@ -178,7 +200,7 @@ export function SidebarOrb() {
             onFocus={() => setHover(c)} onBlur={() => setHover(null)}
             aria-label={`${c.n}: ${c.can}`}
           >
-            <i dangerouslySetInnerHTML={{ __html: L[c.k] }} />
+            <i><CapIcon k={c.k} /></i>
           </button>
         ))}
 
@@ -186,7 +208,7 @@ export function SidebarOrb() {
           <div className="sorb__tip" role="tooltip">
             <b>{tip.n} · {tip.ready === 'yes' ? 'Ready' : tip.ready === 'part' ? 'Partly ready' : 'Not connected'}</b>
             <span>{tip.can}</span>
-            <small>{tip.k === 'whatsapp' ? 'Click to open WhatsApp' : `Click to ask ${bot.name}`}</small>
+            <small>{tip.k === 'whatsapp' || WINDOW_OF[tip.k] ? `Click to open ${tip.n}` : `Click to ask ${bot.name}`}</small>
           </div>
         )}
       </div>

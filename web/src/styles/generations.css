@@ -1,0 +1,56 @@
+/* Generations gallery (after Zubi HQ's Generations page) */
+.gen { position: relative; flex: 1; min-width: 0; height: 100%; overflow-y: auto; padding: 28px 32px 48px; background: var(--color-bg-pane); }
+.gen__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.gen__title { margin: 0; font-family: var(--font-display); font-size: 26px; font-weight: 800; }
+.gen__sub { margin: 4px 0 0; font-size: 13px; color: var(--color-text-tertiary); }
+.gen__head-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.gen__btn {
+  display: inline-flex; align-items: center; height: 34px; padding: 0 14px; border-radius: var(--radius-full); font-size: 13px; font-weight: 600;
+  background: var(--color-bg-subtle); color: var(--color-text-primary); border: 1px solid var(--color-border-secondary); text-decoration: none; white-space: nowrap;
+}
+.gen__btn:hover { background: var(--color-bg-hover); }
+.gen__btn.is-pri { background: var(--color-brand); color: #FFFFFF; border-color: transparent; }
+
+.gen__bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 18px; }
+.gen__search { flex: 1 1 200px; min-width: 160px; height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--color-border-secondary); background: var(--color-bg-elevated); color: var(--color-text-primary); font: inherit; font-size: 14px; outline: none; }
+.gen__search:focus { border-color: var(--color-border-focus); }
+.gen__seg { display: inline-flex; padding: 2px; gap: 2px; border-radius: 10px; background: var(--color-bg-subtle); }
+.gen__seg button { padding: 6px 11px; border-radius: 8px; font-size: 13px; color: var(--color-text-secondary); }
+.gen__seg button[aria-pressed='true'] { background: var(--color-bg-elevated); color: var(--color-text-primary); font-weight: 600; box-shadow: var(--shadow-pill); }
+.gen__chip { height: 32px; padding: 0 12px; border-radius: var(--radius-full); font-size: 13px; color: var(--color-text-secondary); background: var(--color-bg-subtle); }
+.gen__chip.is-on { color: #1A1200; background: var(--color-gold, #E8C46A); font-weight: 600; }
+.gen__select { height: 34px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--color-border-secondary); background: var(--color-bg-elevated); color: var(--color-text-primary); font: inherit; font-size: 13px; }
+.gen__cols { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-tertiary); }
+
+.gen__empty { padding: 60px 0; text-align: center; color: var(--color-text-tertiary); font-size: 14px; }
+.gen__grid { display: grid; gap: 14px; }
+.gen__card { margin: 0; border-radius: 14px; overflow: hidden; background: var(--color-bg-elevated); border: 1px solid var(--color-border-tertiary); }
+.gen__thumb { position: relative; display: block; width: 100%; aspect-ratio: 1; background: #0006; cursor: zoom-in; }
+.gen__thumb img, .gen__thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.gen__badge { position: absolute; top: 8px; left: 8px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; background: #000A; color: #FFFFFF; }
+.gen__badge.is-ref { left: auto; right: 8px; background: var(--color-brand); }
+.gen__cap { display: flex; align-items: center; gap: 6px; padding: 8px 8px 8px 12px; }
+.gen__name { flex: 1; min-width: 0; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--color-text-secondary); }
+.gen__acts { display: flex; gap: 2px; }
+.gen__icon { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; font-size: 15px; color: var(--color-text-tertiary); text-decoration: none; }
+.gen__icon:hover { background: var(--color-bg-hover); color: var(--color-text-primary); }
+.gen__icon.is-star { color: var(--color-gold, #E8C46A); }
+
+.gen__lightbox { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 32px; background: var(--color-bg-scrim-heavy); }
+.gen__lb-body { display: flex; flex-direction: column; gap: 12px; max-width: min(1100px, 100%); max-height: 100%; }
+.gen__lb-body img, .gen__lb-body video { max-width: 100%; max-height: calc(100vh - 160px); object-fit: contain; border-radius: 12px; background: #000; }
+.gen__lb-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.gen__lb-name { flex: 1; min-width: 160px; display: flex; flex-direction: column; font-size: 14px; color: var(--color-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gen__lb-name small { font-size: 12px; color: var(--color-text-tertiary); }
+.gen__note { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 72; padding: 8px 14px; border-radius: 999px; background: var(--color-bg-elevated); border: 1px solid var(--color-border-secondary); font-size: 13px; box-shadow: var(--shadow-popover); }
+.gen__drop { position: absolute; inset: 12px; z-index: 5; display: grid; place-items: center; border: 2px dashed var(--color-brand); border-radius: 18px; background: color-mix(in srgb, var(--color-brand) 10%, transparent); font-size: 16px; font-weight: 600; pointer-events: none; }
+
+/* picker inside the WhatsApp window */
+.gen-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; max-height: 220px; overflow: auto; }
+.gen-pick button { aspect-ratio: 1; border-radius: 8px; overflow: hidden; border: 2px solid transparent; background: var(--color-bg-subtle); }
+.gen-pick button:hover { border-color: var(--color-brand); }
+.gen-pick img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.gen-pick__empty { margin: 0; font-size: 12px; color: var(--color-text-tertiary); }
+
+@media (max-width: 700px) { .gen { padding: 18px 14px 40px; } .gen__head { flex-direction: column; } }
+.gen__badge.is-inbox { left: auto; right: 8px; background: #25D366; color: #06240F; }

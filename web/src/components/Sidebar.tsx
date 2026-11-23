@@ -28,6 +28,22 @@ export function BrandLive() {
   );
 }
 
+/** Sidebar entry for the Generations gallery (like Tasks). */
+function GenerationsIsland() {
+  const view = useConfigUI((s) => s.view);
+  const on = view === 'generations';
+  return (
+    <button type="button" className={`sidebar-island${on ? ' is-active' : ''}`} onClick={() => useConfigUI.getState().setView(on ? 'chat' : 'generations')} title="Generations" aria-pressed={on}>
+      <span className="sidebar-island__icon">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <rect x="3" y="4" width="18" height="16" rx="3" /><circle cx="9" cy="10" r="1.8" /><path d="M21 16l-5-5-8 9" />
+        </svg>
+      </span>
+      <span className="sidebar-island__label">Generations</span>
+    </button>
+  );
+}
+
 function previewFor(bot: Bot, running: boolean, awaiting: string | null) {
   if (awaiting) return `Waiting for you: ${awaiting}`;
   if (running && !bot.lastPreview) return 'Working…';
@@ -93,6 +109,7 @@ export function Sidebar() {
 
       <div className="sidebar__scroll">
         <TasksIsland />
+        <GenerationsIsland />
         {primary && (
           <div className="pinned">
             <button type="button" className={`pinned__tile${selectedBotId === primary.id ? ' is-selected' : ''}`} onClick={() => selectBot(primary.id)} title={displayName(primary)}>

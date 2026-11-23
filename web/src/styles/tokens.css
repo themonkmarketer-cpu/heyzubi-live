@@ -142,3 +142,18 @@
   --color-success-bg: #5FD39A1F;
   --color-success-text: #5FD39A;
 }
+
+/* ---------- Navy (from Zubi HQ's themes): the dark theme on deep navy surfaces, same violet accent. ---------- */
+:root[data-theme='dark'][data-palette='navy'] {
+  --color-bg-chrome: #0E1630;
+  --color-bg-sidebar: #0A1128;
+  --color-bg-pane: #121C3A;
+  --color-bg-elevated: #18244A;
+  --color-bg-elevated-hover: #22305C;
+  --color-bg-scrim: #0A1128B2;
+  --color-bg-scrim-heavy: #0A1128F2;
+  --color-border-secondary: #26345E;
+  --color-border-tertiary: #1C2850;
+  --color-accent-soft: #1F2350;
+  --color-text-tertiary: #9CA8C8;
+}

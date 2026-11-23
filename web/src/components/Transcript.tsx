@@ -63,7 +63,7 @@ const Bubble = memo(function Bubble({ row, side, pos }: { row: Row; side: 'left'
   return (
     <div className={`bubble-wrap is-${side}`}>
       <div className={`bubble is-${side === 'right' ? 'user' : 'agent'}${pos}${b.streaming ? ' is-streaming' : ''}`}>
-        {side === 'right' ? <div className="bubble__plain">{b.text}</div> : <Markdown text={b.text || ' '} />}
+        {side === 'right' ? <UserText text={b.text} /> : <Markdown text={b.text || ' '} />}
         {b.citations && b.citations.length > 0 && (
           <div className="bubble__cites">
             {b.citations.filter((c) => /^https?:\/\//i.test(c.url)).slice(0, 6).map((c, i) => {
@@ -79,6 +79,23 @@ const Bubble = memo(function Bubble({ row, side, pos }: { row: Row; side: 'left'
     </div>
   );
 });
+
+/** The owner's message: pictures attached from the message box show as thumbnails instead of their note to the agent. */
+const ATTACHED = /\[Attached picture: ([^\s\]]+) — [^\]]*\]/g;
+function UserText({ text }: { text: string }) {
+  const pics = [...text.matchAll(ATTACHED)].map((m) => m[1]);
+  const words = pics.length ? text.replace(ATTACHED, '').trim() : text;
+  return (
+    <>
+      {pics.length > 0 && (
+        <div className="bubble__pics">
+          {pics.map((rel) => <img key={rel} src={`/api/generations/file/${rel.split('/').map(encodeURIComponent).join('/')}`} alt={rel.split('/').pop()} loading="lazy" />)}
+        </div>
+      )}
+      {words && <div className="bubble__plain">{words}</div>}
+    </>
+  );
+}
 
 /** Read this reply aloud (text to speech in the bot's voice); press again to stop. */
 function ListenButton({ row, text }: { row: Row; text: string }) {
@@ -288,6 +305,7 @@ export function Transcript({ bot, rows, live, loaded }: Props) {
           }
         })}
         {showActivity && live && <ThinkingBlock bot={bot} live={live} rows={rows} steps={openKey ? 0 : serverSteps} />}
+        {!running && !waiting && <QuickReplies bot={bot} rows={rows} />}
       </div>
     </div>
       {showJump && (
@@ -295,6 +313,31 @@ export function Transcript({ bot, rows, live, loaded }: Props) {
           <Icon name="arrow_down" size={16} />
         </button>
       )}
+    </div>
+  );
+}
+
+/**
+ * Zubi HQ's go-ahead pattern: "Reply yes to confirm", "Shall I go ahead?", "Do you want me to …?". When the last
+ * thing in the chat is such a question from the bot, Yes and No buttons answer it in one tap.
+ */
+const GO_AHEAD = /reply\s+yes\s+to\s+confirm|(shall|should|can|may)\s+i\s+(go\s+ahead|proceed|do\s+(it|that|this)|send|post|publish|delete|install|book|add|create|schedule|reply)|do\s+you\s+want\s+me\s+to\s[^.?]{0,120}\?|want\s+me\s+to\s[^.?]{0,120}\?|ok(ay)?\s+to\s+(go\s+ahead|proceed|send)\?|go\s+ahead\?/i;
+
+function QuickReplies({ bot, rows }: { bot: Bot; rows: Row[] }) {
+  const [sent, setSent] = useState<number | null>(null);
+  const last = rows[rows.length - 1];
+  if (!last || last.body.type !== 'message' || last.body.role !== 'assistant' || last.body.streaming) return null;
+  const text = last.body.text ?? '';
+  // Only a question near the end of the reply counts (the last 300 characters).
+  if (!GO_AHEAD.test(text.slice(-300)) || sent === last.seq) return null;
+  const answer = (t: string) => {
+    setSent(last.seq);
+    void import('../lib/api').then(({ api }) => api.send(bot.id, t)).catch(() => setSent(null));
+  };
+  return (
+    <div className="quick-replies" role="group" aria-label={`Answer ${bot.name}`}>
+      <button type="button" className="quick-reply is-yes" onClick={() => answer('Yes, go ahead.')}>Yes</button>
+      <button type="button" className="quick-reply" onClick={() => answer('No, don’t.')}>No</button>
     </div>
   );
 }

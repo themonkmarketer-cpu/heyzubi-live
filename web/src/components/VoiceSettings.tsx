@@ -100,6 +100,7 @@ const USAGE_ROWS: { k: keyof XaiUsage['by']; label: string; qty: (q: number) => 
   { k: 'transcription', label: 'Voice messages & dictation', qty: (q) => `${Math.round(q)} s` },
   { k: 'spoken_reply', label: 'Spoken replies', qty: (q) => `${Math.round(q).toLocaleString()} chars` },
   { k: 'grok', label: 'Grok (summaries, Clicky, X search)', qty: (q) => `${Math.round(q).toLocaleString()} tokens` },
+  { k: 'image', label: 'Images created', qty: (q) => `${Math.round(q)}` },
 ];
 const usd = (n: number) => (n > 0 && n < 0.01 ? '<$0.01' : `$${n.toFixed(2)}`);
 
