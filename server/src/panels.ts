@@ -24,17 +24,19 @@ const ASKS: [PanelName, RegExp][] = [
   ['gmail', /\b(inbox|e-?mails?|gmail|mails?|unread)\b/i],
   ['youtube', /\byou ?tube\b/i],
   ['instagram', /\b(instagram|insta)\b/i],
+  ['linkedin', /\blinked ?in\b/i],
+  ['sheets', /\b(google ?sheets?|g ?sheets?|spreadsheets?)\b/i],
 ];
 export function openPanelsFor(userId: string, words: string) {
   const t = String(words ?? '');
   for (const [panel, re] of ASKS) if (re.test(t)) hub.emit(userId, { type: 'panel', panel, open: true });
 }
 
-export const PANEL_NAMES: Record<PanelName, string> = { gmail: 'Gmail', calendar: 'Calendar', youtube: 'YouTube', instagram: 'Instagram' };
+export const PANEL_NAMES: Record<PanelName, string> = { gmail: 'Gmail', calendar: 'Calendar', youtube: 'YouTube', instagram: 'Instagram', linkedin: 'LinkedIn', sheets: 'Google Sheets' };
 /** The window a tool argument names (Calendar when it names none we know). */
 export const panelArg = (v: unknown): PanelName => (typeof v === 'string' && v in PANEL_NAMES ? (v as PanelName) : 'calendar');
 
-/** Open or close a Calendar / Gmail / YouTube / Instagram window in the owner's app (a team member's tool, or a voice call). */
+/** Open or close a Calendar / Gmail / YouTube / Instagram / LinkedIn / Sheets window in the owner's app (a team member's tool, or a voice call). */
 export function showPanel(userId: string, panel: PanelName, open = true): { output: string; summary: string } {
   hub.emit(userId, { type: 'panel', panel, open });
   const name = PANEL_NAMES[panel];
@@ -80,12 +82,12 @@ async function wtool(slug: string, args: Record<string, unknown>, account?: stri
   return res.data ?? {};
 }
 
-export interface GoogleAccount { toolkit: 'gmail' | 'googlecalendar' | 'instagram'; id: string; status: string; isDefault: boolean; label: string }
+export interface GoogleAccount { toolkit: 'gmail' | 'googlecalendar' | 'instagram' | 'linkedin' | 'googlesheets'; id: string; status: string; isDefault: boolean; label: string }
 let acctCache: { at: number; list: GoogleAccount[] } | null = null;
-/** Zubi's connected accounts for the windows (Gmail, Calendar and Instagram), read-only. */
+/** Zubi's connected accounts for the windows (Gmail, Calendar, Instagram, LinkedIn and Sheets), read-only. */
 async function zubiAccounts(fresh = false): Promise<GoogleAccount[]> {
   if (!fresh && acctCache && Date.now() - acctCache.at < 5 * 60_000) return acctCache.list;
-  const r = await zubiComposio('COMPOSIO_MANAGE_CONNECTIONS', { toolkits: [{ name: 'gmail', action: 'list' }, { name: 'googlecalendar', action: 'list' }, { name: 'instagram', action: 'list' }] });
+  const r = await zubiComposio('COMPOSIO_MANAGE_CONNECTIONS', { toolkits: [{ name: 'gmail', action: 'list' }, { name: 'googlecalendar', action: 'list' }, { name: 'instagram', action: 'list' }, { name: 'linkedin', action: 'list' }, { name: 'googlesheets', action: 'list' }] });
   const list: GoogleAccount[] = [];
   for (const [tk, v] of Object.entries<any>(r?.data?.results ?? {})) {
     for (const a of v?.accounts ?? []) {
@@ -98,7 +100,7 @@ async function zubiAccounts(fresh = false): Promise<GoogleAccount[]> {
 }
 /** Zubi's connected Google accounts (Gmail and Calendar), read-only. */
 export async function zubiGoogleAccounts(fresh = false): Promise<GoogleAccount[]> {
-  return (await zubiAccounts(fresh)).filter((a) => a.toolkit !== 'instagram');
+  return (await zubiAccounts(fresh)).filter((a) => a.toolkit === 'gmail' || a.toolkit === 'googlecalendar');
 }
 const active = (l: GoogleAccount[], tk: GoogleAccount['toolkit']) => l.filter((a) => a.toolkit === tk && /^active$/i.test(a.status));
 
@@ -273,5 +275,66 @@ panelsApi.get('/youtube', async (c) => {
   } catch (e) {
     console.warn('[panels] youtube failed:', (e as Error)?.message ?? e);
     return c.json({ configured: true, videos: [], error: why(e) }, 502);
+  }
+});
+
+/**
+ * The owner's LinkedIn profile (name, headline, photo). LinkedIn's API lets apps read only the member's own profile,
+ * not their posts or feed, so that is all the window shows; Zubi can still write and publish a post after a yes.
+ */
+const LI_IMG = /^https:\/\/media\.licdn\.com\//i;
+const LI_LINK = /^https:\/\/www\.linkedin\.com\/in\/[\w%-]+\/?$/i;
+panelsApi.get('/linkedin', async (c) => {
+  const fresh = c.req.query('fresh') === '1';
+  try {
+    const body = await cached('li', fresh, async () => {
+      const accts = active(await zubiAccounts(fresh), 'linkedin');
+      if (!accts.length) return { connected: false };
+      const a = accts.find((x) => x.isDefault) ?? accts[0];
+      const d = await wtool('LINKEDIN_GET_MY_INFO', {}, a.id);
+      const pic = str(d.profilePicture?.displayImage);
+      const url = str(d.profileUrl) || (d.vanityName ? `https://www.linkedin.com/in/${encodeURIComponent(str(d.vanityName))}/` : '');
+      return {
+        connected: true,
+        profile: {
+          name: clip(`${str(d.localizedFirstName)} ${str(d.localizedLastName)}`.trim(), 80),
+          headline: clip(str(d.localizedHeadline), 220),
+          picture: LI_IMG.test(pic) ? pic : '',
+          url: LI_LINK.test(url) ? url : '',
+        },
+      };
+    });
+    return c.json(body);
+  } catch (e) {
+    console.warn('[panels] linkedin failed:', (e as Error)?.message ?? e);
+    return c.json({ connected: true, error: why(e) }, 502);
+  }
+});
+
+/** The owner's most recently changed Google Sheets (names and links only; no cell data is read). */
+panelsApi.get('/sheets', async (c) => {
+  const fresh = c.req.query('fresh') === '1';
+  try {
+    const body = await cached('gs', fresh, async () => {
+      const accts = active(await zubiAccounts(fresh), 'googlesheets');
+      if (!accts.length) return { connected: false, sheets: [] };
+      const a = accts.find((x) => x.isDefault) ?? accts[0];
+      const d = await wtool('GOOGLESHEETS_SEARCH_SPREADSHEETS', { max_results: 6, order_by: 'modifiedTime desc' }, a.id);
+      const sheets = ((d.spreadsheets ?? []) as any[]).slice(0, 6).map((x) => {
+        const id = str(x.id);
+        return {
+          id,
+          name: clip(str(x.name) || '(untitled)', 100),
+          at: Date.parse(str(x.modifiedTime)) || 0,
+          by: clip(str(x.lastModifyingUser?.me ? 'you' : x.lastModifyingUser?.displayName), 40),
+          link: /^[\w-]{20,}$/.test(id) ? `https://docs.google.com/spreadsheets/d/${id}/edit` : '',
+        };
+      }).filter((x) => x.link);
+      return { connected: true, account: a.label, sheets };
+    });
+    return c.json(body);
+  } catch (e) {
+    console.warn('[panels] sheets failed:', (e as Error)?.message ?? e);
+    return c.json({ connected: true, sheets: [], error: why(e) }, 502);
   }
 });

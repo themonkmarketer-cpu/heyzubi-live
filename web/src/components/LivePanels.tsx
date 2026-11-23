@@ -15,8 +15,8 @@ import '../styles/livepanels.css';
  */
 
 type PanelKey = PanelName;
-export const usePanels = create<Record<PanelKey, number | null>>(() => ({ gmail: null, calendar: null, youtube: null, instagram: null }));
-const KEYS: PanelKey[] = ['calendar', 'gmail', 'youtube', 'instagram'];
+export const usePanels = create<Record<PanelKey, number | null>>(() => ({ gmail: null, calendar: null, youtube: null, instagram: null, linkedin: null, sheets: null }));
+const KEYS: PanelKey[] = ['calendar', 'gmail', 'youtube', 'instagram', 'linkedin', 'sheets'];
 /** Open a window now (an icon click, a request, or the capability being used). */
 export const openPanel = (k: PanelKey) => usePanels.setState({ [k]: Date.now() });
 const HIDE_AFTER = 10 * 60_000;
@@ -29,7 +29,7 @@ export function CapabilityWatcher() {
   const bot = useStore((s) => s.bots.find((b) => b.isPrimary));
   const { cap } = useOrbState(bot);
   useEffect(() => {
-    const key: PanelKey | null = cap?.k === 'email' ? 'gmail' : cap?.k === 'calendar' ? 'calendar' : cap?.k === 'instagram' ? 'instagram' : null;
+    const key: PanelKey | null = cap?.k === 'email' ? 'gmail' : cap?.k === 'calendar' ? 'calendar' : cap?.k === 'instagram' ? 'instagram' : cap?.k === 'linkedin' ? 'linkedin' : cap?.k === 'sheets' ? 'sheets' : null;
     if (key) openPanel(key);
   }, [cap?.k]);
   // A fast app call can finish before the orb sees it running: any new calendar or email tool call opens its window too.
@@ -44,7 +44,7 @@ export function CapabilityWatcher() {
       if (r.createdAt < since.current) continue; // an earlier conversation's call
       const k = capFor(r.body, undefined)?.k;
       if (k === 'email') openPanel('gmail');
-      else if (k === 'calendar' || k === 'instagram') openPanel(k);
+      else if (k === 'calendar' || k === 'instagram' || k === 'linkedin' || k === 'sheets') openPanel(k);
       // The YouTube icon also lights for video making (Higgsfield, yt-dlp); only a real YouTube call opens its window.
       else if (k === 'youtube' && /youtube/i.test(`${r.body.name} ${r.body.label} ${JSON.stringify(r.body.args ?? '')}`)) openPanel('youtube');
     }
@@ -62,7 +62,7 @@ export function CapabilityWatcher() {
 
 /** The Calendar and Gmail windows: floating at the top right (drag by a title bar), like the WhatsApp window. */
 export function LivePanels() {
-  const { gmail, calendar, youtube, instagram } = usePanels();
+  const { gmail, calendar, youtube, instagram, linkedin, sheets } = usePanels();
   const waOpen = useStore((s) => s.waOpen);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
@@ -90,7 +90,7 @@ export function LivePanels() {
     }, 30_000);
     return () => clearInterval(t);
   }, []);
-  if (!gmail && !calendar && !youtube && !instagram) return null;
+  if (!gmail && !calendar && !youtube && !instagram && !linkedin && !sheets) return null;
   return (
     <div
       ref={boxRef} className={`lpanels is-floating${waOpen && !pos ? ' is-beside-wa' : ''}`} role="region" aria-label="Zubi’s windows"
@@ -101,6 +101,8 @@ export function LivePanels() {
       {gmail && <GmailPanel key={`g${gmail}`} />}
       {youtube && <YouTubePanel key={`y${youtube}`} />}
       {instagram && <InstagramPanel key={`i${instagram}`} />}
+      {linkedin && <LinkedInPanel key={`l${linkedin}`} />}
+      {sheets && <SheetsPanel key={`s${sheets}`} />}
     </div>
   );
 }
@@ -310,6 +312,72 @@ function InstagramPanel() {
           </>
         )}
       <AskZubi ask="Make an Instagram GIF about " label="Make a post with Zubi" />
+    </section>
+  );
+}
+
+interface LiProfile { name: string; headline: string; picture: string; url: string }
+function LinkedInPanel() {
+  const [data, setData] = useState<{ connected: boolean; profile?: LiProfile; error?: string } | null>(null);
+  const load = (fresh: boolean) => {
+    fetch(`/api/panels/linkedin${fresh ? '?fresh=1' : ''}`, { credentials: 'include' })
+      .then((r) => r.json()).then(setData).catch(() => setData({ connected: true, error: 'Couldn’t read LinkedIn just now.' }));
+  };
+  useEffect(() => { load(true); }, []);
+  const p = data?.profile;
+  return (
+    <section className="lpanel" aria-label="LinkedIn">
+      <PanelHead title="LINKEDIN" open="Open" href={p?.url || 'https://www.linkedin.com/feed/'} onRefresh={() => load(true)} onClose={() => usePanels.setState({ linkedin: null })} />
+      {!data ? <p className="lpanel__mut">Loading your LinkedIn…</p>
+        : !data.connected ? <p className="lpanel__mut">Zubi has no LinkedIn account connected in her Composio. Ask her to connect LinkedIn.</p>
+        : data.error ? <p className="lpanel__mut">{data.error}</p>
+        : p && (
+          <>
+            <div className="lig__prof">
+              {p.picture ? <img src={p.picture} alt="" referrerPolicy="no-referrer" /> : <span className="lig__pic" />}
+              <div><b>{p.name}</b>{p.url && <small>{p.url.replace(/^https:\/\/www\./, '')}</small>}</div>
+            </div>
+            {p.headline && <p className="lli__head">{p.headline}</p>}
+            <p className="lpanel__mut">LinkedIn doesn’t let apps read your posts or feed. Zubi can write a post (with an image) and publish it after your yes.</p>
+          </>
+        )}
+      <AskZubi ask="Write a LinkedIn post about " label="Write a post with Zubi" />
+    </section>
+  );
+}
+
+interface Sheet { id: string; name: string; at: number; by: string; link: string }
+function SheetsPanel() {
+  const [data, setData] = useState<{ connected: boolean; sheets: Sheet[]; account?: string; error?: string } | null>(null);
+  const load = (fresh: boolean) => {
+    fetch(`/api/panels/sheets${fresh ? '?fresh=1' : ''}`, { credentials: 'include' })
+      .then((r) => r.json()).then(setData).catch(() => setData({ connected: true, sheets: [], error: 'Couldn’t read Google Sheets just now.' }));
+  };
+  useEffect(() => { load(true); }, []);
+  return (
+    <section className="lpanel" aria-label="Google Sheets">
+      <PanelHead title="SHEETS" open="Open" href="https://docs.google.com/spreadsheets/" onRefresh={() => load(true)} onClose={() => usePanels.setState({ sheets: null })} />
+      {!data ? <p className="lpanel__mut">Loading your sheets…</p>
+        : !data.connected ? <p className="lpanel__mut">Zubi has no Google Sheets account connected in her Composio. Ask her to connect Google Sheets.</p>
+        : data.error ? <p className="lpanel__mut">{data.error}</p>
+        : data.sheets.length === 0 ? <p className="lpanel__mut">No spreadsheets yet.</p>
+        : (
+          <>
+            {data.account && <div className="lpanel__acct">{data.account} · recently changed</div>}
+            <ul className="lpanel__list">
+              {data.sheets.map((x) => (
+                <li key={x.id} className="lsheet">
+                  <img src="/icons/integrations/google-sheets.svg" alt="" />
+                  <div className="lmedia__body">
+                    <a href={x.link} target="_blank" rel="noreferrer noopener" className="lmedia__title">{x.name}</a>
+                    <span className="lmedia__meta">{ago(x.at)} ago{x.by ? ` · by ${x.by}` : ''}</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      <AskZubi ask="Build a Google Sheet: " label="Build a sheet with Zubi" />
     </section>
   );
 }

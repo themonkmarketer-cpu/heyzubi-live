@@ -219,7 +219,7 @@ export interface Toolkit {
 
 /** A WhatsApp message a team member drafted; the owner checks it in the WhatsApp window and confirms there. */
 /** The floating windows the app can open for the owner (besides WhatsApp). */
-export type PanelName = 'gmail' | 'calendar' | 'youtube' | 'instagram';
+export type PanelName = 'gmail' | 'calendar' | 'youtube' | 'instagram' | 'linkedin' | 'sheets';
 
 export interface WaDraft {
   id: string;

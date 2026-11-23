@@ -60,3 +60,8 @@ a.lmedia__title:hover { text-decoration: underline; }
 /* With the WhatsApp window open (bottom right, 420px), sit to its left instead of under it. */
 .lpanels.is-floating.is-beside-wa { right: 460px; }
 @media (max-width: 900px) { .lpanels.is-floating.is-beside-wa { right: 24px; } }
+
+/* LinkedIn and Google Sheets windows */
+.lli__head { margin: 0 0 6px; font-size: 12.5px; line-height: 1.4; color: var(--color-text-secondary); }
+.lsheet { display: flex; gap: 10px; align-items: center; padding: 7px 8px; border-radius: 10px; background: var(--color-bg-subtle); }
+.lsheet > img { width: 22px; height: 22px; flex-shrink: 0; }
