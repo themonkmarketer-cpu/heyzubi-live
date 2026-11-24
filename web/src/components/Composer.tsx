@@ -8,7 +8,7 @@ import { Menu } from './Menu';
 import { endCall, isCallActive, startCall, useVoice } from '../voice/call';
 import { useDictation } from '../voice/dictation';
 import { speakReply, stopSpeaking, useSpeak } from '../voice/speak';
-import { AudioLines, Camera, PhoneOff, Speech } from 'lucide-react';
+import { AudioLines, Camera, ImagePlus, LayoutGrid, PhoneOff, Speech, SquarePen } from 'lucide-react';
 import { toggleCamera, useCamera } from './CameraBubble';
 
 const MAX_H = 200;
@@ -196,9 +196,9 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
                 placement="above"
                 onClose={() => setMenu(false)}
                 items={[
-                  { label: 'Attach a picture', onSelect: () => picRef.current?.click() },
-                  { label: 'New conversation', onSelect: fresh },
-                  { label: 'Connect apps', onSelect: () => setModal('apps') },
+                  { label: 'Attach a picture', icon: <ImagePlus size={16} strokeWidth={1.8} />, onSelect: () => picRef.current?.click() },
+                  { label: 'New conversation', icon: <SquarePen size={16} strokeWidth={1.8} />, onSelect: fresh },
+                  { label: 'Connect apps', icon: <LayoutGrid size={16} strokeWidth={1.8} />, onSelect: () => setModal('apps') },
                 ]}
               />
             )}
