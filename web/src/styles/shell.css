@@ -91,3 +91,11 @@
 .update-row:disabled .update-row__icon svg { animation: update-spin 1s linear infinite; }
 @keyframes update-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .update-row:disabled .update-row__icon svg { animation: none; } }
+/* The quiet Updates line (UpdateRow.tsx), as Vello's sidebar row: "Up to date" and the release time; click to check. */
+.update-line { display: flex; align-items: center; gap: 6px; margin: 0 16px 6px; padding: 4px 6px; border-radius: 8px; flex-shrink: 0;
+  font-size: 11.5px; color: var(--color-text-tertiary); text-align: left; }
+.update-line:hover { background: var(--color-bg-hover); color: var(--color-text-secondary); }
+.update-line__text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.update-line__when { color: var(--color-text-quaternary); white-space: nowrap; }
+.update-line.is-checking svg { animation: update-spin 1s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .update-line.is-checking svg { animation: none; } }
