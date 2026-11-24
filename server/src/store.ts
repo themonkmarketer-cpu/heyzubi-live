@@ -24,6 +24,7 @@ export function toBot(r: any): Bot {
     avatarShape: r.avatar_shape,
     avatarColor: r.avatar_color,
     avatarProp: r.avatar_prop ?? null,
+    hermesProfile: r.engine === 'primary' ? 'default' : r.hermes_profile ?? null,
     mode: r.mode,
     isPrimary: !!r.is_primary,
     kind: r.kind === 'room' ? 'room' : 'agent',

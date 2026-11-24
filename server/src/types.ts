@@ -20,6 +20,8 @@ export interface Bot {
   avatarColor: AvatarColor;
   /** The prop in its avatar (avatar-props.ts): a prop id, 'none', or null = picked from its role. */
   avatarProp: string | null;
+  /** Its Hermes profile ('default' for the main bot), or null when its agent is not a Hermes profile. */
+  hermesProfile?: string | null;
   mode: 'personal' | 'teammate';
   isPrimary: boolean;
   /** 'room' = group chat (members answer instead of the bot itself). */

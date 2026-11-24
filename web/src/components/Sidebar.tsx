@@ -45,6 +45,22 @@ function GenerationsIsland() {
   );
 }
 
+/** Sidebar entry for the Board: Hermes's own task board, as cards in columns. */
+function BoardIsland() {
+  const view = useConfigUI((s) => s.view);
+  const on = view === 'board';
+  return (
+    <button type="button" className={`sidebar-island${on ? ' is-active' : ''}`} onClick={() => useConfigUI.getState().setView(on ? 'chat' : 'board')} title="Board" aria-pressed={on}>
+      <span className="sidebar-island__icon">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <rect x="3" y="4" width="18" height="16" rx="3" /><path d="M9 4v16M15 4v16" /><path d="M5.5 8h1.5M11.5 8h1M17.5 8h1" />
+        </svg>
+      </span>
+      <span className="sidebar-island__label">Board</span>
+    </button>
+  );
+}
+
 function previewFor(bot: Bot, running: boolean, awaiting: string | null) {
   if (awaiting) return `Waiting for you: ${awaiting}`;
   if (running && !bot.lastPreview) return 'Working…';
@@ -111,6 +127,7 @@ export function Sidebar() {
       <div className="sidebar__scroll">
         <TasksIsland />
         <GenerationsIsland />
+        <BoardIsland />
         {primary && (
           <div className="pinned">
             <button type="button" className={`pinned__tile${selectedBotId === primary.id ? ' is-selected' : ''}`} onClick={() => selectBot(primary.id)} title={displayName(primary)}>

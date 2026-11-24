@@ -1,3 +1,4 @@
+import { kanbanApi } from './routes-kanban.js';
 import { syncAllIdentities } from './hermes-identity.js';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
@@ -56,6 +57,8 @@ app.get('/api/health', (c) => c.json({ ok: true, engine: 'hermes' }));
 app.route('/mcp', mcpApi);
 app.route('/api/checkins', checkinsApi);
 app.route('/api/rooms', roomsApi);
+// The Board view: Hermes's own Kanban (routes-kanban.ts).
+app.route('/api/kanban', kanbanApi);
 app.route('/api', api);
 app.route('/api', configApi);
 
