@@ -76,6 +76,17 @@
 .account__name { font-size: 14px; font-weight: 500; line-height: 20px; letter-spacing: 0.14px; color: var(--color-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* "Update ready" (UpdateRow.tsx): only there when a new version is out; one click reloads into it. */
+/* The views at the bottom of the sidebar (Sidebar.tsx): two to a row, Capabilities across the top, opening upwards. */
+.sidebar-nav { position: relative; display: flex; flex-direction: column; gap: 4px; padding: 6px 12px 8px; flex-shrink: 0; max-height: 70%; overflow-y: auto; scrollbar-width: none; }
+.sidebar-nav::before { content: ''; position: sticky; display: block; top: 0; height: 1px; margin: -6px -12px 5px; background: var(--color-border-tertiary); }
+.sidebar-nav .sidebar-island { margin-bottom: 0; }
+.sidebar-nav__row { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.sidebar-nav__row .sidebar-island { min-width: 0; gap: 6px; padding: 0 8px 0 4px; }
+.sidebar-nav__row .sidebar-island__icon { width: 28px; flex-shrink: 0; }
+.sidebar-nav__row .sidebar-island__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar.is-collapsed .sidebar-nav { padding: 6px 8px 8px; }
+.sidebar.is-collapsed .sidebar-nav__row { grid-template-columns: 1fr; }
+.sidebar.is-collapsed .sidebar-nav__row .sidebar-island { padding: 0; }
 .update-row { display: flex; align-items: center; gap: 10px; margin: 0 12px 8px; padding: 8px 10px; border-radius: 12px; text-align: left; flex-shrink: 0;
   background: color-mix(in srgb, var(--color-primary) 10%, transparent); border: 1px solid color-mix(in srgb, var(--color-primary) 35%, transparent); color: var(--color-text-primary);
   transition: background 150ms cubic-bezier(0.2, 0.8, 0.2, 1); }

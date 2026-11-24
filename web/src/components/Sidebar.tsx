@@ -88,8 +88,9 @@ function BoardIsland() {
 }
 
 /**
- * Capabilities: Zubi's orb and the ring of what it can do, shown right under this entry. The entry opens and closes
- * it (remembered per browser); in the narrow sidebar it widens the sidebar and opens it.
+ * Capabilities: Zubi's orb and the ring of what it can do. It sits at the top of the nav at the bottom of the sidebar
+ * and opens upwards, above this entry. The entry opens and closes it (remembered per browser); in the narrow sidebar
+ * it widens the sidebar and opens it.
  */
 function CapabilitiesIsland() {
   const collapsed = useStore((s) => s.sidebarCollapsed);
@@ -102,6 +103,7 @@ function CapabilitiesIsland() {
   const shown = open && !collapsed;
   return (
     <>
+      {shown && <div id="sidebar-capabilities" className="sidebar-caps"><SidebarOrb /></div>}
       <button type="button" className={`sidebar-island${shown ? ' is-open' : ''}`} onClick={click} title={shown ? 'Hide capabilities' : 'Show capabilities'}
         aria-expanded={shown} aria-controls="sidebar-capabilities">
         <span className="sidebar-island__icon">
@@ -110,9 +112,8 @@ function CapabilitiesIsland() {
           </svg>
         </span>
         <span className="sidebar-island__label">Capabilities</span>
-        <span className="sidebar-island__chev" aria-hidden><Icon name={shown ? 'chev_down' : 'chev_right'} size={12} opacity={0.6} /></span>
+        <span className={`sidebar-island__chev${shown ? '' : ' is-up'}`} aria-hidden><Icon name="chev_down" size={12} opacity={0.6} /></span>
       </button>
-      {shown && <div id="sidebar-capabilities" className="sidebar-caps"><SidebarOrb /></div>}
     </>
   );
 }
@@ -182,11 +183,6 @@ export function Sidebar() {
       </div>
 
       <div className="sidebar__scroll">
-        <TasksIsland />
-        <RoutinesIsland />
-        <BoardIsland />
-        <CapabilitiesIsland />
-        <GenerationsIsland />
         {primary && (
           <div className="pinned">
             <button type="button" className={`pinned__tile${selectedBotId === primary.id ? ' is-selected' : ''}`} onClick={() => selectBot(primary.id)} title={displayName(primary)}>
@@ -221,6 +217,20 @@ export function Sidebar() {
           )}
         </div>
       </div>
+
+      {/* The views, at the bottom just above Updates, built upwards: Routines and Tasks, then Kanban and Gallery, then
+          Capabilities (its orb opens upwards). Two to a row; one per row in the narrow sidebar. */}
+      <nav className="sidebar-nav" aria-label="Views">
+        <CapabilitiesIsland />
+        <div className="sidebar-nav__row">
+          <BoardIsland />
+          <GenerationsIsland />
+        </div>
+        <div className="sidebar-nav__row">
+          <RoutinesIsland />
+          <TasksIsland />
+        </div>
+      </nav>
 
       <UpdateRow collapsed={collapsed} />
 
