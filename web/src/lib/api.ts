@@ -22,7 +22,7 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
 
 export interface AppsResponse { apps: Toolkit[]; connected: string[]; categories: string[]; total: number }
 
-export interface RoomMember { id: string; name: string; label: string; avatarShape: string; avatarColor: string }
+export interface RoomMember { id: string; name: string; label: string; description?: string; avatarShape: string; avatarColor: string; avatarProp?: string | null }
 
 export const api = {
   me: () => req<{ user: User | null; devLogin: boolean }>('GET', '/auth/me'),

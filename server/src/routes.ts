@@ -10,6 +10,7 @@ import { allLive, appendRow, clearConversation, emitBot, getBot, getBotRow, getR
 import { enqueue, interrupt, resolveApproval } from './agent/loop.js';
 import { computerState, ensureComputer, forgetBotFiles, readyScreen, refreshComputer, releaseScreen, suspendComputer } from './computer.js';
 import { assignEngine, provisionEngine, removeEngine, syncPersona } from './engine.js';
+import { isPropId } from './avatar-props.js';
 import { deleteMemory, listMemories, memoryBot } from './engine-memory.js';
 import { orgo } from './orgo.js';
 import { catalog, connectedToolkits, deleteConnection, disconnect, googleProfile, startConnect, startGoogleLogin, toolkitInfo } from './composio.js';
@@ -34,7 +35,7 @@ import { desktopApi, desktopDevicesApi } from './desktop.js';
 export const api = new Hono<AuthVars>();
 
 const SHAPES: AvatarShape[] = ['blob', 'pebble', 'bean', 'egg', 'squircle', 'tablet', 'capsule', 'cylinder', 'hex', 'gem', 'crystal', 'wedge', 'shield', 'dome', 'arch', 'cloud', 'teardrop', 'leaf', 'square', 'sparkle', 'clover', 'flower', 'heart', 'house', 'star'];
-const COLORS: AvatarColor[] = ['black', 'brown', 'red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'violet', 'magenta', 'gray'];
+const COLORS: AvatarColor[] = ['black', 'brown', 'red', 'orange', 'yellow', 'green', 'lime', 'cyan', 'blue', 'violet', 'magenta', 'gray'];
 
 function hashPick<T>(id: string, list: T[]): T {
   let h = 0x811c9dc5;
@@ -285,7 +286,12 @@ api.patch('/bots/:id', async (c) => {
   const b = ownBot(c.get('user').id, c.req.param('id'));
   if (!b) return c.json({ error: 'not found' }, 404);
   const p = await c.req.json();
-  const cols: Record<string, string> = { name: 'name', label: 'label', description: 'description', instructions: 'instructions', avatarShape: 'avatar_shape', avatarColor: 'avatar_color', mode: 'mode', effort: 'effort', pinned: 'pinned', voice: 'voice', voiceSpeed: 'voice_speed', voiceLanguage: 'voice_language', voiceEngine: 'voice_engine', geminiVoice: 'gemini_voice', voiceMsgEngine: 'voice_msg_engine', sarvamVoice: 'sarvam_voice' };
+  // The avatar's prop: a known prop, 'none', or 'auto' / null (picked from the role).
+  if (p.avatarProp !== undefined) {
+    if (p.avatarProp === null || p.avatarProp === 'auto') p.avatarProp = null;
+    else if (p.avatarProp !== 'none' && !isPropId(p.avatarProp)) return c.json({ error: 'unknown prop' }, 400);
+  }
+  const cols: Record<string, string> = { name: 'name', label: 'label', description: 'description', instructions: 'instructions', avatarShape: 'avatar_shape', avatarColor: 'avatar_color', avatarProp: 'avatar_prop', mode: 'mode', effort: 'effort', pinned: 'pinned', voice: 'voice', voiceSpeed: 'voice_speed', voiceLanguage: 'voice_language', voiceEngine: 'voice_engine', geminiVoice: 'gemini_voice', voiceMsgEngine: 'voice_msg_engine', sarvamVoice: 'sarvam_voice' };
   if (p.team !== undefined || p.isManager !== undefined) {
     if (b.is_primary) return c.json({ error: `${b.name} is the CEO, above every team.` }, 400);
     const team = p.team !== undefined ? (String(p.team ?? '').replace(/\s+/g, ' ').trim().slice(0, 40) || null) : b.team;
@@ -305,7 +311,8 @@ api.patch('/bots/:id', async (c) => {
   if (b.kind !== 'room') {
     if (['name', 'label', 'description'].some((k) => p[k] !== undefined)) syncPersona(b.id);
     // Its desktop carries its name and colour: dress the screen again, if it has one.
-    const looks = ['name', 'label', 'avatarShape', 'avatarColor'].some((k) => p[k] !== undefined);
+    // The prop can follow the role or description, so those redress the screen too.
+    const looks = ['name', 'label', 'description', 'avatarShape', 'avatarColor', 'avatarProp'].some((k) => p[k] !== undefined);
     if (looks && db.prepare('SELECT 1 FROM screens WHERE bot_id=?').get(b.id)) {
       readyScreen(b.user_id, b.id, { redress: true }).catch((e) => console.warn('[computer] redress failed', e?.message ?? e));
     }

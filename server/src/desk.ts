@@ -2,8 +2,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { box, displayFor } from './box.js';
-import { SHAPES } from './avatar-shapes.js';
-import type { AvatarShape } from './types.js';
+import { avatarMarkup, lookOf, type PropId } from './avatar-props.js';
 import { ZUBI_MASCOT_SVG, ZUBI_VIOLET } from './zubi-mascot.js';
 
 /**
@@ -16,7 +15,7 @@ import { ZUBI_MASCOT_SVG, ZUBI_VIOLET } from './zubi-mascot.js';
  * computer, so it works the same through Orgo's API and with HQ_LOCAL=1.
  */
 
-export interface DeskBot { id: string; name: string; label: string; avatarShape: string; avatarColor: string; /** Main bot: drawn as Zubi. */ mascot?: boolean }
+export interface DeskBot { id: string; name: string; label: string; avatarShape: string; avatarColor: string; /** Main bot: drawn as Zubi. */ mascot?: boolean; /** The prop it holds (avatar-props.ts). */ prop?: PropId | null }
 
 const ROOT = '/opt/hq';
 const SCRIPT = `${ROOT}/hq-screen.py`;
@@ -149,7 +148,7 @@ export function ensureDeskBase(): Promise<void> {
 type Rgb = [number, number, number];
 
 const COLOR_HEX: Record<string, string> = {
-  black: '#000000', brown: '#A06B39', red: '#FB2B3E', orange: '#FD690F', yellow: '#F59312', green: '#14C16F',
+  black: '#000000', brown: '#A06B39', red: '#FB2B3E', orange: '#FD690F', yellow: '#F59312', green: '#14C16F', lime: '#A6C83A',
   cyan: '#13B7A2', blue: '#1E86FC', violet: '#8F59F9', magenta: '#F93498', gray: '#959595',
 };
 
@@ -271,18 +270,11 @@ function wallpaperSvg(p: Palette, seed: string): string {
 // ---------------------------------------------------------------- avatar
 
 /** The bot's character (the same drawing as the web app's BotAvatar), on a white sticker edge. */
-function avatarSvg(shape: string, fill: string): string {
-  const def = SHAPES[shape as AvatarShape] ?? SHAPES.blob;
-  const safe = (s: string) => /^[\w\s.,\-+]*$/.test(s);
-  if (!def || !safe(def.d)) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><circle cx="24" cy="24" r="22" fill="#fff"/><circle cx="24" cy="24" r="19" fill="${fill}"/></svg>`;
-  }
-  const { y, dx, s } = def.eyes;
-  const eyes = [-1, 1].map((side) => {
-    const cx = 50 + side * dx;
-    return `<ellipse cx="${cx}" cy="${y}" rx="${7 * s}" ry="${9 * s}" fill="#fff"/><circle cx="${cx + 1.1 * s}" cy="${y + 2 * s}" r="${4 * s}" fill="#1C1C1C"/>`;
-  }).join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="4 4 92 92"><path d="${def.d}" fill="#fff" stroke="#fff" stroke-width="6" stroke-linejoin="round"/><path d="${def.d}" fill="${fill}"/>${eyes}</svg>`;
+function avatarSvg(shape: string, fill: string, prop: PropId | null = null): string {
+  // The same character as in the app (avatar-props.ts), with a white sticker edge round its body.
+  const look = lookOf(shape, prop);
+  const [x, y, w, h] = look.box;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x - 4} ${y - 4} ${w + 8} ${h + 8}">${avatarMarkup(look, fill, { sticker: true })}</svg>`;
 }
 
 // ---------------------------------------------------------------- the look of one screen
@@ -295,7 +287,7 @@ function lookFor(bot: DeskBot, manageChrome: boolean): { stamp: string; payload:
     manageChrome,
     bot: { id: bot.id, name: bot.name, label: bot.label ?? '', avatarShape: bot.avatarShape, avatarColor: bot.avatarColor },
     colors: { accent: p.accent, ink: p.ink, wash: p.wash, washDeep: p.washDeep },
-    avatarSvg: bot.mascot ? ZUBI_MASCOT_SVG : avatarSvg(bot.avatarShape, hex),
+    avatarSvg: bot.mascot ? ZUBI_MASCOT_SVG : avatarSvg(bot.avatarShape, hex, bot.prop ?? null),
     wallSvg: wallpaperSvg(p, bot.id),
   };
   const stamp = sha(`${bundle().hash}\n${JSON.stringify(look)}`).slice(0, 20);

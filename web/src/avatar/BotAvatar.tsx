@@ -2,6 +2,7 @@ import type { AvatarColor, AvatarShape, Bot } from '@shared/types';
 import { palette } from '../lib/colors';
 import { Icon } from '../components/Icon';
 import { SHAPES, type ShapeDef } from '@shared/avatar-shapes';
+import { avatarMarkup, lookOf, propFor, type PropId } from '@shared/avatar-props';
 import zubiMark from '../assets/zubi-live.svg';
 
 export function shapeDef(shape: AvatarShape | string): ShapeDef {
@@ -23,50 +24,28 @@ interface Props {
   title?: string;
   /** Draw the HeyZubi mascot (Zubi) instead of the shape: used for the main bot. */
   mascot?: boolean;
+  /** The character it is drawn as (a body and a prop for its job, as the HeyZubi cast); none = its plain shape. */
+  prop?: PropId | null;
 }
 
-/** The part of the 100×100 drawing box that maps onto the slot. */
-const VIEW = { x: 8, w: 84 };
-const PUPIL_MIN_SIZE = 26;
-/** HeyZubi eye colour (brand.json color.props.eye). */
-const INK = '#0B0A0F';
+/** Avatars this big blink and sway their prop, as the cast does in the HeyZubi deck. Smaller ones stay still. */
+const ALIVE_MIN_SIZE = 36;
 
-function Eyes({ def, size }: { def: ShapeDef; size: number }) {
-  const { y, dx, s } = def.eyes;
-  const pupils = size >= PUPIL_MIN_SIZE;
-  return (
-    <g>
-      {[-1, 1].map((side) => {
-        const cx = 50 + side * dx;
-        return (
-          <g key={side}>
-            <ellipse cx={cx} cy={y} rx={7 * s} ry={9 * s} fill="#FFFFFF" />
-            {pupils && <circle cx={cx + 1.1 * s} cy={y + 2 * s} r={4 * s} fill={INK} />}
-            {pupils && <circle cx={cx + 2.5 * s} cy={y + 0.5 * s} r={1.4 * s} fill="#FFFFFF" />}
-          </g>
-        );
-      })}
-    </g>
-  );
-}
-
-export function BotAvatar({ shape, color, size, star, ring, className, title, mascot }: Props) {
-  const def = shapeDef(shape);
+export function BotAvatar({ shape, color, size, star, ring, className, title, mascot, prop }: Props) {
+  const look = lookOf(shape, prop);
   const fill = palette(color).fill;
-  const unit = VIEW.w / size; // viewBox units per CSS px
+  const [, , w] = look.box;
+  const alive = !mascot && size >= ALIVE_MIN_SIZE;
   return (
-    <span className={`bot-avatar ${className ?? ''}`} style={{ width: size, height: size }} title={title} role="img" aria-label={title}>
+    <span className={`bot-avatar${alive ? ' is-alive' : ''} ${className ?? ''}`} style={{ width: size, height: size }} title={title} role="img" aria-label={title}>
       {mascot ? (
         // The mark's own viewBox has 10 units of padding; scale it up a little so Zubi fills the slot like a shape does.
         <img src={zubiMark} alt="" width={size} height={size} draggable={false}
           style={{ position: 'absolute', inset: 0, width: size, height: size, transform: 'scale(1.18)', pointerEvents: 'none' }} />
       ) : (
-      <svg width={size} height={size} viewBox={`${VIEW.x} ${VIEW.x} ${VIEW.w} ${VIEW.w}`} style={{ position: 'absolute', inset: 0, overflow: 'visible' }} aria-hidden>
-        {ring && <path d={def.d} fill="#1C1C1C3D" stroke="#1C1C1C3D" strokeWidth={unit * 2 * 3.4} strokeLinejoin="round" />}
-        {ring && <path d={def.d} fill="#FFFFFF" stroke="#FFFFFF" strokeWidth={unit * 2 * 2.4} strokeLinejoin="round" />}
-        <path d={def.d} fill={fill} />
-        <Eyes def={def} size={size} />
-      </svg>
+        // The markup is our own constant drawing (avatar-props.ts) and a palette colour, never user text.
+        <svg width={size} height={size} viewBox={look.box.join(' ')} style={{ position: 'absolute', inset: 0, overflow: 'visible' }} aria-hidden
+          dangerouslySetInnerHTML={{ __html: avatarMarkup(look, fill, ring ? { ring: w / size } : {}) }} />
       )}
       {star && (
         <span className="bot-avatar__star" style={{ width: size * 0.2667, height: size * 0.2667 }}>
@@ -77,6 +56,8 @@ export function BotAvatar({ shape, color, size, star, ring, className, title, ma
   );
 }
 
-export function BotAvatarFor({ bot, size, star, className }: { bot: Pick<Bot, 'avatarShape' | 'avatarColor' | 'name'> & { isPrimary?: boolean }; size: number; star?: boolean; className?: string }) {
-  return <BotAvatar shape={bot.avatarShape} color={bot.avatarColor} size={size} star={star} className={className} title={bot.name} mascot={!!bot.isPrimary} />;
+type AvatarBot = Pick<Bot, 'avatarShape' | 'avatarColor' | 'name'> & { isPrimary?: boolean; label?: string; description?: string; avatarProp?: string | null };
+
+export function BotAvatarFor({ bot, size, star, className }: { bot: AvatarBot; size: number; star?: boolean; className?: string }) {
+  return <BotAvatar shape={bot.avatarShape} color={bot.avatarColor} size={size} star={star} className={className} title={bot.name} mascot={!!bot.isPrimary} prop={propFor(bot)} />;
 }

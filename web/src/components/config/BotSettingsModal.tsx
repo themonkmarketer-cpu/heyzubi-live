@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { AvatarColor, AvatarShape, Bot, Memory, Routine, Skill } from '@shared/types';
 import { BotAvatar, BotAvatarFor, PICKER_SHAPES } from '../../avatar/BotAvatar';
+import { PROP_IDS, PROPS, propFor, type PropId } from '@shared/avatar-props';
 import { COLOR_ORDER, botVars, palette } from '../../lib/colors';
 import { configApi, type AgentSkill, type BotSettingsBundle } from '../../lib/configApi';
 import { api } from '../../lib/api';
@@ -88,8 +89,8 @@ export function BotSettingsModal() {
 
 // ---------------------------------------------------------------------------
 
-type Draft = Pick<Bot, 'name' | 'label' | 'description' | 'instructions' | 'avatarShape' | 'avatarColor' | 'effort' | 'mode'>;
-const draftOf = (b: Bot): Draft => ({ name: b.name, label: b.label, description: b.description, instructions: b.instructions, avatarShape: b.avatarShape, avatarColor: b.avatarColor, effort: b.effort, mode: b.mode });
+type Draft = Pick<Bot, 'name' | 'label' | 'description' | 'instructions' | 'avatarShape' | 'avatarColor' | 'avatarProp' | 'effort' | 'mode'>;
+const draftOf = (b: Bot): Draft => ({ name: b.name, label: b.label, description: b.description, instructions: b.instructions, avatarShape: b.avatarShape, avatarColor: b.avatarColor, avatarProp: b.avatarProp ?? null, effort: b.effort, mode: b.mode });
 
 /** The chat wallpaper (it is the same for every chat): what's on now, and the picker, opened over the chat. */
 function WallpaperRow({ onOpen }: { onOpen: () => void }) {
@@ -142,7 +143,7 @@ function GeneralTab({ bot, onClose }: { bot: Bot; onClose: () => void }) {
     <div className="cfg-page">
       <section className="cfg-section">
         <div className="cfg-look">
-          <BotAvatar shape={draft.avatarShape} color={draft.avatarColor} size={72} />
+          <BotAvatar shape={draft.avatarShape} color={draft.avatarColor} size={72} mascot={bot.isPrimary} prop={propFor(draft)} />
           <div className="cfg-look__text">
             <div className="cfg-look__name">{draft.name || 'New team member'}</div>
             <button type="button" className="cfg-btn cfg-btn--secondary" onClick={() => setPicker(!picker)} aria-expanded={picker}>
@@ -150,7 +151,8 @@ function GeneralTab({ bot, onClose }: { bot: Bot; onClose: () => void }) {
             </button>
           </div>
         </div>
-        {picker && <LookPicker shape={draft.avatarShape} color={draft.avatarColor} onShape={(s) => put('avatarShape', s)} onColor={(c) => put('avatarColor', c)} />}
+        {picker && !bot.isPrimary && <PropPicker draft={draft} onProp={(v) => put('avatarProp', v)} />}
+        {picker && <LookPicker shape={draft.avatarShape} color={draft.avatarColor} showShapes={bot.isPrimary || !propFor(draft)} onShape={(s) => put('avatarShape', s)} onColor={(c) => put('avatarColor', c)} />}
       </section>
 
       <section className="cfg-section cfg-grid">
@@ -242,10 +244,10 @@ function GeneralTab({ bot, onClose }: { bot: Bot; onClose: () => void }) {
 
 const SHAPE_ROWS = [PICKER_SHAPES.slice(0, 7), PICKER_SHAPES.slice(7)];
 
-function LookPicker({ shape, color, onShape, onColor }: { shape: AvatarShape; color: AvatarColor; onShape: (s: AvatarShape) => void; onColor: (c: AvatarColor) => void }) {
+function LookPicker({ shape, color, showShapes, onShape, onColor }: { shape: AvatarShape; color: AvatarColor; showShapes: boolean; onShape: (s: AvatarShape) => void; onColor: (c: AvatarColor) => void }) {
   return (
     <div className="cfg-picker">
-      <div className="shape-grid" role="radiogroup" aria-label="Character shape">
+      {showShapes && <div className="shape-grid" role="radiogroup" aria-label="Character shape">
         {SHAPE_ROWS.map((row, i) => (
           <div key={i} className="shape-grid__row">
             {row.map((s) => (
@@ -255,7 +257,7 @@ function LookPicker({ shape, color, onShape, onColor }: { shape: AvatarShape; co
             ))}
           </div>
         ))}
-      </div>
+      </div>}
       <div className="swatches" role="radiogroup" aria-label="Character color">
         <div className="swatches__row">
           {COLOR_ORDER.map((c) => (
@@ -264,6 +266,42 @@ function LookPicker({ shape, color, onShape, onColor }: { shape: AvatarShape; co
             </button>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The character the team member is drawn as: a body and a prop for its job, as the HeyZubi cast (Iris and her
+ * paintbrush). "Auto" picks it from the role, name or description, so it follows when the role changes; "Plain" keeps
+ * the shape chosen below.
+ */
+function PropPicker({ draft, onProp }: { draft: Draft; onProp: (v: string | null) => void }) {
+  const auto = propFor({ ...draft, avatarProp: null });
+  const current = propFor(draft);
+  const choice = draft.avatarProp ?? null;
+  const cell = (key: string, value: string | null, prop: PropId | null, label: string) => {
+    const on = choice === value;
+    return (
+      <button key={key} type="button" role="radio" aria-checked={on} aria-label={label} title={label} className="shape-cell" onClick={() => onProp(value)}>
+        <BotAvatar shape={draft.avatarShape} color={draft.avatarColor} size={34} ring={on} prop={prop} />
+      </button>
+    );
+  };
+  const all = [
+    cell('auto', null, auto, `Auto: ${auto ? PROPS[auto].label.toLowerCase() : 'nothing'}, picked from the role`),
+    cell('none', 'none', null, 'Plain: the shape you pick below'),
+    ...PROP_IDS.map((id) => cell(id, id, id, `${PROPS[id].label}: ${PROPS[id].means}`)),
+  ];
+  return (
+    <div className="cfg-picker">
+      <div className="cfg-row__sub" style={{ textAlign: 'center' }}>
+        {current ? <>The <b>{PROPS[current].label.toLowerCase()}</b> character, for {PROPS[current].means}</> : 'A plain shape, no prop'}
+        {choice === null ? ' (picked from the role)' : ''}
+      </div>
+      <div className="shape-grid" role="radiogroup" aria-label="Character">
+        <div className="shape-grid__row">{all.slice(0, 8)}</div>
+        <div className="shape-grid__row">{all.slice(8)}</div>
       </div>
     </div>
   );

@@ -6,7 +6,7 @@ export type AvatarShape =
   | 'square' | 'sparkle' | 'clover' | 'flower' | 'heart' | 'house' | 'star';
 
 export type AvatarColor =
-  | 'black' | 'brown' | 'red' | 'orange' | 'yellow' | 'green' | 'cyan' | 'blue' | 'violet' | 'magenta' | 'gray';
+  | 'black' | 'brown' | 'red' | 'orange' | 'yellow' | 'green' | 'lime' | 'cyan' | 'blue' | 'violet' | 'magenta' | 'gray';
 
 export interface User { id: string; email: string; name: string; avatarUrl: string | null }
 
@@ -18,6 +18,8 @@ export interface Bot {
   instructions: string;
   avatarShape: AvatarShape;
   avatarColor: AvatarColor;
+  /** The prop in its avatar (avatar-props.ts): a prop id, 'none', or null = picked from its role. */
+  avatarProp: string | null;
   mode: 'personal' | 'teammate';
   isPrimary: boolean;
   /** 'room' = group chat (members answer instead of the bot itself). */

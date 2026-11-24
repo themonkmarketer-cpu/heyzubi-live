@@ -165,6 +165,8 @@ addColumn('bots', 'engine_port', 'INTEGER');
 // before this have none and keep their engine in ENGINES_DIR.
 addColumn('bots', 'hermes_profile', 'TEXT');
 addColumn('bots', 'handback_at', 'INTEGER');
+// The prop a team member holds in its avatar (a paintbrush, code brackets…): a prop id, 'none', or NULL = picked from its role.
+addColumn('bots', 'avatar_prop', 'TEXT');
 addColumn('screens', 'width', 'INTEGER');
 addColumn('screens', 'height', 'INTEGER');
 // JSON list of the tools an approval card asked about: "Always allow" stores a policy for each of

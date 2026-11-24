@@ -83,6 +83,14 @@ a { color: inherit; }
 
 .bot-avatar { position: relative; display: inline-block; flex-shrink: 0; }
 .bot-avatar svg { pointer-events: none; }
+/* The cast's small life (as in the HeyZubi deck): a blink now and then, and the prop swaying. Each avatar starts at
+   its own point so a list doesn't blink in step. */
+.bot-avatar.is-alive .eye { transform-box: fill-box; transform-origin: center; animation: avatar-blink 5.6s infinite; }
+.bot-avatar.is-alive .prop { transform-box: fill-box; transform-origin: center; animation: avatar-sway 3.8s ease-in-out infinite; }
+.bot-avatar.is-alive:nth-child(3n+1) .eye { animation-delay: -1.3s; } .bot-avatar.is-alive:nth-child(3n+2) .eye { animation-delay: -2.9s; }
+@keyframes avatar-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.08); } }
+@keyframes avatar-sway { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(5deg); } }
+@media (prefers-reduced-motion: reduce) { .bot-avatar.is-alive .eye, .bot-avatar.is-alive .prop { animation: none; } }
 .bot-avatar__star {
   position: absolute; right: 0; bottom: 0; border-radius: var(--radius-full);
   background: var(--color-bot-yellow); box-shadow: var(--color-bg-tertiary) 0 0 0 0.5px inset;

@@ -9,7 +9,7 @@ export interface BotPalette { fill: string; bubble: string; action: string; hove
 /**
  * HeyZubi character colours (brand.json color.character) as the fills. `bubble`, `action` and
  * `hover` are darker shades of the same hue so white text on them keeps at least 4.6:1.
- * red = Waty, orange = Cleo, yellow = Zubi's gold, green = Costo, cyan = Addy, blue = Grant,
+ * red = Waty, orange = Cleo, yellow = Zubi's gold, green = Costo, lime = Sally, cyan = Addy, blue = Grant,
  * violet = Zubi, magenta = Iris, gray = Marko.
  */
 export const BOT_COLORS: Record<AvatarColor, BotPalette> = {
@@ -20,6 +20,7 @@ export const BOT_COLORS: Record<AvatarColor, BotPalette> = {
   orange: { fill: '#EA943E', bubble: '#9A5611', action: '#AF6113', hover: '#8A4D0F' },
   yellow: { fill: '#F0B429', bubble: '#866009', action: '#976C0B', hover: '#785608' },
   green: { fill: '#3EBC80', bubble: '#277550', action: '#2C845A', hover: '#226847' },
+  lime: { fill: '#A6C83A', bubble: '#5A6E1B', action: '#62781D', hover: '#4E6018' },
   cyan: { fill: '#35BCD9', bubble: '#197083', action: '#1C7F94', hover: '#166576' },
   blue: { fill: '#4B94DD', bubble: '#2169B0', action: '#2677C8', hover: '#1E5E9F' },
   violet: { fill: '#8B5CF6', bubble: '#6B3FE0', action: '#6B3FE0', hover: '#5A32C7' },
@@ -28,7 +29,7 @@ export const BOT_COLORS: Record<AvatarColor, BotPalette> = {
 };
 
 /** Swatch order in the Create New Bot picker. */
-export const COLOR_ORDER: AvatarColor[] = ['black', 'brown', 'red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'violet', 'magenta', 'gray'];
+export const COLOR_ORDER: AvatarColor[] = ['black', 'brown', 'red', 'orange', 'yellow', 'green', 'lime', 'cyan', 'blue', 'violet', 'magenta', 'gray'];
 
 export const palette = (c: AvatarColor | string | undefined): BotPalette => BOT_COLORS[(c as AvatarColor) ?? 'black'] ?? BOT_COLORS.black;
 
