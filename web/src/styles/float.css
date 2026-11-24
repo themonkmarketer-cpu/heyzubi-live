@@ -1,0 +1,51 @@
+/*
+ * Floating windows stand out from the page: frosted glass (a slightly see-through surface over a blurred background),
+ * a bright top edge, a crisp outline and a deep soft shadow; in dark themes also a faint glow in the theme's accent.
+ * One look for every floating surface (WhatsApp window, floating panels, dialogs, menus, pop-overs, toasts), built
+ * from the theme tokens so Pearl, Sand, Obsidian and the Legacy themes all get it. Loaded last (main.tsx); `:root`
+ * in each selector keeps it ahead of component styles that load later.
+ */
+:root {
+  --float-bg: color-mix(in srgb, var(--color-bg-elevated) 94%, transparent);
+  --float-blur: blur(28px) saturate(160%);
+  --float-edge: color-mix(in srgb, var(--color-text-primary) 13%, transparent);
+  --float-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.75),
+    0 28px 56px -18px rgba(16, 18, 28, 0.30),
+    0 10px 22px -10px rgba(16, 18, 28, 0.18);
+}
+:root[data-theme='dark'] {
+  /* A shade lighter than the panels around it (raised), and nearly opaque so what's behind never shows through. */
+  --float-bg: color-mix(in srgb, color-mix(in srgb, var(--color-bg-elevated), #FFFFFF 6%) 94%, transparent);
+  --float-edge: rgba(255, 255, 255, 0.15);
+  --float-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.10),
+    0 0 36px -10px color-mix(in srgb, var(--color-primary) 45%, transparent),
+    0 32px 64px -14px rgba(0, 0, 0, 0.78),
+    0 12px 26px -12px rgba(0, 0, 0, 0.6);
+}
+
+:root .waw,
+:root .lpanels.is-floating .lpanel,
+:root .modal,
+:root .menu,
+:root .kb-menu,
+:root .kb-filter__pop,
+:root .kb-toast,
+:root .sorb__tip {
+  background: var(--float-bg);
+  -webkit-backdrop-filter: var(--float-blur);
+  backdrop-filter: var(--float-blur);
+  border: 1px solid var(--float-edge);
+  box-shadow: var(--float-shadow);
+}
+/* A toast keeps its warning-coloured outline. */
+:root .kb-toast { border-color: color-mix(in srgb, var(--color-warn) 45%, transparent); }
+
+/* Without blur support, or when the system asks for less transparency: solid surfaces, same edge and shadow. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root { --float-bg: var(--color-bg-elevated); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root, :root[data-theme='dark'] { --float-bg: var(--color-bg-elevated); --float-blur: none; }
+}

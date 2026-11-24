@@ -20,6 +20,7 @@ import './styles/viewer.css';
 import './styles/voice.css';
 // Last: the Pearl, Sand and Obsidian palettes build on tokens.css (configStore.ts THEMES).
 import './styles/themes.css';
+import './styles/float.css'; // floating windows: glass, bright edge, deep shadow (after the themes)
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
