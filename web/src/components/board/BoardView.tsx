@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type KeyboardEvent } from 'react';
 import { useStore } from '../../store';
 import { kanbanApi, type KanbanBoardData, type KanbanBoardMeta, type KanbanCard, type KanbanWorkflow } from '../../lib/kanbanApi';
 import { Icon } from '../Icon';
@@ -91,6 +91,7 @@ export function BoardView() {
   const toastTimer = useRef<ReturnType<typeof setTimeout>>();
   const scroller = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
+  const [tile, setTile] = useState<{ perRow: number; rowH: number | null }>({ perRow: 4, rowH: null });
 
   const say = useCallback((msg: string) => {
     setToast(msg);
@@ -130,6 +131,27 @@ export function BoardView() {
     }, POLL_MS);
     return () => clearInterval(t);
   }, [slug, drag, reload]);
+
+  // The whole board in one view: columns wrap into balanced rows (8 columns at 1300 px: two rows of four), and
+  // each row gets an equal share of the height, long columns scrolling inside. Too short a window: rows grow and
+  // the board scrolls down instead.
+  const colCount = workflow?.columns.length ?? 8;
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const fit = () => {
+      const MIN = 250, GAP = 16, PAD_X = 48, PAD_Y = 26, MIN_ROW = 220;
+      const fitsPerRow = Math.max(1, Math.min(colCount, Math.floor((el.clientWidth - PAD_X + GAP) / (MIN + GAP))));
+      const rows = Math.ceil(colCount / fitsPerRow);
+      const perRow = Math.ceil(colCount / rows);
+      const rowH = Math.floor((el.clientHeight - PAD_Y - GAP * (rows - 1)) / rows);
+      setTile({ perRow, rowH: rowH >= MIN_ROW ? rowH : null });
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [colCount, !!data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // "/" jumps to search (when not typing somewhere).
   useEffect(() => {
@@ -220,6 +242,8 @@ export function BoardView() {
     const edge = 72;
     if (e.clientX < r.left + edge) el.scrollLeft -= Math.ceil((r.left + edge - e.clientX) / 4);
     else if (e.clientX > r.right - edge) el.scrollLeft += Math.ceil((e.clientX - (r.right - edge)) / 4);
+    if (e.clientY < r.top + edge) el.scrollTop -= Math.ceil((r.top + edge - e.clientY) / 4);
+    else if (e.clientY > r.bottom - edge) el.scrollTop += Math.ceil((e.clientY - (r.bottom - edge)) / 4);
     const list = (e.target as HTMLElement).closest?.('.kb-col__cards') as HTMLElement | null;
     if (list) {
       const lr = list.getBoundingClientRect();
@@ -336,7 +360,7 @@ export function BoardView() {
 
         {!workflow || !data ? <div className="kb-state"><div className="cfg-empty">Opening Hermes’s board…</div></div> : (
           <div className="kb-scroll" ref={scroller} onDragOver={drag ? edgeScroll : undefined}>
-            <div className="kb-columns">
+            <div className="kb-columns" style={{ '--kb-per-row': tile.perRow, '--kb-row-h': tile.rowH ? `${tile.rowH}px` : 'none' } as CSSProperties}>
               {columns.map((col) => {
                 const canDrop = !!drag && canMove(workflow, drag.from, col.key);
                 const state = !drag ? '' : drag.from === col.key ? ' is-source' : canDrop ? ' is-target' : ' is-closed';

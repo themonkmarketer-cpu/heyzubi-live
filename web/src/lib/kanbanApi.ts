@@ -61,9 +61,21 @@ export interface KanbanBoardMeta { slug: string; name: string; is_current?: bool
 
 export interface KanbanComment { id?: number; author?: string | null; body: string; created_at?: number }
 
+/** A file on a task, stored by Hermes (its attachments folder); downloaded by id. */
+export interface KanbanAttachment {
+  id: number;
+  task_id: string;
+  filename: string;
+  content_type?: string | null;
+  size?: number | null;
+  uploaded_by?: string | null;
+  created_at?: number | null;
+}
+
 export interface KanbanTaskDetail {
   task: KanbanCard;
   comments: KanbanComment[];
+  attachments?: KanbanAttachment[];
   runs?: KanbanRun[];
   links?: { parents: string[]; children: string[] };
   link_tasks?: { id: string; title: string; status: string }[];
@@ -108,4 +120,23 @@ export const kanbanApi = {
     req<{ task: KanbanCard | null; warning?: string }>('POST', `/tasks${q(board)}`, p),
   update: (board: string, id: string, p: KanbanCardPatch) => req<{ task: KanbanCard | null }>('PATCH', `/tasks/${encodeURIComponent(id)}${q(board)}`, p),
   comment: (board: string, id: string, body: string) => req<unknown>('POST', `/tasks/${encodeURIComponent(id)}/comments${q(board)}`, { body }),
+  attachments: (board: string, id: string) => req<{ attachments: KanbanAttachment[] }>('GET', `/tasks/${encodeURIComponent(id)}/attachments${q(board)}`),
+  attach: async (board: string, id: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file, file.name);
+    const res = await fetch(`/api/kanban/tasks/${encodeURIComponent(id)}/attachments${q(board)}`, { method: 'POST', credentials: 'include', body: form });
+    if (!res.ok) {
+      let msg = res.statusText;
+      try { msg = ((await res.json()) as { error?: string }).error ?? msg; } catch { /* not json */ }
+      throw new ApiError(res.status, msg);
+    }
+    return res.json() as Promise<{ attachment: KanbanAttachment | null }>;
+  },
+  detach: (board: string, attachmentId: number) => req<{ ok: boolean }>('DELETE', `/attachments/${attachmentId}${q(board)}`),
+  /** `inline` shows plain raster images in the page; anything else downloads. */
+  attachmentUrl: (board: string, attachmentId: number, inline = false) =>
+    `/api/kanban/attachments/${attachmentId}${board || inline ? '?' : ''}${[board ? `board=${encodeURIComponent(board)}` : '', inline ? 'inline=1' : ''].filter(Boolean).join('&')}`,
 };
+
+/** Hermes's limit for one attachment. */
+export const KANBAN_ATTACHMENT_MAX = 25 * 1024 * 1024;

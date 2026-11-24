@@ -42,6 +42,20 @@ def cursor(a):
     with api._board_conn(board_of(a)) as (_b, conn):
         return {"latest_event_id": int(conn.execute("SELECT COALESCE(MAX(id), 0) AS m FROM task_events").fetchone()["m"])}
 
+def attach(a):
+    # Hermes's own upload handler (its name cleaning, size cap and storage folder), fed the file HeyZubi received.
+    import asyncio
+    from fastapi import UploadFile
+    from starlette.datastructures import Headers
+    with open(a["path"], "rb") as fh:
+        up = UploadFile(file=fh, filename=a["filename"], headers=Headers({"content-type": a.get("content_type") or "application/octet-stream"}))
+        return asyncio.run(api.upload_task_attachment(a["id"], file=up, board=board_of(a), uploaded_by=a.get("author")))
+
+def attachment_file(a):
+    # Hermes's download handler checks the file still lives under its attachments folder; HeyZubi then sends that file.
+    r = api.download_attachment(int(a["attachment"]), board=board_of(a))
+    return {"path": str(r.path), "filename": r.filename, "media_type": r.media_type}
+
 OPS = {
     "boards": lambda a: api.list_boards(include_archived=False),
     "workflow": workflow,
@@ -52,6 +66,10 @@ OPS = {
     "create": lambda a: api.create_task(api.CreateTaskBody(**a["payload"]), board=board_of(a)),
     "update": lambda a: api.update_task(a["id"], api.UpdateTaskBody(**a["payload"]), board=board_of(a)),
     "comment": lambda a: api.add_comment(a["id"], api.CommentBody(**a["payload"]), board=board_of(a)),
+    "attachments": lambda a: api.list_task_attachments(a["id"], board=board_of(a)),
+    "attach": attach,
+    "attachment_file": attachment_file,
+    "detach": lambda a: api.remove_attachment(int(a["attachment"]), board=board_of(a)),
 }
 
 for line in sys.stdin:

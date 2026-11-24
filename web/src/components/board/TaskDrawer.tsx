@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKe
 import type { Bot } from '@shared/types';
 import { kanbanApi, type KanbanCard, type KanbanCardPatch, type KanbanTaskDetail, type KanbanWorkflow } from '../../lib/kanbanApi';
 import { Icon } from '../Icon';
+import { Attachments } from './Attachments';
 import { ConfirmDialog } from './BoardDialogs';
 import { agentState } from './TaskCard';
 import { ago, assignEffect, moveTargets, when } from './boardModel';
@@ -238,6 +239,8 @@ export function TaskDrawer({ board, id, version, workflow, bots, who, assignees,
               onChange={(e) => set('body', e.target.value)} onBlur={() => commit('body')}
               onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) (e.target as HTMLTextAreaElement).blur(); }} />
           </label>
+
+          <Attachments board={board} taskId={t.id} initial={detail!.attachments ?? []} onChanged={onChanged} />
 
           {t.status === 'blocked' && t.block_reason && <div className="kb-sec"><div className="cfg-field__label">Waiting on</div><div className="kb-text">{t.block_reason}</div></div>}
           {(t.latest_summary || t.result) && (
