@@ -2,13 +2,18 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Bot, Task } from '@shared/types';
 import { BotAvatarFor } from '../../avatar/BotAvatar';
 import { configApi } from '../../lib/configApi';
+import { lsGet, lsSet } from '../../lib/storage';
 import { relativeShort } from '../../lib/time';
 import { useConfigUI, useVersion } from '../../configStore';
 import { useStore } from '../../store';
 import { Glyph } from './glyphs';
 import './ui';
+import '../../styles/routines.css'; // the Sort control, shared with the Routines view
 
 type Filter = 'all' | 'open' | 'done';
+/** Tasks view order: waiting on you first (the default), newest first, or by bot. */
+type Order = 'status' | 'newest' | 'bot';
+const ORDERS: [Order, string][] = [['status', 'Needs you first'], ['newest', 'Newest'], ['bot', 'Bot']];
 
 const STATE_LABEL: Record<Task['state'], string> = { working: 'Working on it', needs_input: 'Waiting on you', done: 'Done' };
 
@@ -47,9 +52,12 @@ function useTasks(botId?: string): Task[] | null {
   return tasks;
 }
 
-function sortTasks(list: Task[]) {
+function sortTasks(list: Task[], order: Order = 'status', botName: (id: string) => string = () => '') {
   const rank = { needs_input: 0, working: 1, done: 2 } as const;
-  return [...list].sort((a, b) => rank[a.state] - rank[b.state] || b.updatedAt - a.updatedAt);
+  const status = (a: Task, b: Task) => rank[a.state] - rank[b.state] || b.updatedAt - a.updatedAt;
+  if (order === 'newest') return [...list].sort((a, b) => b.updatedAt - a.updatedAt);
+  if (order === 'bot') return [...list].sort((a, b) => botName(a.botId).localeCompare(botName(b.botId)) || status(a, b));
+  return [...list].sort(status);
 }
 
 /** Full Tasks view in the main column (sidebar → Tasks). */
@@ -57,9 +65,11 @@ export function TasksView() {
   const bots = useStore((s) => s.bots);
   const tasks = useTasks();
   const [filter, setFilter] = useState<Filter>('open');
+  const [order, setOrder] = useState<Order>(() => (['status', 'newest', 'bot'].includes(lsGet('tasksSort') ?? '') ? lsGet('tasksSort') as Order : 'status'));
+  const pickOrder = (o: Order) => { setOrder(o); lsSet('tasksSort', o); };
   const byId = useMemo(() => new Map(bots.map((b) => [b.id, b])), [bots]);
   const counts = useMemo(() => ({ open: tasks?.filter((t) => t.state !== 'done').length ?? 0, done: tasks?.filter((t) => t.state === 'done').length ?? 0 }), [tasks]);
-  const shown = useMemo(() => sortTasks((tasks ?? []).filter((t) => filter === 'all' || (filter === 'done' ? t.state === 'done' : t.state !== 'done'))), [tasks, filter]);
+  const shown = useMemo(() => sortTasks((tasks ?? []).filter((t) => filter === 'all' || (filter === 'done' ? t.state === 'done' : t.state !== 'done')), order, (id) => byId.get(id)?.name ?? '~'), [tasks, filter, order, byId]);
 
   return (
     <main className="chat tasks-view">
@@ -73,6 +83,16 @@ export function TasksView() {
       </header>
       <div className="tasks-view__scroll">
         <div className="tasks-view__inner">
+          {!!tasks?.length && (
+            <div className="routines-tools">
+              <label className="routines-pick">
+                <span>Sort</span>
+                <select value={order} onChange={(e) => pickOrder(e.target.value as Order)} aria-label="Sort tasks">
+                  {ORDERS.map(([o, l]) => <option key={o} value={o}>{l}</option>)}
+                </select>
+              </label>
+            </div>
+          )}
           {tasks === null ? <div className="cfg-empty">Loading…</div> : shown.length === 0 ? (
             <div className="tasks-empty">
               <Glyph name="tasks" size={28} opacity={0.35} />
