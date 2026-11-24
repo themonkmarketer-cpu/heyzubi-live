@@ -82,7 +82,7 @@ const homeFor = (botId: string) => {
 
 // ---------- Hermes profiles: made and run as the user who owns ~/.hermes ----------
 
-interface Owner { uid: number; gid: number; name: string; home: string }
+export interface Owner { uid: number; gid: number; name: string; home: string }
 
 /**
  * The user Hermes runs as (the owner of ~/.hermes). A profile's files must stay theirs, or Hermes can't use the
@@ -109,6 +109,18 @@ function profilesEnabled(): boolean {
 /** The user a bot's agent runs as: the Hermes user for a profile, else this server's own (null). */
 export function engineOwner(botId: string): Owner | null {
   return botRow(botId)?.hermes_profile ? hermesOwner() : null;
+}
+
+/**
+ * The bot's own Hermes profile, as Hermes lists it: the default profile for the main bot, profiles/<name> for a team
+ * member made as a profile. Null for bots whose agent lives outside Hermes (older ones, in ENGINES_DIR).
+ */
+export function hermesTarget(botId: string): { dir: string; owner: Owner | null; label: string } | null {
+  const b = botRow(botId);
+  if (!b) return null;
+  if (b.engine === 'primary') return { dir: env.hermesHome, owner: hermesOwner(), label: 'default' };
+  if (b.engine === 'managed' && b.hermes_profile) return { dir: profileHome(b.hermes_profile), owner: hermesOwner(), label: b.hermes_profile };
+  return null;
 }
 
 /** Hand a folder (and everything in it) to the Hermes user. Links are not followed. */
@@ -275,13 +287,21 @@ function soul(b: any): string {
   ].join('\n');
 }
 
+/** A soul in the shape soul() writes (so HeyZubi may rewrite it), not one written for the profile by hand. */
+const isGeneratedSoul = (text: string) => /^You are [^\n]+\. You work for [^\n]+ as one of a small team of AI agents, each with its own screen on a shared computer\./.test(text);
+
 /** Rewrite the persona file after a rename or a new description. The primary agent keeps its own. */
 export function syncPersona(botId: string) {
   const b = botRow(botId);
   if (!b || b.engine !== 'managed') return;
   const home = homeFor(botId);
   if (!fs.existsSync(home)) return;
-  fs.writeFileSync(path.join(home, 'SOUL.md'), soul(b));
+  // Only a soul HeyZubi wrote is rewritten. A profile's own (Developer's is pages long, written by hand) is the bot's
+  // soul in both apps and stays as it is.
+  const soulFile = path.join(home, 'SOUL.md');
+  let current = '';
+  try { current = fs.readFileSync(soulFile, 'utf8'); } catch { /* none yet */ }
+  if (!current.trim() || isGeneratedSoul(current)) fs.writeFileSync(soulFile, soul(b));
   if (b.hermes_profile) {
     fixOwnership(botId);
     // What Hermes shows for the profile (and routes Kanban work by).
@@ -531,6 +551,8 @@ async function startGateway(botId: string): Promise<void> {
       }
       if (await healthy(url, 1500)) {
         console.log(`[engine] ${b.name}: gateway up on ${url}`);
+        // Its Hermes profile shows the same name and mascot as here (loaded late: that module imports this one).
+        if (b.hermes_profile) void import('./hermes-identity.js').then((m) => m.syncIdentity(botId)).catch(() => {});
         return;
       }
     }

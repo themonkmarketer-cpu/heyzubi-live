@@ -1,3 +1,4 @@
+import { syncAllIdentities } from './hermes-identity.js';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
@@ -76,3 +77,5 @@ initProactive(enqueue);
 startIdleWatcher();
 resolveBoxData().catch((e) => console.warn('[heyzubi] could not check the computer for its data folder:', e?.message ?? e));
 initEngines();
+// Bots that are Hermes profiles show the same name and mascot in Hermes (hermes-identity.ts).
+syncAllIdentities();

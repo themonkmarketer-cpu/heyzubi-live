@@ -11,6 +11,7 @@ import { enqueue, interrupt, resolveApproval } from './agent/loop.js';
 import { computerState, ensureComputer, forgetBotFiles, readyScreen, refreshComputer, releaseScreen, suspendComputer } from './computer.js';
 import { assignEngine, provisionEngine, removeEngine, syncPersona } from './engine.js';
 import { isPropId } from './avatar-props.js';
+import { syncIdentity } from './hermes-identity.js';
 import { deleteMemory, listMemories, memoryBot } from './engine-memory.js';
 import { orgo } from './orgo.js';
 import { catalog, connectedToolkits, deleteConnection, disconnect, googleProfile, startConnect, startGoogleLogin, toolkitInfo } from './composio.js';
@@ -313,6 +314,8 @@ api.patch('/bots/:id', async (c) => {
     // Its desktop carries its name and colour: dress the screen again, if it has one.
     // The prop can follow the role or description, so those redress the screen too.
     const looks = ['name', 'label', 'description', 'avatarShape', 'avatarColor', 'avatarProp'].some((k) => p[k] !== undefined);
+    // Hermes shows the same name and mascot (for bots that are Hermes profiles).
+    if (looks) void syncIdentity(b.id);
     if (looks && db.prepare('SELECT 1 FROM screens WHERE bot_id=?').get(b.id)) {
       readyScreen(b.user_id, b.id, { redress: true }).catch((e) => console.warn('[computer] redress failed', e?.message ?? e));
     }

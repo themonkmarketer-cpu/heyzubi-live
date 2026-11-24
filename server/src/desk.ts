@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { box, displayFor } from './box.js';
-import { avatarMarkup, lookOf, type PropId } from './avatar-props.js';
+import { AVATAR_FILL, avatarMarkup, lookOf, type PropId } from './avatar-props.js';
 import { ZUBI_MASCOT_SVG, ZUBI_VIOLET } from './zubi-mascot.js';
 
 /**
@@ -287,7 +287,7 @@ function lookFor(bot: DeskBot, manageChrome: boolean): { stamp: string; payload:
     manageChrome,
     bot: { id: bot.id, name: bot.name, label: bot.label ?? '', avatarShape: bot.avatarShape, avatarColor: bot.avatarColor },
     colors: { accent: p.accent, ink: p.ink, wash: p.wash, washDeep: p.washDeep },
-    avatarSvg: bot.mascot ? ZUBI_MASCOT_SVG : avatarSvg(bot.avatarShape, hex, bot.prop ?? null),
+    avatarSvg: bot.mascot ? ZUBI_MASCOT_SVG : avatarSvg(bot.avatarShape, AVATAR_FILL[bot.avatarColor] ?? hex, bot.prop ?? null),
     wallSvg: wallpaperSvg(p, bot.id),
   };
   const stamp = sha(`${bundle().hash}\n${JSON.stringify(look)}`).slice(0, 20);

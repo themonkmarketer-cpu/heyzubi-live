@@ -123,11 +123,13 @@ export const PROPS: Record<PropId, Character> = {
 
   // ---- new, drawn the same way ----
   code: {
-    label: 'Code brackets', means: 'code and building software',
+    label: 'Terminal', means: 'code and building software',
     words: /\b(dev|devs|develop\w*|code|coder|coding|engineer\w*|programm\w*|software|website|webapp|frontend|backend|full.?stack)\b/i,
-    // A tall capsule with < > at its sides, worn like Waty's ear cups.
-    body: '<rect x="20" y="14" width="60" height="76" rx="30"/>', eyeY: 50,
-    front: `<g class="prop" fill="none" stroke="${C.teal}" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 39L5 51L15 63"/><path d="M85 39L95 51L85 63"/></g>`,
+    // A tall capsule holding a little terminal window at its shoulder: three window dots and a >_ prompt.
+    body: '<rect x="20" y="14" width="60" height="76" rx="30"/>', eyeY: 52,
+    front: `<g class="prop" transform="rotate(-10 78 18)"><rect x="62" y="5" width="32" height="24" rx="4.5" fill="${DARK}"/>`
+      + `<circle cx="67.5" cy="10" r="1.4" fill="#FF6B5E"/><circle cx="72" cy="10" r="1.4" fill="${GOLD}"/><circle cx="76.5" cy="10" r="1.4" fill="${C.teal}"/>`
+      + `<path d="M67.5 16.5L72 20L67.5 23.5" fill="none" stroke="${C.teal}" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M75.5 24H84" stroke="${C.teal}" stroke-width="2.8" stroke-linecap="round"/></g>`,
   },
   trend: {
     label: 'Rising arrow', means: 'sales, pipeline and results',
@@ -170,6 +172,12 @@ export const PROPS: Record<PropId, Character> = {
     body: `<path d="${roundPoly([[50, 8], [87, 29], [87, 71], [50, 92], [13, 71], [13, 29]], 10)}"/>`, eyeY: 48,
     front: `<g class="prop"><path d="${gearPath(76, 76, 16, 11.8, 8)}" fill="${DARK}"/><circle cx="76" cy="76" r="5.6" fill="${C.cream}"/></g>`,
   },
+};
+
+/** The bot colours' fills, the same as the web app's palette (web/src/lib/colors.ts BOT_COLORS). */
+export const AVATAR_FILL: Record<string, string> = {
+  black: '#1B1622', brown: '#A0703F', red: '#E66556', orange: '#EA943E', yellow: '#F0B429', green: '#3EBC80', lime: '#A6C83A',
+  cyan: '#35BCD9', blue: '#4B94DD', violet: '#8B5CF6', magenta: '#E067BB', gray: '#7E8EAF',
 };
 
 export const isPropId = (v: unknown): v is PropId => typeof v === 'string' && (PROP_IDS as readonly string[]).includes(v);
