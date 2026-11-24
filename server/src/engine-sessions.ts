@@ -30,11 +30,36 @@ export async function deleteEngineSession(engine: EngineRef, sessionId: string):
   }
 }
 
+/**
+ * Deletes the responses Hermes stored for these sessions (each holds a copy of the conversation's history, and a named
+ * conversation resumes from its latest one), so a deleted session's history really goes.
+ */
+export async function deleteStoredResponses(engine: EngineRef, home: string, sessionIds: Set<string>): Promise<number> {
+  if (!sessionIds.size) return 0;
+  const r = openRO(path.join(home, 'response_store.db'));
+  if (!r) return 0;
+  let ids: string[] = [];
+  try {
+    ids = (r.prepare("SELECT response_id AS id, json_extract(data, '$.session_id') AS sid FROM responses").all() as { id: string; sid: string | null }[])
+      .filter((x) => x.sid && sessionIds.has(x.sid)).map((x) => x.id);
+  } catch { /* an older engine without the response store */ } finally { r.close(); }
+  let gone = 0;
+  for (const id of ids) {
+    const res = await fetch(`${engine.url}/v1/responses/${encodeURIComponent(id)}`, { method: 'DELETE', signal: AbortSignal.timeout(15_000), headers: engine.key ? { authorization: `Bearer ${engine.key}` } : {} }).catch(() => null);
+    if (res && (res.ok || res.status === 404)) gone++;
+  }
+  return gone;
+}
+
 /** After a one-off call (its response carries X-Hermes-Session-Id): delete that session, retrying once if still busy. */
-export function dropOneOff(engine: EngineRef, res: Response | null | undefined) {
+export function dropOneOff(engine: EngineRef & { home?: string }, res: Response | null | undefined) {
   const sid = res?.headers.get('x-hermes-session-id') ?? '';
   if (!sid) return;
-  void deleteEngineSession(engine, sid).then((ok) => { if (!ok) setTimeout(() => void deleteEngineSession(engine, sid), 30_000); });
+  void deleteEngineSession(engine, sid).then((ok) => {
+    if (!ok) setTimeout(() => void deleteEngineSession(engine, sid), 30_000);
+    // A stored run (coding) also leaves its history in the response store.
+    if (engine.home) void deleteStoredResponses(engine, engine.home, new Set([sid]));
+  });
 }
 
 function openRO(file: string): Database.Database | null {
@@ -63,6 +88,7 @@ export async function retireChatSession(botId: string, oldGeneration: number) {
     if (!sid) return;
     const engine = await engineFor(botId);
     if (!(await deleteEngineSession(engine, sid))) setTimeout(() => void deleteEngineSession(engine, sid), 30_000);
+    await deleteStoredResponses(engine, home!, new Set([sid]));
   } catch (e) { console.warn('[sessions] old chat not removed:', (e as Error).message); }
 }
 
@@ -120,10 +146,16 @@ export async function tidyEngineSessions(): Promise<number> {
       if (engineOf.has(key) || !extras.some((x) => x.home === key)) continue;
       try { engineOf.set(key, await engineFor(b.id)); } catch { /* engine down: next time */ }
     }
+    const done = new Map<string, Set<string>>();
     for (const x of extras) {
       const engine = engineOf.get(x.home);
-      if (engine && (await deleteEngineSession(engine, x.id))) gone++;
+      if (engine && (await deleteEngineSession(engine, x.id))) {
+        gone++;
+        if (!done.has(x.home)) done.set(x.home, new Set());
+        done.get(x.home)!.add(x.id);
+      }
     }
+    for (const [home, ids] of done) await deleteStoredResponses(engineOf.get(home)!, home, ids);
     if (gone) console.log(`[sessions] removed ${gone} extra Hermes session${gone === 1 ? '' : 's'} (one per team member kept)`);
   } finally { tidying = false; }
   return gone;
