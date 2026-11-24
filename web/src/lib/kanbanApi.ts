@@ -21,7 +21,27 @@ export interface KanbanCard {
   link_counts?: { parents: number; children: number };
   current_run_started_at?: number | null;
   block_reason?: string | null;
+  block_kind?: string | null;
   diagnostics?: { severity?: string; message?: string; kind?: string }[];
+  created_by?: string | null;
+  started_at?: number | null;
+  tenant?: string | null;
+  skills?: string[] | null;
+  current_run_id?: number | null;
+  consecutive_failures?: number | null;
+  last_failure_error?: string | null;
+}
+
+/** One agent run of a task (Hermes's task_runs row). */
+export interface KanbanRun {
+  id: number;
+  profile?: string | null;
+  status?: string | null;
+  outcome?: string | null;
+  summary?: string | null;
+  error?: string | null;
+  started_at?: number | null;
+  ended_at?: number | null;
 }
 
 export interface KanbanBoardData {
@@ -44,6 +64,9 @@ export interface KanbanComment { id?: number; author?: string | null; body: stri
 export interface KanbanTaskDetail {
   task: KanbanCard;
   comments: KanbanComment[];
+  runs?: KanbanRun[];
+  links?: { parents: string[]; children: string[] };
+  link_tasks?: { id: string; title: string; status: string }[];
 }
 
 export interface KanbanCardPatch {
@@ -80,7 +103,8 @@ export const kanbanApi = {
   board: (board: string) => req<KanbanBoardData>('GET', `/board${q(board)}`),
   cursor: (board: string) => req<{ latest_event_id: number }>('GET', `/cursor${q(board)}`),
   task: (board: string, id: string) => req<KanbanTaskDetail>('GET', `/tasks/${encodeURIComponent(id)}${q(board)}`),
-  create: (board: string, p: { title: string; body?: string; assignee?: string; priority?: number; triage?: boolean }) =>
+  /** `key` is Hermes's idempotency key: the same key never makes a second card, so a repeated submit is harmless. */
+  create: (board: string, p: { title: string; body?: string; assignee?: string; priority?: number; triage?: boolean; key?: string }) =>
     req<{ task: KanbanCard | null; warning?: string }>('POST', `/tasks${q(board)}`, p),
   update: (board: string, id: string, p: KanbanCardPatch) => req<{ task: KanbanCard | null }>('PATCH', `/tasks/${encodeURIComponent(id)}${q(board)}`, p),
   comment: (board: string, id: string, body: string) => req<unknown>('POST', `/tasks/${encodeURIComponent(id)}/comments${q(board)}`, { body }),
