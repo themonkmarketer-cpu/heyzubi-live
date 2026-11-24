@@ -14,8 +14,11 @@ import type { ComputerState } from './types.js';
  * suspended or deleted from here: it is somebody's working machine.
  */
 
-/** Orgo allows this many screens on one Linux computer, the default one included. */
-export const MAX_SCREENS = 4;
+/**
+ * Screens one computer can hold, the default one included. Orgo allows four on one Linux computer; local screens
+ * (HQ_SCREENS=local: Xvfb displays on the server itself) are limited only by the machine, so they follow MAX_BOTS.
+ */
+export const MAX_SCREENS = env.localScreens ? Math.max(4, env.maxBots) : 4;
 
 export interface BotScreen { computerId: string; screenId: string; width?: number; height?: number }
 
