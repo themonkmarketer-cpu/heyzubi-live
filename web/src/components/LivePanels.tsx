@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useOpeningFrame } from '../lib/floatFrame';
 import { create } from 'zustand';
 import { useStore } from '../store';
 import type { PanelName } from '@shared/types';
@@ -60,11 +61,13 @@ export function CapabilityWatcher() {
   return null;
 }
 
-/** The Calendar and Gmail windows: floating at the top right (drag by a title bar), like the WhatsApp window. */
+/** The Calendar and Gmail windows: floating in the chat area at the shared size (lib/floatFrame.ts), drag by a title bar. */
 export function LivePanels() {
   const { gmail, calendar, youtube, instagram, linkedin, sheets } = usePanels();
   const waOpen = useStore((s) => s.waOpen);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  // One step down and left of the WhatsApp window when both are open, so neither hides the other.
+  const frame = useOpeningFrame(waOpen ? 1 : 0);
   const boxRef = useRef<HTMLDivElement>(null);
   const drag = useRef<{ dx: number; dy: number } | null>(null);
   const onDown = (e: React.PointerEvent) => {
@@ -93,8 +96,8 @@ export function LivePanels() {
   if (!gmail && !calendar && !youtube && !instagram && !linkedin && !sheets) return null;
   return (
     <div
-      ref={boxRef} className={`lpanels is-floating${waOpen && !pos ? ' is-beside-wa' : ''}`} role="region" aria-label="Zubi’s windows"
-      style={pos ? { left: pos.x, top: pos.y, right: 'auto' } : undefined}
+      ref={boxRef} className="lpanels is-floating" role="region" aria-label="Zubi’s windows"
+      style={{ left: pos?.x ?? frame.left, top: pos?.y ?? frame.top, right: 'auto', width: frame.width, maxHeight: frame.height }}
       onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
     >
       {calendar && <CalendarPanel key={`c${calendar}`} />}

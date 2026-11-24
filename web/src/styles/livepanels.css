@@ -58,8 +58,6 @@ a.lmedia__title:hover { text-decoration: underline; }
 .lpanel__ask { margin-top: 8px; width: 100%; padding: 7px 10px; border-radius: 8px; border: 1px dashed var(--color-border-secondary); font-size: 12px; font-weight: 600; color: var(--color-text-secondary); }
 .lpanel__ask:hover { background: var(--color-bg-hover); color: var(--color-text-primary); }
 /* With the WhatsApp window open (bottom right, 420px), sit to its left instead of under it. */
-.lpanels.is-floating.is-beside-wa { right: 460px; }
-@media (max-width: 900px) { .lpanels.is-floating.is-beside-wa { right: 24px; } }
 
 /* LinkedIn and Google Sheets windows */
 .lli__head { margin: 0 0 6px; font-size: 12.5px; line-height: 1.4; color: var(--color-text-secondary); }

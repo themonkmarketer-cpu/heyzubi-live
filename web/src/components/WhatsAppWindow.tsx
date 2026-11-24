@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useOpeningFrame } from '../lib/floatFrame';
 import type { WaDraft } from '@shared/types';
 import { useStore } from '../store';
 import { GenPicker, genUrl } from './GenerationsView';
@@ -66,6 +67,8 @@ export function WhatsAppWindow() {
   const [askDisconnect, setAskDisconnect] = useState(false);
   const [min, setMin] = useState(false);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  // Opens in the chat area at the shared floating-window size (lib/floatFrame.ts); a drag moves it from there.
+  const frame = useOpeningFrame();
   const applied = useRef<string | null>(null);
   const winRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -194,7 +197,10 @@ export function WhatsAppWindow() {
     return () => window.removeEventListener('keydown', k);
   });
 
-  const style: CSSProperties | undefined = pos ? { left: pos.x, top: pos.y, right: 'auto', bottom: 'auto' } : undefined;
+  const style: CSSProperties = {
+    left: pos?.x ?? frame.left, top: pos?.y ?? frame.top, right: 'auto', bottom: 'auto', width: frame.width,
+    ...(min ? {} : { height: frame.height, maxHeight: 'none' }),
+  };
   const q = gq.trim().toLowerCase();
   const list = groups ? groups.filter((g) => !q || g.name.toLowerCase().includes(q)) : [];
   const pairing = status && !status.paired;
