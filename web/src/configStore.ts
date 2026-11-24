@@ -22,7 +22,7 @@ export const THEMES: Record<Exclude<Theme, 'system'>, { base: 'light' | 'dark'; 
 };
 export type BotSettingsTab = 'general' | 'profile' | 'skills' | 'memories' | 'routines';
 export type AppSection = 'status' | 'general' | 'teams' | 'computer' | 'permissions' | 'apps' | 'api' | 'desktop' | 'account';
-export type MainView = 'chat' | 'tasks' | 'generations' | 'board';
+export type MainView = 'chat' | 'tasks' | 'generations' | 'board' | 'capabilities';
 
 interface ConfigUI {
   botSettings: { botId: string; tab: BotSettingsTab } | null;

@@ -7,7 +7,6 @@ import { displayName, useStore } from '../store';
 import { api } from '../lib/api';
 import { Icon } from './Icon';
 import { Menu } from './Menu';
-import { SidebarOrb } from './SidebarOrb';
 import { UpdateRow } from './UpdateRow';
 import zubiMark from '../assets/zubi-live.svg';
 
@@ -58,29 +57,45 @@ function GenerationsIsland() {
   const view = useConfigUI((s) => s.view);
   const on = view === 'generations';
   return (
-    <button type="button" className={`sidebar-island${on ? ' is-active' : ''}`} onClick={() => useConfigUI.getState().setView(on ? 'chat' : 'generations')} title="Generations" aria-pressed={on}>
+    <button type="button" className={`sidebar-island${on ? ' is-active' : ''}`} onClick={() => useConfigUI.getState().setView(on ? 'chat' : 'generations')} title="Gallery" aria-pressed={on}>
       <span className="sidebar-island__icon">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <rect x="3" y="4" width="18" height="16" rx="3" /><circle cx="9" cy="10" r="1.8" /><path d="M21 16l-5-5-8 9" />
         </svg>
       </span>
-      <span className="sidebar-island__label">Generations</span>
+      <span className="sidebar-island__label">Gallery</span>
     </button>
   );
 }
 
-/** Sidebar entry for the Board: Hermes's own task board, as cards in columns. */
+/** Sidebar entry for Kanban: Hermes's own task board, as cards in columns. */
 function BoardIsland() {
   const view = useConfigUI((s) => s.view);
   const on = view === 'board';
   return (
-    <button type="button" className={`sidebar-island${on ? ' is-active' : ''}`} onClick={() => useConfigUI.getState().setView(on ? 'chat' : 'board')} title="Board" aria-pressed={on}>
+    <button type="button" className={`sidebar-island${on ? ' is-active' : ''}`} onClick={() => useConfigUI.getState().setView(on ? 'chat' : 'board')} title="Kanban" aria-pressed={on}>
       <span className="sidebar-island__icon">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <rect x="3" y="4" width="18" height="16" rx="3" /><path d="M9 4v16M15 4v16" /><path d="M5.5 8h1.5M11.5 8h1M17.5 8h1" />
         </svg>
       </span>
-      <span className="sidebar-island__label">Board</span>
+      <span className="sidebar-island__label">Kanban</span>
+    </button>
+  );
+}
+
+/** Sidebar entry for Capabilities: Zubi's orb and the ring of what it can do, opened like Tasks and Kanban. */
+function CapabilitiesIsland() {
+  const view = useConfigUI((s) => s.view);
+  const on = view === 'capabilities';
+  return (
+    <button type="button" className={`sidebar-island${on ? ' is-active' : ''}`} onClick={() => useConfigUI.getState().setView(on ? 'chat' : 'capabilities')} title="Capabilities" aria-pressed={on}>
+      <span className="sidebar-island__icon">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <circle cx="12" cy="12" r="3.2" /><circle cx="12" cy="12" r="8.5" strokeDasharray="2 3" /><circle cx="12" cy="3.5" r="1.4" fill="currentColor" /><circle cx="19.4" cy="16.3" r="1.4" fill="currentColor" /><circle cx="4.6" cy="16.3" r="1.4" fill="currentColor" />
+        </svg>
+      </span>
+      <span className="sidebar-island__label">Capabilities</span>
     </button>
   );
 }
@@ -151,8 +166,9 @@ export function Sidebar() {
 
       <div className="sidebar__scroll">
         <TasksIsland />
-        <GenerationsIsland />
         <BoardIsland />
+        <CapabilitiesIsland />
+        <GenerationsIsland />
         {primary && (
           <div className="pinned">
             <button type="button" className={`pinned__tile${selectedBotId === primary.id ? ' is-selected' : ''}`} onClick={() => selectBot(primary.id)} title={displayName(primary)}>
@@ -188,7 +204,6 @@ export function Sidebar() {
         </div>
       </div>
 
-      {!collapsed && <SidebarOrb />}
       <UpdateRow collapsed={collapsed} />
 
       <div className="sidebar__footer">

@@ -72,7 +72,7 @@ export function GenerationsView() {
     >
       <header className="gen__head">
         <div>
-          <h1 className="gen__title">Generations</h1>
+          <h1 className="gen__title">Gallery</h1>
           <p className="gen__sub">Your AI-made images and videos, shared with Zubi HQ and your PC (D:\generations). Pictures you save to L:\Zubi inbox show here as Inbox. {items ? `${total} item${total === 1 ? '' : 's'}` : ''}</p>
         </div>
         <span className="gen__head-actions">

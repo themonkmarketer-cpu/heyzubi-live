@@ -215,7 +215,7 @@ export function BoardView() {
   if (error && !data) {
     return (
       <main className="chat kb-view">
-        <header className="tasks-view__header"><div className="tasks-view__title">Board</div></header>
+        <header className="tasks-view__header"><div className="tasks-view__title">Kanban</div></header>
         <div className="kb-state"><div className="cfg-error">Couldn’t open Hermes’s board: {error}</div><button type="button" className="cfg-btn cfg-btn--secondary" onClick={() => void reload()}>Try again</button></div>
       </main>
     );
@@ -227,7 +227,7 @@ export function BoardView() {
     <main className="chat kb-view">
       <header className="tasks-view__header kb-head">
         <div className="kb-head__title">
-          <div className="tasks-view__title">Board</div>
+          <div className="tasks-view__title">Kanban</div>
           <span className="kb-head__sub">Hermes’s task board · {total} {total === 1 ? 'card' : 'cards'}</span>
         </div>
         {boards.length > 1 && (
