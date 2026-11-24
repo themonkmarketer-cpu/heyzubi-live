@@ -1,5 +1,6 @@
 import { kanbanApi } from './routes-kanban.js';
 import { syncAllIdentities } from './hermes-identity.js';
+import { installZubiSkills } from './zubi-skills.js';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
@@ -89,3 +90,5 @@ resolveBoxData().catch((e) => console.warn('[heyzubi] could not check the comput
 initEngines();
 // Bots that are Hermes profiles show the same name and mascot in Hermes (hermes-identity.ts).
 syncAllIdentities();
+// Zubi's skills for what the app can do (adding a team member inside HeyZubi).
+installZubiSkills();

@@ -1,3 +1,4 @@
+import { teammateSignedIn } from './team.js';
 import { Hono } from 'hono';
 import { db, now } from './db.js';
 import './db-config.js';
@@ -381,6 +382,7 @@ configApi.post('/bots/:id/engine/signin/finish', async (c) => {
   if (!ok) return c.json({ error: `The sign-in didn't go through${said ? `: ${said}` : '.'} Start it again and paste the newest code.` }, 502);
   forgetEngineOptions(b.id);
   try { await restartEngine(b.id); } catch (e) { console.warn('[engine] restart after sign-in:', (e as Error).message); }
+  teammateSignedIn(b.id); // a member Zubi added: its card in Zubi's chat shows it done, and Zubi carries on
   return c.json({ ok: true, engine: await engineInfo(b.id) });
 });
 

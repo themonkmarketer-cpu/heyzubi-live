@@ -51,3 +51,21 @@
 .draft-card__subject { padding-top: 12px; font-size: 14px; font-weight: 600; line-height: 20px; }
 .draft-card__text { padding-top: 12px; font-size: 14px; line-height: 20px; letter-spacing: 0.14px; color: var(--color-ink); white-space: pre-wrap; overflow-wrap: anywhere; }
 .draft-card__actions { display: flex; gap: 8px; padding: 10px 16px 16px; }
+
+/* new team member card (TeammateCard.tsx): its setup as a short checklist, signed in to Claude right here */
+.teammate-card { box-shadow: var(--color-border-tertiary) 0 0 0 1px inset; }
+.teammate-steps { list-style: none; margin: 0; padding: 10px 16px 2px; display: flex; flex-direction: column; gap: 8px; }
+.teammate-step { display: flex; align-items: flex-start; gap: 10px; font-size: 13.5px; line-height: 20px; color: var(--color-text-tertiary); }
+.teammate-step__dot { display: grid; place-items: center; width: 18px; height: 18px; margin-top: 1px; flex-shrink: 0; border-radius: 50%;
+  border: 1.5px solid var(--color-border-secondary); color: var(--color-on-primary); }
+.teammate-step.is-done { color: var(--color-text-secondary); }
+.teammate-step.is-done .teammate-step__dot { border-color: var(--color-success); background: var(--color-success); }
+.teammate-step.is-now { color: var(--color-text-primary); font-weight: 500; }
+.teammate-step.is-now .teammate-step__dot { border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-focus-ring); }
+.teammate-step__text { display: flex; flex-direction: column; }
+.teammate-step__text small { font-size: 12px; font-weight: 400; line-height: 17px; color: var(--color-text-tertiary); }
+.teammate-signin { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px 16px; }
+.teammate-signin__how { font-size: 13px; line-height: 19px; color: var(--color-text-secondary); }
+.teammate-signin__how a { color: var(--color-primary); }
+.teammate-signin__row { display: flex; gap: 8px; }
+.teammate-signin__row .text-input { flex: 1; min-width: 0; }

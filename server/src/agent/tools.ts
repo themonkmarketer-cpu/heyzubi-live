@@ -19,6 +19,12 @@ import { Cron } from 'croner';
 import { runResearch } from '../research.js';
 import { listCodingRuns, startCodingRun } from '../coding.js';
 import { turnIsOwner } from './loop.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { createBot, COLORS, UserError } from '../team.js';
+import { engineHome, engineInfo, mayUsePrimary, ownClaudeSignIn, primaryBotId } from '../engine.js';
+import { configureProfile } from '../hermes-profile.js';
+import { PROP_IDS, PROPS, propFor } from '../avatar-props.js';
 
 export interface ToolCtx {
   userId: string;
@@ -95,6 +101,39 @@ async function xSearch(a: any, userId: string): Promise<string> {
   return (sources.length ? `${text}\n\nSources:\n${sources.map((u) => `- ${u}`).join('\n')}` : text).slice(0, 60000);
 }
 
+
+/** The mascots a new team member can have: each is a character holding an element of its work. */
+const MASCOTS = PROP_IDS.map((id) => `${id} (${PROPS[id].means})`).join(', ');
+
+/** Wait for a new team member's Hermes profile to exist (it is made on its engine's first start). */
+async function profileReady(botId: string, ms: number): Promise<string | null> {
+  for (const until = Date.now() + ms; Date.now() < until; await new Promise((r) => setTimeout(r, 1000))) {
+    const home = engineHome(botId);
+    if (home && getBotRow(botId)?.hermes_profile && fs.existsSync(path.join(home, 'SOUL.md'))) return home;
+  }
+  return null;
+}
+
+/** Where a team member stands, for Zubi to guide the owner one step at a time. */
+export async function memberStatus(bot: any) {
+  const home = engineHome(bot.id);
+  const engine = await engineInfo(bot.id).catch(() => null);
+  const claude = engine?.providers?.find((p: any) => p.id === 'anthropic');
+  const skillsDir = home ? path.join(home, 'skills') : null;
+  let skills: string[] = [];
+  try { if (skillsDir) skills = fs.readdirSync(skillsDir).filter((n) => !n.startsWith('.')); } catch { /* none yet */ }
+  const signedIn = !!(home && ownClaudeSignIn(home));
+  const status = !engine || engine.status !== 'ready' ? 'starting' : !signedIn && engine.provider === 'anthropic' ? 'needs_sign_in' : 'ready';
+  return {
+    name: bot.name, role: bot.label || null, hermes_profile: bot.hermes_profile ?? null,
+    engine: engine?.status ?? 'unknown', model: engine?.model ?? null, provider: engine?.provider ?? null,
+    own_claude_sign_in: signedIn, claude_connected: !!claude?.connected,
+    skills_folder: skillsDir, skills, status,
+    next_step: status === 'starting' ? `Wait: ${bot.name}'s engine is starting (about a minute). Check again shortly.`
+      : status === 'needs_sign_in' ? `The owner signs ${bot.name} in to Claude with the card in your chat (Sign in to Claude, Authorize in the browser tab, paste the code, Finish). Point them to the card; don't send them anywhere else.`
+      : `${bot.name} is ready. Say hello with send_to_bot to check it answers, then suggest a first task.`,
+  };
+}
 
 export const TOOLS: ToolDef[] = [
   {
@@ -410,6 +449,73 @@ ${r.brief}
     activity: 'connecting_service',
     label: 'Closing WhatsApp',
     impl: async (_a, ctx) => whatsappClose(ctx.userId),
+  },
+  {
+    name: 'create_team_member',
+    description: `Add a new team member (a bot) to HeyZubi, for the owner. It becomes a HeyZubi bot with its own Hermes profile, the same name, mascot and description in both apps, and its own screen and engine. This is the ONLY way to add a bot: never create Hermes profiles with the hermes CLI or a terminal. Confirm the name, role and description with the owner first (ask_user). A card then appears in this chat that walks the owner through signing the new member in to Claude. mascot is one of: ${MASCOTS}; leave it out to pick one from the role. persona is the full SOUL.md text (optional; a short default is written otherwise).`,
+    parameters: obj({
+      name: { type: 'string', description: 'Short first name, e.g. "Sam".' },
+      role: { type: 'string', description: 'Short role label shown after the name, e.g. "Sales".' },
+      description: { type: 'string', description: 'One or two sentences on what it owns and its limits.' },
+      persona: { type: 'string', description: 'Optional SOUL.md text: who it is, how it works, its rules.' },
+      mascot: { type: 'string', enum: [...PROP_IDS] },
+      color: { type: 'string', enum: COLORS.filter((c) => c !== 'black') },
+    }, ['name', 'role', 'description']),
+    activity: 'working',
+    label: 'Adding a team member',
+    impl: async (a, ctx) => {
+      if (ctx.botId !== primaryBotId() || !mayUsePrimary(ctx.userId)) return { output: 'Only the main agent adds team members, for the computer’s owner.' };
+      if (!turnIsOwner(ctx.botId)) return { output: 'Not added: team members are added only from the owner’s own message in HeyZubi (not from a routine, another bot, an outside program or another app). Ask the owner to request it in the HeyZubi chat.', summary: 'Owner only' };
+      const name = String(a.name ?? '').trim().replace(/\s+/g, ' ').slice(0, 40);
+      if (!/^[\p{L}\p{N}][\p{L}\p{N} .'-]{0,39}$/u.test(name)) return { output: 'Give a short name made of letters (and digits), for example "Sam".' };
+      if (botByName(ctx.userId, name)) return { output: `There is already a team member called ${name}. Pick another name, or call team_member_status for it.` };
+      const role = String(a.role ?? '').trim().slice(0, 40);
+      const description = String(a.description ?? '').trim().slice(0, 500);
+      if (!role || !description) return { output: 'A role and a description are needed.' };
+      const mascot = (PROP_IDS as readonly string[]).includes(a.mascot) ? a.mascot : propFor({ name, label: role, description });
+      const color = (COLORS as string[]).includes(a.color) && a.color !== 'black' ? a.color : undefined;
+      let bot: any;
+      try {
+        bot = createBot(ctx.userId, { name, label: role, description, avatarProp: mascot ?? null, avatarColor: color, mode: 'personal' });
+      } catch (e: any) {
+        if (e instanceof UserError) return { output: e.message };
+        throw e;
+      }
+      // Its persona goes in through Hermes's own profile editor (as the Profile tab does), once Hermes has made the profile.
+      let persona = 'default';
+      const soul = typeof a.persona === 'string' ? a.persona.trim().slice(0, 20_000) : '';
+      const home = await profileReady(bot.id, 150_000);
+      if (soul) {
+        if (!home) persona = 'not written yet: the profile was still being made. Call team_member_status in a minute, then set it with the owner in its settings › Hermes profile.';
+        else {
+          try { await configureProfile(bot.id, { soul }); persona = 'written'; }
+          catch (e: any) { persona = `not written: ${String(e?.message ?? e).slice(0, 200)}`; }
+        }
+      }
+      appendRow(ctx.botId, 'card', { type: 'card', card: 'teammate', teammateId: bot.id, name, role, status: 'pending' });
+      const row = getBotRow(bot.id);
+      return {
+        output: JSON.stringify({
+          created: true, name, role, mascot: mascot ?? null, hermes_profile: row?.hermes_profile ?? null,
+          skills_folder: home ? path.join(home, 'skills') : null, persona,
+          next: `A card is now in this chat for ${name}: it shows the setup and has the "Sign in to Claude" button. If skills should be installed, put each reviewed skill folder in skills_folder first. Then tell the owner in one or two short lines to sign ${name} in with the card, and stop. You'll get a message when ${name} is signed in.`,
+        }),
+        summary: `Added ${name} · ${role}`,
+      };
+    },
+  },
+  {
+    name: 'team_member_status',
+    description: 'Where a team member stands: engine, Claude sign-in (its own), model, Hermes profile, skills folder and installed skills, plus the next step to guide the owner through.',
+    parameters: obj({ name: { type: 'string' } }, ['name']),
+    activity: 'working',
+    label: 'Checking a team member',
+    impl: async (a, ctx) => {
+      const bot = botByName(ctx.userId, String(a.name ?? ''));
+      if (!bot || bot.kind === 'room') return { output: `No team member named "${a.name}". Team: ${(db.prepare("SELECT name FROM bots WHERE user_id=? AND COALESCE(kind,'agent')<>'room'").all(ctx.userId) as any[]).map((b) => b.name).join(', ')}` };
+      if (bot.is_primary) return { output: 'That is the main agent.' };
+      return { output: JSON.stringify(await memberStatus(bot)) };
+    },
   },
   {
     name: 'request_app_connection',

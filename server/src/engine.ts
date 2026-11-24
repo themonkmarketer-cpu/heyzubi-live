@@ -134,6 +134,12 @@ function chownTree(dir: string, o: Owner) {
   walk(dir);
 }
 
+/** Give a folder in the main Hermes home to the Hermes user (for files HeyZubi writes there, such as Zubi's skills). */
+export function giveToHermes(dir: string) {
+  const o = hermesOwner();
+  if (o) chownTree(dir, o);
+}
+
 /** After this server wrote into a profile (as root), give the files back to the Hermes user. */
 export function fixOwnership(botId: string) {
   const o = engineOwner(botId);
@@ -762,7 +768,7 @@ export function pruneDeadPool(home: string, provider: string): number {
  * alone would let a team member quietly run on Zubi's subscription. Those sign-ins rotate (whichever agent renews
  * first logs the other out), and the person meant each agent to have its own.
  */
-function ownClaudeSignIn(home: string): boolean {
+export function ownClaudeSignIn(home: string): boolean {
   try {
     const pool = JSON.parse(fs.readFileSync(path.join(home, 'auth.json'), 'utf8'))?.credential_pool?.anthropic;
     if (Array.isArray(pool) && pool.some((c: any) => c?.last_status !== 'dead')) return true;

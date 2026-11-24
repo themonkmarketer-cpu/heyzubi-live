@@ -128,6 +128,15 @@ export type CardBody =
       status: 'pending' | 'connected' | 'skipped';
     }
   | {
+      /** A new team member Zubi added: the card walks the owner through its setup (Claude sign-in) in the chat. */
+      type: 'card';
+      card: 'teammate';
+      teammateId: string;
+      name: string;
+      role: string;
+      status: 'pending' | 'ready' | 'skipped';
+    }
+  | {
       type: 'card';
       card: 'draft';
       channel: 'email' | 'slack' | 'message';

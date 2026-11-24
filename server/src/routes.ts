@@ -11,7 +11,8 @@ import { createSession, destroySession, isLocalRequest, isOwnerKey, peerAddress,
 import { allLive, appendRow, clearConversation, emitBot, getBot, getBotRow, getRow, listBots, listRoutines, listRows, listTasks, toRoutine, updateRow } from './store.js';
 import { enqueue, interrupt, resolveApproval } from './agent/loop.js';
 import { computerState, ensureComputer, forgetBotFiles, readyScreen, refreshComputer, releaseScreen, suspendComputer } from './computer.js';
-import { assignEngine, provisionEngine, removeEngine, syncPersona } from './engine.js';
+import { removeEngine, syncPersona } from './engine.js';
+import { agentCount, createBot, UserError } from './team.js';
 import { isPropId } from './avatar-props.js';
 import { syncIdentity } from './hermes-identity.js';
 import { deleteMemory, listMemories, memoryBot } from './engine-memory.js';
@@ -37,40 +38,11 @@ import { desktopApi, desktopDevicesApi } from './desktop.js';
 
 export const api = new Hono<AuthVars>();
 
-const SHAPES: AvatarShape[] = ['blob', 'pebble', 'bean', 'egg', 'squircle', 'tablet', 'capsule', 'cylinder', 'hex', 'gem', 'crystal', 'wedge', 'shield', 'dome', 'arch', 'cloud', 'teardrop', 'leaf', 'square', 'sparkle', 'clover', 'flower', 'heart', 'house', 'star'];
-const COLORS: AvatarColor[] = ['black', 'brown', 'red', 'orange', 'yellow', 'green', 'lime', 'cyan', 'blue', 'violet', 'magenta', 'gray'];
-
-function hashPick<T>(id: string, list: T[]): T {
-  let h = 0x811c9dc5;
-  for (const ch of id) { h ^= ch.charCodeAt(0); h = Math.imul(h, 0x01000193) >>> 0; }
-  return list[h % list.length];
-}
-
 /** JSON that is safe to embed inside an inline <script>: `<` can't close the tag and line separators can't break the statement. */
 export function jsonForScript(value: unknown): string {
   return JSON.stringify(value).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 }
 
-/** Thrown for things the user can fix; the message is shown to them. */
-class UserError extends Error {}
-
-const agentCount = () => (db.prepare("SELECT COUNT(*) n FROM bots WHERE COALESCE(kind,'agent')<>'room' AND COALESCE(hidden,0)=0").get() as any).n as number;
-
-function createBot(userId: string, b: { name: string; label?: string; description?: string; instructions?: string; avatarShape?: string; avatarColor?: string; mode?: string; isPrimary?: boolean; team?: string | null; isManager?: boolean }) {
-  // Every bot needs a screen of its own on the one shared computer.
-  if (agentCount() >= env.maxBots) throw new UserError(`The team is full: the computer has room for ${env.maxBots} bots. Remove one to add another.`);
-  const id = newId('bot');
-  const shape = SHAPES.includes(b.avatarShape as AvatarShape) ? b.avatarShape : hashPick(id, SHAPES.slice(0, 13));
-  const color = COLORS.includes(b.avatarColor as AvatarColor) ? b.avatarColor : hashPick(id, COLORS.filter((c) => c !== 'black'));
-  db.prepare(
-    'INSERT INTO bots(id,user_id,name,label,description,instructions,avatar_shape,avatar_color,mode,is_primary,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
-  ).run(id, userId, b.name.trim().slice(0, 60) || 'New Bot', b.label ?? '', b.description ?? '', b.instructions ?? '', shape, color, b.mode === 'teammate' ? 'teammate' : 'personal', b.isPrimary ? 1 : 0, now(), now());
-  if (b.team && !b.isPrimary) db.prepare('UPDATE bots SET team=?, is_manager=? WHERE id=?').run(String(b.team).slice(0, 40), b.isManager ? 1 : 0, id);
-  // The first bot is the agent that already runs on the computer; the others get an engine of their own.
-  if (assignEngine(id) === 'managed') provisionEngine(id);
-  hub.emit(userId, { type: 'roster' });
-  return getBot(id)!;
-}
 
 /**
  * Who may sign in. Every account gets agents with a shell on the shared computer, so on a public URL
@@ -450,9 +422,10 @@ api.post('/bots/:id/cards/:seq/dismiss', (c) => {
   if (!b) return c.json({ error: 'not found' }, 404);
   const row = getRow(b.id, Number(c.req.param('seq')));
   if (!row || row.body.type !== 'card') return c.json({ error: 'not a card' }, 400);
-  const body: any = { ...row.body, status: row.body.card === 'connect' ? 'skipped' : 'dismissed' };
+  const body: any = { ...row.body, status: row.body.card === 'connect' || row.body.card === 'teammate' ? 'skipped' : 'dismissed' };
   updateRow(b.id, row.seq, body);
   if (row.body.card === 'connect') enqueue(b.id, { type: 'system', owner: true, text: `The user skipped connecting ${row.body.toolkitName}. Continue without it.` });
+  if (row.body.card === 'teammate') enqueue(b.id, { type: 'system', owner: true, text: `The owner chose to sign ${row.body.name} in to Claude later. Say in one line that ${row.body.name} is in the sidebar and can be signed in from its settings (Engine) any time; don't push.` });
   return c.json({ ok: true });
 });
 
