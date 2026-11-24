@@ -756,7 +756,24 @@ export function pruneDeadPool(home: string, provider: string): number {
   } catch { return 0; }
 }
 
+/**
+ * A team member's own Claude sign-in: a live one in its profile's auth.json, or a Claude key or token in its own .env.
+ * Hermes also counts the main agent's sign-in for a profile that has none of its own, so Hermes's "authenticated"
+ * alone would let a team member quietly run on Zubi's subscription. Those sign-ins rotate (whichever agent renews
+ * first logs the other out), and the person meant each agent to have its own.
+ */
+function ownClaudeSignIn(home: string): boolean {
+  try {
+    const pool = JSON.parse(fs.readFileSync(path.join(home, 'auth.json'), 'utf8'))?.credential_pool?.anthropic;
+    if (Array.isArray(pool) && pool.some((c: any) => c?.last_status !== 'dead')) return true;
+  } catch { /* no auth.json of its own */ }
+  const own = readDotenv(path.join(home, '.env'));
+  return !!(own.ANTHROPIC_API_KEY || own.ANTHROPIC_TOKEN || own.CLAUDE_CODE_OAUTH_TOKEN);
+}
+
 function toProviders(data: any, home: string | null = null): EngineProvider[] {
+  // A team member's profile (not the main agent's home) counts Claude as connected only with its own sign-in.
+  const borrowed = (slug: string) => slug === 'anthropic' && !!home && path.resolve(home) !== path.resolve(env.hermesHome) && !ownClaudeSignIn(home);
   const list: any[] = Array.isArray(data?.providers) ? data.providers : [];
   const out = list
     .filter((p) => p?.slug && (p.authenticated || WELL_KNOWN.includes(p.slug)))
@@ -766,9 +783,9 @@ function toProviders(data: any, home: string | null = null): EngineProvider[] {
         id: String(p.slug),
         name: p.slug === 'anthropic' ? 'Claude (Anthropic)' : String(p.name ?? p.slug),
         // Hermes lists Anthropic as an API-key provider, yet it can also sign in to a Claude subscription. Offer that until a key is in place.
-        kind: String(p.auth_type ?? '').includes('oauth') || (p.slug === 'anthropic' && !p.authenticated) || (p.authenticated && oauthOnly(home, String(p.slug))) ? 'subscription' : 'api_key',
+        kind: String(p.auth_type ?? '').includes('oauth') || (p.slug === 'anthropic' && (!p.authenticated || borrowed(String(p.slug)))) || (p.authenticated && oauthOnly(home, String(p.slug))) ? 'subscription' : 'api_key',
         // Saved but refused sign-ins (Hermes still counts them) are not a connection: offer to sign in again.
-        connected: !!p.authenticated && !poolDead(home, String(p.slug)),
+        connected: !!p.authenticated && !poolDead(home, String(p.slug)) && !borrowed(String(p.slug)),
         models: featured.filter((m: unknown) => typeof m === 'string').slice(0, 12),
       };
     });
