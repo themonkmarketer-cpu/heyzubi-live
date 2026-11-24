@@ -69,7 +69,8 @@ internal sealed class KeyboardHook : IDisposable
         {
             var k = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
             int vk = (int)k.vkCode;
-            if (vk != MASK_KEY)
+            // Keys this app (or another) types for you, like dictated text, never count towards a chord.
+            if (vk != MASK_KEY && (k.flags & LLKHF_INJECTED) == 0)
             {
                 int msg = (int)wParam;
                 int key = Normalize(vk);

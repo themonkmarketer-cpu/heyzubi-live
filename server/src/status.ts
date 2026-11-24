@@ -7,6 +7,8 @@ import { connectedToolkits } from './composio.js';
 import { engineFor, engineInfo, primaryBotId } from './engine.js';
 import { getBotRow } from './store.js';
 import { zubiGoogleAccounts } from './panels.js';
+import { healthChecks } from './health.js';
+import { dropOneOff, tidyEngineSessions } from './engine-sessions.js';
 
 /**
  * Settings → Status, after Zubi HQ's Settings page: four live checks (Agent, Voice, Google, Obsidian), the data
@@ -108,6 +110,12 @@ statusApi.get('/', async (c) => {
   });
 });
 
+/** Health (after Theo's): engines and their sign-ins, Zubi's HeyZubi tools, routines, skills, the safety hook, storage, the Windows app. */
+/** Removes the Hermes sessions beyond each team member's one, now (also done every hour). */
+statusApi.post('/tidy-sessions', async (c) => c.json({ removed: await tidyEngineSessions() }));
+
+statusApi.get('/health', async (c) => c.json({ checked: Date.now(), items: await healthChecks(c.get('user').id) }));
+
 /** One short paid prompt through the main team member's engine, in a throwaway conversation (never in the chat). */
 statusApi.post('/test-agent', async (c) => {
   const id = primaryBotId();
@@ -131,6 +139,7 @@ statusApi.post('/test-agent', async (c) => {
       }),
     });
     const j: any = await r.json().catch(() => ({}));
+    dropOneOff(engine, r); // a test leaves no session behind (one per team member)
     if (!r.ok) return c.json({ ok: false, error: String(j?.error?.message ?? j?.error ?? `HTTP ${r.status}`).slice(0, 200), ms: Date.now() - t0 }, 502);
     const text = String(j.output_text ?? (j.output ?? []).flatMap((o: any) => o?.content ?? []).map((x: any) => x?.text ?? '').join(' ')).trim();
     return c.json({ ok: !!text, reply: text.slice(0, 300), ms: Date.now() - t0, model: j.model ?? bot?.model ?? '' });

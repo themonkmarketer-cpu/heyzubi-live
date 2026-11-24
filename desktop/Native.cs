@@ -24,7 +24,8 @@ internal static class Native
     [StructLayout(LayoutKind.Explicit)] public struct InputUnion { [FieldOffset(0)] public MOUSEINPUT mi; [FieldOffset(0)] public KEYBDINPUT ki; }
     [StructLayout(LayoutKind.Sequential)] public struct MOUSEINPUT { public int dx, dy; public uint mouseData, dwFlags, time; public IntPtr dwExtraInfo; }
     [StructLayout(LayoutKind.Sequential)] public struct KEYBDINPUT { public ushort wVk, wScan; public uint dwFlags, time; public IntPtr dwExtraInfo; }
-    public const uint INPUT_KEYBOARD = 1, KEYEVENTF_KEYUP = 0x0002;
+    public const uint INPUT_KEYBOARD = 1, KEYEVENTF_KEYUP = 0x0002, KEYEVENTF_UNICODE = 0x0004;
+    public const uint LLKHF_INJECTED = 0x10;
     [DllImport("user32.dll", SetLastError = true)] public static extern uint SendInput(uint n, INPUT[] inputs, int size);
 
     // ---- layered (see-through) windows ----
@@ -60,6 +61,9 @@ internal static class Native
     [DllImport("winmm.dll")] public static extern int waveInReset(IntPtr hwi);
     [DllImport("winmm.dll")] public static extern int waveInClose(IntPtr hwi);
     [DllImport("winmm.dll")] public static extern int waveInGetNumDevs();
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct WAVEINCAPS { public ushort wMid, wPid; public uint vDriverVersion; [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string szPname; public uint dwFormats; public ushort wChannels, wReserved1; }
+    [DllImport("winmm.dll", CharSet = CharSet.Unicode)] public static extern int waveInGetDevCaps(IntPtr deviceId, ref WAVEINCAPS caps, int size);
 
     // ---- playback (MCI plays MP3 with no extra libraries) ----
     [DllImport("winmm.dll", CharSet = CharSet.Unicode)] public static extern int mciSendString(string command, System.Text.StringBuilder? ret, int retLength, IntPtr callback);

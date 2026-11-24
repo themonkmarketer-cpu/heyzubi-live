@@ -19,14 +19,56 @@ export interface Prefs {
   wallpaper: string | null; wallpaperDim: number; wallpaperFile: string | null;
   /** The name shown in the sidebar's account row (a label only; the account's own name stays what the bots use). */
   displayName: string | null;
+  /**
+   * Products (after Theo's): the team is always on; the Pointer Assistant (the Windows app's talk keys) and Dictation
+   * (dictate anywhere on Windows) can be switched off. Dictation is null until chosen: off for the Windows app, while
+   * the chat's mic stays (it is hidden only when Dictation is switched off on purpose).
+   */
+  products: { pointer: boolean; dictation: boolean | null };
+  pointer: PointerPrefs;
+  dictation: DictationPrefs;
 }
-const DEFAULTS: Prefs = { dictionary: [], tidyDictation: true, wallpaper: null, wallpaperDim: 0.2, wallpaperFile: null, displayName: null };
+
+/** The hold-to-talk key combinations the Windows app knows (desktop/KeyboardHook.cs has the same ids). */
+export const CHORDS: Record<string, string> = {
+  ctrlWin: 'Ctrl + Win', ctrlAlt: 'Ctrl + Alt', ctrlShift: 'Ctrl + Shift', altShift: 'Alt + Shift', winAlt: 'Win + Alt', ctrlShiftSpace: 'Ctrl + Shift + Space',
+};
+export interface PointerPrefs {
+  chord: string;
+  /** The spark by the cursor: always there, only while listening and answering, or never (answers still show). */
+  spark: 'always' | 'listening' | 'never';
+  /** Who looks at the screen: xAI's Grok vision (fast) or the team member's own Claude through its engine. */
+  brain: 'grok' | 'claude';
+  /** An optional model name instead of the brain's default. */
+  model: string;
+  /** How answers are spoken: in the team member's own voice, a Windows voice on the PC, or not at all. */
+  voice: 'bot' | 'windows' | 'off';
+  windowsVoice: string;
+}
+export interface DictationPrefs {
+  chord: string;
+  /** A microphone on the paired PC by its Windows name ('' = the default one). */
+  mic: string;
+  /** Automatic: the server's speech to text (Sarvam or xAI); windows: Windows' own offline recognizer on the PC. */
+  recognizer: 'auto' | 'windows';
+  /** A language code, or 'auto'. */
+  language: string;
+}
+const POINTER: PointerPrefs = { chord: 'ctrlWin', spark: 'listening', brain: 'grok', model: '', voice: 'bot', windowsVoice: '' };
+const DICTATION: DictationPrefs = { chord: 'ctrlAlt', mic: '', recognizer: 'auto', language: 'auto' };
+const DEFAULTS: Prefs = {
+  dictionary: [], tidyDictation: true, wallpaper: null, wallpaperDim: 0.2, wallpaperFile: null, displayName: null,
+  products: { pointer: true, dictation: null }, pointer: POINTER, dictation: DICTATION,
+};
 /** The built-in wallpapers (drawn by the web app; web/src/lib/wallpapers.ts has the same ids). */
 export const WALLPAPERS = ['aurora', 'sunset', 'ocean', 'mesh', 'midnight', 'graphite', 'zubi', 'dots', 'waves', 'paper'];
 
 export function getPrefs(userId: string): Prefs {
   const r = db.prepare('SELECT data FROM user_prefs WHERE user_id=?').get(userId) as { data: string } | undefined;
-  try { return { ...DEFAULTS, ...(r ? JSON.parse(r.data) : {}) }; } catch { return { ...DEFAULTS }; }
+  try {
+    const p = r ? JSON.parse(r.data) : {};
+    return { ...DEFAULTS, ...p, products: { ...DEFAULTS.products, ...p.products }, pointer: { ...POINTER, ...p.pointer }, dictation: { ...DICTATION, ...p.dictation } };
+  } catch { return { ...DEFAULTS }; }
 }
 
 const cleanWords = (v: unknown): string[] => {
@@ -50,6 +92,39 @@ function savePrefs(userId: string, next: Prefs): Prefs {
   return next;
 }
 
+const pick = <T extends string>(v: unknown, allowed: readonly T[], fallback: T): T => (allowed.includes(v as T) ? (v as T) : fallback);
+const shortText = (v: unknown, max: number) => String(v ?? '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, max);
+
+/** Merges a change into the pointer and dictation settings; refuses the same keys for both. */
+function nextProductPrefs(cur: Prefs, p: any): Pick<Prefs, 'products' | 'pointer' | 'dictation'> | { error: string } {
+  const chords = Object.keys(CHORDS);
+  const products = { ...cur.products };
+  if (p.products && typeof p.products === 'object') {
+    if (typeof p.products.pointer === 'boolean') products.pointer = p.products.pointer;
+    if (typeof p.products.dictation === 'boolean') products.dictation = p.products.dictation;
+  }
+  const q = p.pointer && typeof p.pointer === 'object' ? p.pointer : {};
+  const pointer: PointerPrefs = {
+    chord: q.chord !== undefined ? pick(q.chord, chords, cur.pointer.chord) : cur.pointer.chord,
+    spark: q.spark !== undefined ? pick(q.spark, ['always', 'listening', 'never'] as const, cur.pointer.spark) : cur.pointer.spark,
+    brain: q.brain !== undefined ? pick(q.brain, ['grok', 'claude'] as const, cur.pointer.brain) : cur.pointer.brain,
+    model: q.model !== undefined ? shortText(q.model, 80).replace(/[^\w.:/-]/g, '') : cur.pointer.model,
+    voice: q.voice !== undefined ? pick(q.voice, ['bot', 'windows', 'off'] as const, cur.pointer.voice) : cur.pointer.voice,
+    windowsVoice: q.windowsVoice !== undefined ? shortText(q.windowsVoice, 120) : cur.pointer.windowsVoice,
+  };
+  const d = p.dictation && typeof p.dictation === 'object' ? p.dictation : {};
+  const dictation: DictationPrefs = {
+    chord: d.chord !== undefined ? pick(d.chord, chords, cur.dictation.chord) : cur.dictation.chord,
+    mic: d.mic !== undefined ? shortText(d.mic, 120) : cur.dictation.mic,
+    recognizer: d.recognizer !== undefined ? pick(d.recognizer, ['auto', 'windows'] as const, cur.dictation.recognizer) : cur.dictation.recognizer,
+    language: d.language !== undefined ? (/^(auto|[a-z]{2}(-[A-Z]{2})?)$/.test(String(d.language)) ? String(d.language) : cur.dictation.language) : cur.dictation.language,
+  };
+  if (pointer.chord === dictation.chord && products.pointer && products.dictation) {
+    return { error: `The Pointer Assistant and Dictation can’t both use ${CHORDS[pointer.chord]}. Pick different keys for each.` };
+  }
+  return { products, pointer, dictation };
+}
+
 const clampDim = (v: unknown, fallback: number) => (Number.isFinite(Number(v)) ? Math.min(0.8, Math.max(0, Math.round(Number(v) * 100) / 100)) : fallback);
 
 prefsApi.patch('/', async (c) => {
@@ -62,8 +137,11 @@ prefsApi.patch('/', async (c) => {
     else if (p.wallpaper === 'custom' && cur.wallpaperFile) wallpaper = 'custom';
     else return c.json({ error: 'Unknown wallpaper.' }, 400);
   }
+  const prod = nextProductPrefs(cur, p);
+  if ('error' in prod) return c.json(prod, 409);
   return c.json(savePrefs(user.id, {
     ...cur,
+    ...prod,
     dictionary: p.dictionary !== undefined ? cleanWords(p.dictionary) : cur.dictionary,
     tidyDictation: p.tidyDictation !== undefined ? p.tidyDictation === true : cur.tidyDictation,
     wallpaper,

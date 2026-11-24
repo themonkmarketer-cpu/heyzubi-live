@@ -87,7 +87,10 @@ internal class LayeredWindow : Form
     public static readonly Color Orange = Color.FromArgb(255, 122, 26);
 }
 
-internal enum SparkState { Hidden, Listening, Thinking, Answer, Note }
+internal enum SparkState { Hidden, Idle, Listening, Thinking, Answer, Note }
+
+/// <summary>Settings › Pointer Assistant › Spark: always by the cursor, only while it works, or never (answers still show).</summary>
+internal enum SparkMode { Always, Listening, Never }
 
 /// <summary>
 /// The spark: follows the mouse while you talk, spins while the bot thinks, then flies to the thing it points at,
@@ -105,17 +108,51 @@ internal sealed class SparkWindow : LayeredWindow
     private string? _heard, _text;
     private Func<float> _level = () => 0;
     private readonly DateTime _born = DateTime.Now;
+    private string _label = "Listening…";
+    private bool _hasTarget;
+    private SparkMode _mode = SparkMode.Listening;
+    private Point _lastCursor;
 
     public SparkState State => _state;
+    /// <summary>Listening, thinking or showing something (not hidden, and not just riding along by the cursor).</summary>
+    public bool Active => _state is not (SparkState.Hidden or SparkState.Idle);
+
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public SparkMode Mode
+    {
+        get => _mode;
+        set
+        {
+            if (_mode == value) return;
+            _mode = value;
+            if (value == SparkMode.Always && _state == SparkState.Hidden) Idle();
+            else if (value != SparkMode.Always && _state == SparkState.Idle) Dismiss();
+            else if (_state != SparkState.Hidden) Render();
+        }
+    }
+
+    /// <summary>The small spark that rides next to the cursor (Spark: Always).</summary>
+    public void Idle()
+    {
+        _state = SparkState.Idle;
+        _follow = true;
+        _flying = false;
+        _hasTarget = false;
+        _heard = _text = null;
+        _lastCursor = Point.Empty;
+        Start();
+    }
 
     public SparkWindow()
     {
         _tick.Tick += (_, _) => Frame();
     }
 
-    public void Listen(Func<float> level)
+    public void Listen(Func<float> level, string label = "Listening…")
     {
         _level = level;
+        _label = label;
+        _hasTarget = false;
         _state = SparkState.Listening;
         _follow = true;
         _flying = false;
@@ -123,9 +160,10 @@ internal sealed class SparkWindow : LayeredWindow
         Start();
     }
 
-    public void Think(string? heard = null)
+    public void Think(string? heard = null, string label = "Looking…")
     {
         _state = SparkState.Thinking;
+        _label = label;
         _heard = heard;
         _text = null;
         Start();
@@ -137,6 +175,7 @@ internal sealed class SparkWindow : LayeredWindow
         _state = SparkState.Answer;
         _heard = heard;
         _text = text;
+        _hasTarget = target is not null;
         if (target is { } t)
         {
             _follow = false;
@@ -158,9 +197,12 @@ internal sealed class SparkWindow : LayeredWindow
 
     public void Dismiss()
     {
-        _state = SparkState.Hidden;
         _follow = false;
+        _flying = false;
+        _hasTarget = false;
         _at = PointF.Empty;
+        if (_mode == SparkMode.Always) { Idle(); return; }
+        _state = SparkState.Hidden;
         _tick.Stop();
         Hide();
     }
@@ -175,6 +217,13 @@ internal sealed class SparkWindow : LayeredWindow
     private void Frame()
     {
         if (_state == SparkState.Hidden) return;
+        if (_state == SparkState.Idle)
+        {
+            // Riding along: draw again only when the cursor moved.
+            var c = Cursor.Position;
+            if (c == _lastCursor) return;
+            _lastCursor = c;
+        }
         if (_follow) { var c = Cursor.Position; _at = new PointF(c.X + 18, c.Y + 20); }
         if (_flying)
         {
@@ -190,7 +239,7 @@ internal sealed class SparkWindow : LayeredWindow
     {
         float s = DpiScale;
         float glow = 26 * s;
-        string? status = _state switch { SparkState.Listening => "Listening…", SparkState.Thinking => "Looking…", _ => null };
+        string? status = _state is SparkState.Listening or SparkState.Thinking ? _label : null;
         string? body = _state is SparkState.Answer or SparkState.Note ? _text : status;
         string? heard = _heard;
 
@@ -222,7 +271,8 @@ internal sealed class SparkWindow : LayeredWindow
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
             g.Clear(Color.Transparent);
-            DrawSpark(g, sparkX, sparkY, s);
+            // Spark: Never still shows where it points.
+            if (_mode != SparkMode.Never || (_state == SparkState.Answer && (_flying || _hasTarget))) DrawSpark(g, sparkX, sparkY, s);
             if (bubble)
             {
                 float bx = left ? sparkX - glow - 6 * s - bw : sparkX + 14 * s;
@@ -251,7 +301,8 @@ internal sealed class SparkWindow : LayeredWindow
     {
         double t = (DateTime.Now - _born).TotalSeconds;
         float r = 7 * s;
-        if (_state == SparkState.Listening) r = (7 + 7 * Math.Clamp(_level(), 0, 1)) * s;
+        if (_state == SparkState.Idle) r = 4.5f * s;
+        else if (_state == SparkState.Listening) r = (7 + 7 * Math.Clamp(_level(), 0, 1)) * s;
         else if (_state == SparkState.Answer && !_flying) r = (7 + (float)Math.Sin(t * 3) * 0.8f) * s;
         float glow = r + 14 * s;
 

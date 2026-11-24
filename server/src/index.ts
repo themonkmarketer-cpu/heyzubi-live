@@ -23,6 +23,7 @@ import { configApi } from './routes-config.js';
 import { startIdleWatcher } from './idle.js';
 import { mcpApi } from './mcp.js';
 import { initEngines } from './engine.js';
+import { initSessionTidy } from './engine-sessions.js';
 import { sameOriginWrites } from './lib/auth.js';
 import { resolveBoxData } from './paths.js';
 
@@ -33,6 +34,8 @@ initRooms();
 expireStaleApprovals();
 // A message the owner sent just before a restart would otherwise never get its reply.
 setTimeout(resumeInterrupted, 3000);
+// One Hermes session per team member: extras HeyZubi left behind go shortly after start and every hour.
+initSessionTidy();
 
 const app = new Hono();
 // Nothing the server sends is meant to be shown inside another site's frame (clickjacking), so every

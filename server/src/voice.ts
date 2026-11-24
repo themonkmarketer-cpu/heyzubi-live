@@ -662,7 +662,9 @@ voiceApi.post('/stt', async (c) => {
   const clipMs = Math.min(600_000, Number(form?.get('ms')) || 0);
   const prefs = getPrefs(user.id);
   const sbot = ownBot(user.id, String(form?.get('botId') ?? '') || undefined);
-  const res = await transcribeFor(user.id, sbot ?? null, file, file.name || 'dictation.webm', clipMs, what, String(form?.get('language') ?? ''));
+  // Dictation uses the language chosen in Settings › Dictation, when one is (else the bot's).
+  const lang = what === 'Dictation' && prefs.dictation.language !== 'auto' ? prefs.dictation.language : String(form?.get('language') ?? '');
+  const res = await transcribeFor(user.id, sbot ?? null, file, file.name || 'dictation.webm', clipMs, what, lang);
   if ('error' in res) return c.json({ error: res.error }, 502);
   // Dictation lands in the message box for the owner to send, so it is tidied (when on) and spelled with the
   // dictionary; a voice message goes straight to the bot, which copes with it as heard.
@@ -674,7 +676,7 @@ voiceApi.post('/stt', async (c) => {
  * Dictation tidy-up (from Theo): punctuation, casing, filler words and false starts, with the dictionary's
  * spellings; the speaker's words, language and script are kept. Falls back to the text as heard.
  */
-async function tidyDictation(userId: string, text: string, dictionary: string[]): Promise<string> {
+export async function tidyDictation(userId: string, text: string, dictionary: string[]): Promise<string> {
   const said = text.trim();
   if (said.length < 3) return said;
   try {

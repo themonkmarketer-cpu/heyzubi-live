@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { usePrefs } from '../lib/appPrefs';
 import type { Bot, MessageBody } from '@shared/types';
 import { api } from '../lib/api';
 import { displayName, useStore } from '../store';
@@ -120,6 +121,7 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
     });
   };
   const dictation = useDictation(insertText, setError, bot.voiceLanguage, 'dictation', bot.id);
+  const dictationOn = usePrefs()?.products.dictation !== false;
   const inCall = useVoice((s) => isCallActive(s) && s.botId === bot.id);
   const camOn = useCamera((s) => s.on);
 
@@ -229,7 +231,7 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
           >
             <Camera size={18} strokeWidth={1.8} style={{ opacity: camOn ? 1 : 0.56 }} aria-hidden />
           </button>
-          <button
+          {dictationOn && <button
             type="button"
             className={`composer__btn${dictation.state === 'recording' ? ' is-recording' : dictation.state === 'transcribing' ? ' is-transcribing' : ''}`}
             aria-label={dictation.state === 'recording' ? 'Stop dictation' : 'Dictate'}
@@ -242,7 +244,7 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
             onContextMenu={(e) => e.preventDefault()}
           >
             <Speech size={18} strokeWidth={1.8} style={{ opacity: dictation.state === 'idle' ? 0.56 : 1 }} aria-hidden />
-          </button>
+          </button>}
           {/* Voice message: click to start, click again to send (Esc cancels). Zubi's reply is read aloud. */}
           <button
             type="button"

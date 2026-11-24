@@ -64,8 +64,10 @@ export const usage = {
 };
 
 /** Today's totals for one owner, by service. */
-export function usageToday(userId: string) {
-  const day = today();
+export function usageToday(userId: string) { return usageFrom(userId, today()); }
+
+/** Totals for one owner from a day (YYYY-MM-DD, local) to now, by service. */
+export function usageFrom(userId: string, day: string) {
   const by: Record<Service, { usd: number; qty: number; unit: string; uses: number }> = {
     live_call: { usd: 0, qty: 0, unit: 'min', uses: 0 },
     transcription: { usd: 0, qty: 0, unit: 's', uses: 0 },
@@ -80,10 +82,10 @@ export function usageToday(userId: string) {
   let text = '';
   try { text = fs.readFileSync(FILE, 'utf8'); } catch { /* nothing logged yet */ }
   for (const line of text.split('\n')) {
-    if (!line.includes(`"day":"${day}"`)) continue;
+    if (!line.includes(userId)) continue;
     try {
       const e = JSON.parse(line);
-      if (e.userId !== userId || !(e.service in by)) continue;
+      if (e.userId !== userId || !(e.service in by) || !(String(e.day) >= day)) continue;
       const s = by[e.service as Service];
       s.usd += Number(e.usd) || 0; s.qty += Number(e.qty) || 0; s.uses += 1;
       if (e.service === 'sarvam_stt' || e.service === 'sarvam_tts') sarvamInr += Number(e.inr) || 0;

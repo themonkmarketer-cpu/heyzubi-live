@@ -269,3 +269,87 @@
 .hp__row-text { flex: 1; min-width: 0; }
 .hp__row-title { font-size: 13px; font-weight: 500; color: var(--color-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hp__row-sub { font-size: 11.5px; color: var(--color-text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Settings → Usage (after Theo's Usage page) */
+.usage-table { width: 100%; margin-top: 12px; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.usage-table th { padding: 6px 8px; text-align: right; white-space: nowrap; font-size: 12px; font-weight: 500; color: var(--color-text-tertiary); border-bottom: 1px solid var(--color-border-secondary); }
+.usage-table td { padding: 8px; text-align: right; border-bottom: 1px solid var(--color-border-tertiary); white-space: nowrap; }
+.usage-table th:first-child, .usage-table td:first-child { text-align: left; position: relative; width: 100%; }
+.usage-table__who { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 8px; font-weight: 500; }
+.usage-table__bar { position: absolute; left: 0; top: 4px; bottom: 4px; max-width: 100%; border-radius: 6px; background: color-mix(in srgb, var(--color-primary) 12%, transparent); pointer-events: none; }
+.usage-table tr.is-idle td { color: var(--color-text-tertiary); }
+.usage-table tr.is-channel .usage-table__who { font-weight: 400; color: var(--color-text-secondary); }
+.usage-table tfoot td { font-weight: 700; border-bottom: 0; border-top: 1px solid var(--color-border-secondary); }
+.usage-table.is-services td:nth-child(2) { color: var(--color-text-tertiary); }
+.xai-usage__more { margin-top: 6px; font-size: 12px; color: var(--color-text-link, var(--color-primary)); }
+.xai-usage__more:hover { text-decoration: underline; }
+
+/* Settings → Products, Pointer Assistant, Dictation (after Theo's) */
+.prod-saved { margin-left: 10px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; vertical-align: middle; background: var(--color-success-bg); color: var(--color-success-text); }
+.prod-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.prod-card { position: relative; display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--color-border-secondary); background: var(--color-bg-subtle); }
+.prod-card.is-on { border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border-secondary)); }
+.prod-card__top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.prod-card__title { font-size: 15px; font-weight: 650; }
+.prod-card__body { margin: 0; font-size: 12.5px; line-height: 18px; color: var(--color-text-secondary); }
+.prod-card__tag { align-self: flex-start; font-size: 11px; color: var(--color-text-tertiary); }
+.prod-link { align-self: flex-start; padding: 0; font-size: 12.5px; color: var(--color-text-link, var(--color-primary)); }
+.prod-link:hover { text-decoration: underline; }
+.prod-off { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; padding: 10px 14px; border-radius: 12px; font-size: 13px; background: var(--color-warn-bg, color-mix(in srgb, var(--color-warn) 14%, transparent)); }
+.pa-rows { display: flex; flex-direction: column; }
+.pa-row { display: flex; align-items: center; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--color-border-tertiary); }
+.pa-row:last-child { border-bottom: 0; }
+.pa-row__text { flex: 1 1 0; min-width: 0; }
+.pa-row__title { font-size: 13.5px; font-weight: 600; }
+.pa-row__hint { margin-top: 2px; font-size: 12px; line-height: 17px; color: var(--color-text-tertiary); }
+.pa-row__control { flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end; max-width: 60%; }
+.pa-select, .pa-input { min-height: 32px; padding: 6px 10px; border-radius: 9px; border: 1px solid var(--color-border-secondary); background: var(--color-bg-pane); color: var(--color-text-primary); font: inherit; font-size: 13px; }
+.pa-select { max-width: 280px; }
+.pa-input { width: 100%; }
+.pa-input--short { width: 220px; }
+textarea.pa-input { resize: vertical; line-height: 19px; }
+.pa-dict { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.pa-dict__actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.pa-try { display: flex; flex-direction: column; gap: 8px; }
+.pa-try__ask { display: flex; align-items: center; gap: 10px; }
+.pa-try__ask .pa-input { flex: 1; }
+.pa-try__stage { position: relative; margin-top: 6px; border-radius: 12px; overflow: hidden; border: 1px solid var(--color-border-secondary); }
+.pa-try__stage img { display: block; width: 100%; height: auto; }
+.pa-try__spark { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; background: radial-gradient(circle, #FFEBD2 0 22%, #FF8A3D 40%, rgba(255, 138, 61, 0) 72%); box-shadow: 0 0 0 3px rgba(255, 138, 61, 0.55), 0 0 22px 6px rgba(255, 138, 61, 0.55); animation: pa-pulse 1.2s ease-in-out infinite; }
+@keyframes pa-pulse { 50% { transform: scale(1.25); } }
+.pa-try__mark { position: absolute; min-width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 10px; border: 2px solid #FF8A3D; color: #fff; background: rgba(26, 22, 40, 0.8); font-size: 11px; font-weight: 700; line-height: 16px; text-align: center; }
+.pa-try__bubble { position: absolute; left: 12px; right: 12px; bottom: 12px; padding: 10px 14px; border-radius: 12px; font-size: 13px; line-height: 19px; color: #F2EEFF; background: rgba(26, 22, 40, 0.92); border: 1px solid rgba(255, 255, 255, 0.25); }
+.pa-try__text { padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 21px; background: var(--color-bg-subtle); border: 1px solid var(--color-border-secondary); white-space: pre-wrap; }
+.pa-rec.is-on { background: var(--color-danger); color: #fff; }
+@media (max-width: 720px) { .pa-row { flex-direction: column; align-items: stretch; } .pa-row__control { max-width: none; justify-content: flex-start; } }
+
+/* Settings → Status → Health (after Theo's health check) */
+.health-head { display: flex; align-items: center; gap: 12px; }
+.health-head .cfg-section__label { margin: 0; }
+.health-head .cfg-field__hint { flex: 1; }
+.health-list { display: flex; flex-direction: column; margin-top: 8px; border: 1px solid var(--color-border-secondary); border-radius: 12px; overflow: hidden; }
+.health-item + .health-item { border-top: 1px solid var(--color-border-tertiary); }
+.health-item__row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; text-align: left; font-size: 13px; }
+.health-item__row:not(:disabled):hover { background: var(--color-bg-hover); }
+.health-item__row:disabled { cursor: default; color: inherit; opacity: 1; }
+.health-item__row i { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; background: var(--color-success); box-shadow: 0 0 8px var(--color-success); }
+.health-item.is-warn .health-item__row i { background: var(--color-warn); box-shadow: none; }
+.health-item.is-bad .health-item__row i { background: var(--color-danger); box-shadow: none; }
+.health-item__title { width: 200px; flex-shrink: 0; font-weight: 600; }
+.health-item__line { flex: 1; min-width: 0; color: var(--color-text-secondary); }
+.health-item.is-bad .health-item__line { color: var(--color-danger-text); }
+.health-item__more { width: 16px; text-align: center; color: var(--color-text-tertiary); }
+.health-item__detail { margin: 0; padding: 0 14px 10px 43px; font-size: 12px; line-height: 18px; color: var(--color-text-tertiary); }
+@media (max-width: 720px) { .health-item__row { flex-wrap: wrap; } .health-item__title { width: auto; } .health-item__line { flex-basis: 100%; padding-left: 19px; } }
+
+/* Settings → Account → Profile */
+.profile { display: flex; flex-direction: column; gap: 16px; }
+.profile__photo { display: flex; align-items: center; gap: 16px; }
+.profile__photo img { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; box-shadow: var(--color-border-tertiary) 0 0 0 0.5px; }
+.profile__initials { width: 72px !important; height: 72px !important; font-size: 24px !important; }
+.profile__photo-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.profile__photo-actions .cfg-field__hint { flex-basis: 100%; }
+.profile__name { display: flex; flex-direction: column; gap: 6px; max-width: 460px; }
+.profile__name-row { display: flex; gap: 8px; }
+
+.health-item__fix { padding: 0 14px 10px 43px; }

@@ -51,7 +51,7 @@ internal sealed class SettingsForm : Form
 
         col.Controls.Add(Head("Talk keys"));
         col.Controls.Add(_chord);
-        col.Controls.Add(Hint("Hold them while you talk. Adding any other key cancels, so shortcuts like Ctrl + Win + D still work. Esc stops an answer."));
+        col.Controls.Add(Hint("Hold them while you talk. Adding any other key cancels, so shortcuts like Ctrl + Win + D still work. Esc stops an answer. Once paired, the keys, the voice and dictation are set in HeyZubi: Settings › Pointer Assistant and Dictation."));
 
         col.Controls.Add(Head("Options"));
         col.Controls.Add(_speak);
@@ -84,7 +84,8 @@ internal sealed class SettingsForm : Form
     private async Task RefreshAsync()
     {
         _loading = true;
-        _chord.SelectedItem = Chord.ById(_s.Chord);
+        _chord.SelectedItem = Chord.ById(_s.Remote?.Pointer?.Chord ?? _s.Chord);
+        _chord.Enabled = _s.Remote is null;
         _speak.Checked = _s.Speak;
         try { _startup.Checked = AppSettings.StartsWithWindows; } catch { /* registry unavailable */ }
         _bot.Items.Clear();

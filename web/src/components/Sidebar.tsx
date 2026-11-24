@@ -1,4 +1,4 @@
-import { memo, useCallback, useRef, useState } from 'react';
+import { memo, useCallback, useState } from 'react';
 import { THEMES, useConfigUI, type Theme } from '../configStore';
 import { TasksIsland } from './config/TasksView';
 import { RoutinesIsland } from './config/RoutinesView';
@@ -11,16 +11,6 @@ import { Menu } from './Menu';
 import { UpdateRow } from './UpdateRow';
 import { SidebarOrb } from './SidebarOrb';
 import { lsGet, lsSet } from '../lib/storage';
-
-/** A picture shrunk and cropped to a 256 px square JPEG in the browser, for the profile photo. */
-async function squarePhoto(file: File): Promise<Blob> {
-  const bmp = await createImageBitmap(file);
-  const side = Math.min(bmp.width, bmp.height);
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = 256;
-  canvas.getContext('2d')!.drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, 256, 256);
-  return new Promise((res, rej) => canvas.toBlob((b) => (b ? res(b) : rej(new Error('Couldn’t read that picture.'))), 'image/jpeg', 0.9));
-}
 
 function initials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -185,34 +175,6 @@ export function Sidebar() {
   const setModal = useStore((s) => s.setModal);
   const [accountMenu, setAccountMenu] = useState(false);
   const logout = async () => { await api.logout().catch(() => {}); location.reload(); };
-  // Your profile photo (account row): change or remove it from the account menu.
-  const photoInput = useRef<HTMLInputElement>(null);
-  const [photoError, setPhotoError] = useState<string | null>(null);
-  const setPhoto = (avatarUrl: string | null) => { const u = useStore.getState().user; if (u) set({ user: { ...u, avatarUrl } }); };
-  const uploadPhoto = async (file: File | undefined) => {
-    if (!file) return;
-    setPhotoError(null);
-    try {
-      const res = await fetch('/api/prefs/photo', { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'image/jpeg' }, body: await squarePhoto(file) });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j.error || 'The photo wasn’t saved.');
-      setPhoto(j.avatarUrl);
-    } catch (e) { setPhotoError((e as Error).message); setTimeout(() => setPhotoError(null), 5000); }
-  };
-  // The name shown in the account row: a label only (your account's name, which the bots use, stays as it is).
-  const renameLabel = async () => {
-    const u = useStore.getState().user;
-    const next = window.prompt('Name shown in the sidebar', u?.displayName || u?.name || '');
-    if (next === null || !u) return;
-    const res = await fetch('/api/prefs', { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ displayName: next }) }).catch(() => null);
-    const j = res?.ok ? await res.json().catch(() => null) : null;
-    if (j) set({ user: { ...u, displayName: j.displayName ?? null } });
-  };
-  const removePhoto = async () => {
-    const res = await fetch('/api/prefs/photo', { method: 'DELETE', credentials: 'include' }).catch(() => null);
-    if (res?.ok) setPhoto(null);
-  };
-
   const primary = bots.find((b) => b.isPrimary);
   const others = bots.filter((b) => !b.isPrimary).sort((a, b) => b.lastActivityAt - a.lastActivityAt);
 
@@ -308,18 +270,12 @@ export function Sidebar() {
                 onClose={() => setAccountMenu(false)}
                 items={[
                   { label: 'Settings', hint: '⌘,', onSelect: () => useConfigUI.getState().openAppSettings() },
-                  { label: user?.avatarUrl ? 'Change photo…' : 'Add a photo…', onSelect: () => photoInput.current?.click() },
-                  { label: 'Change display name…', onSelect: () => void renameLabel() },
-                  ...(user?.avatarUrl ? [{ label: 'Remove photo', onSelect: () => void removePhoto() }] : []),
-                  { label: 'Connect apps', onSelect: () => setModal('apps') },
                   { label: 'Log out', danger: true, onSelect: logout },
                 ]}
               >
                 <div className="menu__header">{user?.email}</div>
               </Menu>
             )}
-            <input ref={photoInput} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => { void uploadPhoto(e.target.files?.[0]); e.target.value = ''; }} />
-            {photoError && <div className="account__error" role="alert">{photoError}</div>}
           </div>
         )}
         <button type="button" className="icon-btn icon-btn--bordered" onClick={() => setModal('apps')} aria-label="Connect apps" title="Connect apps">

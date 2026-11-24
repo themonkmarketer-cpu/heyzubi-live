@@ -188,6 +188,9 @@ const streams = new Set<(msg: object) => void>();
 const LIST_CHANGED = { jsonrpc: '2.0', method: 'notifications/tools/list_changed' };
 
 /** Tell every connected engine to list the tools again (after the tools on offer changed). */
+/** For Settings › Status › Health: engines connected now, and how many hold the stream open for tool changes. */
+export const mcpLive = () => ({ sessions: sessions.size, streams: streams.size });
+
 export function notifyToolsChanged() {
   for (const send of streams) send(LIST_CHANGED);
 }

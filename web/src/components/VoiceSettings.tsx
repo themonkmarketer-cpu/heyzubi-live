@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Bot } from '@shared/types';
 import { useStore } from '../store';
+import { useConfigUI } from '../configStore';
 import { voiceApi, type ClaudeSpend, type VoiceOptions, type XaiUsage } from '../voice/api';
 import { endCall, isCallActive, previewVoice, startCall, useVoice } from '../voice/call';
 import { Icon } from './Icon';
@@ -167,7 +168,7 @@ export function VoiceSettings({ bot }: { bot: Bot }) {
   );
 }
 
-const USAGE_ROWS: { k: keyof XaiUsage['by']; label: string; qty: (q: number) => string }[] = [
+export const USAGE_ROWS: { k: keyof XaiUsage['by']; label: string; qty: (q: number) => string }[] = [
   { k: 'live_call', label: 'Live calls (xAI)', qty: (q) => `${q.toFixed(1)} min` },
   { k: 'gemini_call', label: 'Live calls (Gemini)', qty: (q) => `${q.toFixed(1)} min` },
   { k: 'transcription', label: 'Voice messages & dictation', qty: (q) => `${Math.round(q)} s` },
@@ -177,7 +178,7 @@ const USAGE_ROWS: { k: keyof XaiUsage['by']; label: string; qty: (q: number) => 
   { k: 'grok', label: 'Grok (summaries, Clicky, X search)', qty: (q) => `${Math.round(q).toLocaleString()} tokens` },
   { k: 'image', label: 'Images created', qty: (q) => `${Math.round(q)}` },
 ];
-const usd = (n: number) => (n > 0 && n < 0.01 ? '<$0.01' : `$${n.toFixed(2)}`);
+export const usd = (n: number) => (n > 0 && n < 0.01 ? '<$0.01' : `$${n.toFixed(2)}`);
 
 /** Today's xAI spend by service, from the app's own log (estimates; the exact bill is in xAI's console). */
 function UsageToday() {
@@ -210,39 +211,13 @@ function UsageToday() {
 }
 
 /** Personal dictionary (names dictation must spell right) and the dictation tidy-up switch. */
+/** The dictionary and the tidy-up live in Settings › Dictation now (with the Windows app's dictation). */
 function DictionaryPrefs() {
-  const [p, setP] = useState<{ dictionary: string[]; tidyDictation: boolean } | null>(null);
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState('');
-  const [busy, setBusy] = useState(false);
-  useEffect(() => { voiceApi.prefs().then(setP).catch(() => {}); }, []);
-  if (!p) return null;
-  const save = async (patch: { dictionary?: string; tidyDictation?: boolean }) => {
-    setBusy(true);
-    try { setP(await voiceApi.savePrefs(patch)); if (patch.dictionary !== undefined) setEditing(false); } catch { /* kept as was */ } finally { setBusy(false); }
-  };
   return (
-    <>
-      <div className="panel-row panel-row--setting">
-        <span title="Names and words dictation should always spell right, like Zubi, HeyZubi or a client's name">Dictionary</span>
-        <button type="button" className="voice-preview" onClick={() => { setDraft(p.dictionary.join(', ')); setEditing(!editing); }}>
-          {p.dictionary.length ? `${p.dictionary.length} word${p.dictionary.length === 1 ? '' : 's'} · Edit` : 'Add words'}
-        </button>
-      </div>
-      {editing && (
-        <div className="voice-dict">
-          <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} placeholder="Zubi, HeyZubi, Murtaza, Hermes…" aria-label="Dictionary words, separated by commas" />
-          <div className="voice-dict__actions">
-            <span>Commas or new lines between words · up to 100</span>
-            <button type="button" className="voice-preview" disabled={busy} onClick={() => void save({ dictionary: draft })}>{busy ? 'Saving…' : 'Save'}</button>
-          </div>
-        </div>
-      )}
-      <label className="panel-row panel-row--setting voice-toggle" title="Fix punctuation and remove filler words before dictated text lands in the message box">
-        <span>Tidy up dictation</span>
-        <input type="checkbox" checked={p.tidyDictation} disabled={busy} onChange={(e) => void save({ tidyDictation: e.target.checked })} />
-      </label>
-    </>
+    <div className="panel-row panel-row--setting">
+      <span>Dictation</span>
+      <button type="button" className="voice-preview" onClick={() => useConfigUI.getState().openAppSettings('dictation')}>Tidy-up and your words</button>
+    </div>
   );
 }
 
@@ -269,6 +244,7 @@ function ClaudeToday({ bot }: { bot: Bot }) {
         <div key={x.key} className="xai-usage__row"><span>{x.label}</span><span className="xai-usage__qty" /><span>{usd(x.usd)}</span></div>
       ))}
       <div className="xai-usage__note">Hermes’s own estimates at Anthropic’s API prices, cache included. Zubi signs in with a Claude subscription, so these are likely not real charges</div>
+      <button type="button" className="xai-usage__more" onClick={() => useConfigUI.getState().openAppSettings('usage')}>See usage by team member →</button>
     </div>
   );
 }

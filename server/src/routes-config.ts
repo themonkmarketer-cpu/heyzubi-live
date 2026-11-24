@@ -81,13 +81,13 @@ configApi.get('/bots/:id/skills', (c) => {
 // Shown here read-only, newest first, with a warning on any that look like they hold a secret.
 
 const SECRET_LIKE = /(\bsk-[A-Za-z0-9_-]{20,}|\bxai-[A-Za-z0-9]{20,}|\bAIza[0-9A-Za-z_-]{30,}|\bgh[pousr]_[A-Za-z0-9]{30,}|\bAKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY|\b(api[_-]?key|secret|token|password|passwd)\b["']?\s*[:=]\s*["']?[A-Za-z0-9_\-/+=]{16,})/i;
-const front = (text: string, key: string) => {
+export const skillFront = (text: string, key: string) => {
   const m = /^---\s*\n([\s\S]*?)\n---/.exec(text);
   const line = m?.[1].split('\n').find((l) => l.toLowerCase().startsWith(`${key}:`));
   return line ? line.slice(key.length + 1).trim().replace(/^["']|["']$/g, '') : '';
 };
 
-function agentSkillFiles(home: string): string[] {
+export function agentSkillFiles(home: string): string[] {
   const root = path.join(home, 'skills');
   const out: string[] = [];
   const walk = (dir: string, depth: number) => {
@@ -118,8 +118,8 @@ configApi.get('/bots/:id/agent-skills', (c) => {
     const parts = rel.split('/');
     return {
       path: rel,
-      name: front(text, 'name') || parts[parts.length - 2] || rel,
-      description: front(text, 'description').slice(0, 300),
+      name: skillFront(text, 'name') || parts[parts.length - 2] || rel,
+      description: skillFront(text, 'description').slice(0, 300),
       category: parts.length > 2 ? parts[0] : '',
       updated,
       size: text.length,

@@ -10,6 +10,12 @@ internal sealed record PairResult(string? Token, BotInfo[]? Bots, string? Error)
 internal sealed record MeResult(BotInfo[]? Bots, string? Error);
 internal sealed record PointDto(int Screen, double X, double Y, string? Label);
 internal sealed record MarkDto(string Kind, int? Step, int Screen, double X, double Y, string? Label);
+internal sealed record PointerSettings(string Chord, string Spark, string Brain, string Model, string Voice, string WindowsVoice);
+internal sealed record DictationSettings(string Chord, string Mic, string Recognizer, string Language);
+/// <summary>What HeyZubi says this app should do (Settings › Products, Pointer Assistant and Dictation).</summary>
+internal sealed record ServerSettings(bool PointerOn, bool DictationOn, PointerSettings? Pointer, DictationSettings? Dictation, bool TidyDictation);
+internal sealed record HelloResult(bool Ok, ServerSettings? Settings, string? Error);
+internal sealed record DictateResult(string? Text, string? Error);
 internal sealed record AskResult(string? Heard, string? Question, string? BotName, string? Text, PointDto? Point, MarkDto[]? Marks, string? Audio, string? Error, string? Note);
 
 /// <summary>Talks to HeyZubi: pairing, the bot list, and questions.</summary>
@@ -111,6 +117,52 @@ internal static class Api
             return (null, d.RootElement.TryGetProperty("error", out var e) ? e.GetString() : $"HeyZubi answered {(int)r.StatusCode}.");
         }
         catch (Exception e) { return (null, $"Couldn't reach HeyZubi: {e.Message}"); }
+    }
+
+    /// <summary>Tells HeyZubi this app's version and this PC's microphones and voices; gets the settings back.</summary>
+    public static async Task<ServerSettings?> Hello(string server, string token, string version, List<string> mics, List<string> voices)
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Post, $"{server}/api/desktop/hello")
+            {
+                Content = new StringContent(JsonSerializer.Serialize(new { version, mics, voices }), Encoding.UTF8, "application/json"),
+            };
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            var r = await Read(await NoCookieJar.SendAsync(req), e => new HelloResult(false, null, e));
+            if (r.Error != null) Log.Write($"hello: {r.Error}");
+            return r.Settings;
+        }
+        catch (Exception e) { Log.Write($"hello failed: {e.Message}"); return null; }
+    }
+
+    /// <summary>Dictation: a recording (or words Windows already recognized, for the tidy-up) in, the words out.</summary>
+    public static async Task<DictateResult> Dictate(string server, string token, byte[]? wav, int ms, string? text)
+    {
+        try
+        {
+            var boundary = $"heyzubi{Guid.NewGuid():N}";
+            var form = new MultipartFormDataContent(boundary);
+            form.Headers.ContentType = new MediaTypeHeaderValue("multipart/form-data");
+            form.Headers.ContentType.Parameters.Add(new NameValueHeaderValue("boundary", boundary));
+            void Add(HttpContent c, string name, string? file = null)
+            {
+                c.Headers.ContentDisposition = new ContentDispositionHeaderValue("form-data") { Name = $"\"{name}\"", FileName = file is null ? null : $"\"{file}\"" };
+                form.Add(c);
+            }
+            if (!string.IsNullOrEmpty(text)) Add(new StringContent(text), "text");
+            if (wav is { Length: > 0 })
+            {
+                var audio = new ByteArrayContent(wav);
+                audio.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
+                Add(audio, "audio", "dictation.wav");
+                Add(new StringContent(ms.ToString()), "ms");
+            }
+            using var req = new HttpRequestMessage(HttpMethod.Post, $"{server}/api/desktop/dictate") { Content = form };
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            return await Read(await Http.SendAsync(req), e => new DictateResult(null, e));
+        }
+        catch (Exception e) { return new DictateResult(null, $"Couldn't reach HeyZubi: {e.Message}"); }
     }
 
     public static async Task<AskResult> Ask(string server, string token, string? botId, string? question, byte[]? wav, int ms,

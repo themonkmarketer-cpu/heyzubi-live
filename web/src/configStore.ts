@@ -21,7 +21,7 @@ export const THEMES: Record<Exclude<Theme, 'system'>, { base: 'light' | 'dark'; 
   navy: { base: 'dark', palette: 'navy', label: 'Navy' },
 };
 export type BotSettingsTab = 'general' | 'profile' | 'skills' | 'memories' | 'routines';
-export type AppSection = 'status' | 'general' | 'teams' | 'computer' | 'permissions' | 'apps' | 'api' | 'desktop' | 'account';
+export type AppSection = 'status' | 'usage' | 'products' | 'pointer' | 'dictation' | 'general' | 'teams' | 'computer' | 'permissions' | 'apps' | 'api' | 'desktop' | 'account';
 export type MainView = 'chat' | 'tasks' | 'generations' | 'board' | 'routines';
 
 interface ConfigUI {

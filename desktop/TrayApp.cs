@@ -13,6 +13,10 @@ internal sealed class TrayApp : ApplicationContext
     private readonly ToolStripMenuItem _hint = new() { Enabled = false };
     private readonly ToolStripMenuItem _pause = new("Pause the talk keys");
     private readonly KeyboardHook? _hook;
+    private KeyboardHook? _dictHook;
+    private readonly System.Windows.Forms.Timer _sync = new() { Interval = 60_000 };
+    private bool _syncing, _dictating;
+    private List<string>? _voices;
     private readonly Recorder _rec = new();
     private readonly Player _player = new();
     private readonly SparkWindow _spark = new();
@@ -60,7 +64,7 @@ internal sealed class TrayApp : ApplicationContext
         menu.Items.Add("Open HeyZubi in the browser", null, (_, _) => { if (_s.Paired) OpenUrl(_s.Server); });
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Quit HeyZubi", null, (_, _) => Quit());
-        _pause.Click += (_, _) => { _pause.Checked = !_pause.Checked; if (_hook != null) _hook.Enabled = !_pause.Checked; UpdateHint(); };
+        _pause.Click += (_, _) => { _pause.Checked = !_pause.Checked; ApplyRemote(); };
 
         _tray = new NotifyIcon { Icon = AppIcon, Text = "HeyZubi", ContextMenuStrip = menu, Visible = true };
         _tray.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) ShowMain(); };
@@ -73,13 +77,15 @@ internal sealed class TrayApp : ApplicationContext
             _hook.ChordDown += OnChordDown;
             _hook.ChordUp += OnChordUp;
             _hook.ChordCancelled += OnChordCancelled;
-            _hook.Escape += () => { if (_spark.State != SparkState.Hidden || _rec.Recording) StopAll(); };
+            _hook.Escape += () => { if (_spark.Active || _rec.Recording) StopAll(); };
         }
         catch (Exception e)
         {
             _tray.ShowBalloonTip(8000, "HeyZubi", e.Message, ToolTipIcon.Error);
         }
         _after.Tick += (_, _) => AfterTick();
+        _sync.Tick += async (_, _) => await SyncAsync();
+        _sync.Start();
         UpdateHint();
 
         _ = StartupAsync(args);
@@ -101,6 +107,7 @@ internal sealed class TrayApp : ApplicationContext
             else _tray.ShowBalloonTip(8000, "HeyZubi", r.Error ?? "Pairing failed.", ToolTipIcon.Error);
         }
         UpdateHint();
+        await SyncAsync();
         // Opened by hand: show HeyZubi (a tray icon alone looks like nothing happened). At sign-in: stay quiet.
         if (!args.Contains("--background")) ShowMain();
         else if (!_s.Paired) _tray.ShowBalloonTip(6000, "HeyZubi", "Not paired yet: click the tray icon to pair this computer.", ToolTipIcon.Info);
@@ -120,21 +127,74 @@ internal sealed class TrayApp : ApplicationContext
         }
     }
 
+    private Chord PointerChord => Chord.ById(_s.Remote?.Pointer?.Chord ?? _s.Chord);
+
+    /// <summary>
+    /// Every minute (and at start): tell HeyZubi this app's version, microphones and voices, and take its settings
+    /// (Settings › Products, Pointer Assistant, Dictation). Keeps the last settings when HeyZubi can't be reached.
+    /// </summary>
+    private async Task SyncAsync()
+    {
+        if (!_s.Paired || _syncing) return;
+        _syncing = true;
+        try
+        {
+            _voices ??= WinSpeech.Voices();
+            var got = await Api.Hello(_s.Server, _s.Token!, MainWindow.Version, Recorder.Microphones(), _voices);
+            if (got != null) { _s.Remote = got; ApplyRemote(); }
+        }
+        catch (Exception e) { Log.Write($"sync failed: {e.Message}"); }
+        finally { _syncing = false; }
+    }
+
+    /// <summary>Sets the talk keys, the dictation keys and the spark from HeyZubi's settings (or the local ones before any).</summary>
+    private void ApplyRemote()
+    {
+        var r = _s.Remote;
+        if (_hook != null)
+        {
+            _hook.Chord = PointerChord;
+            _hook.Enabled = !_pause.Checked && (r?.PointerOn ?? true);
+        }
+        bool dictOn = r is { DictationOn: true, Dictation: not null };
+        if (dictOn && _dictHook == null)
+        {
+            try
+            {
+                _dictHook = new KeyboardHook();
+                _dictHook.ChordDown += OnDictDown;
+                _dictHook.ChordUp += OnDictUp;
+                _dictHook.ChordCancelled += OnDictCancelled;
+            }
+            catch (Exception e) { Log.Write($"dictation keys couldn't start: {e.Message}"); }
+        }
+        if (_dictHook != null)
+        {
+            _dictHook.Chord = Chord.ById(r?.Dictation?.Chord ?? "ctrlAlt");
+            // The same keys as the Pointer Assistant would do both at once: HeyZubi refuses that, and so does this.
+            _dictHook.Enabled = dictOn && !_pause.Checked && !(_hook?.Enabled == true && _dictHook.Chord.Id == _hook.Chord.Id);
+        }
+        _spark.Mode = r?.Pointer?.Spark switch { "always" => SparkMode.Always, "never" => SparkMode.Never, _ => SparkMode.Listening };
+        UpdateHint();
+    }
+
     private void UpdateHint()
     {
+        bool pointerOff = _s.Remote is { PointerOn: false };
+        var dict = _s.Remote is { DictationOn: true, Dictation: { } d } ? $" · {Chord.ById(d.Chord)} to dictate" : "";
         _hint.Text = !_s.Paired ? "Not paired: open Settings to pair"
             : _pause.Checked ? "Talk keys paused"
-            : $"Hold {Chord.ById(_s.Chord)} and ask {_s.BotName ?? "your bot"}";
+            : pointerOff ? $"Pointer Assistant is off in HeyZubi{dict}"
+            : $"Hold {PointerChord} and ask {_s.BotName ?? "your bot"}{dict}";
         _tray.Text = _s.Paired ? $"HeyZubi · {_s.BotName ?? "ready"}" : "HeyZubi (not paired)";
     }
 
     private void SettingsChanged()
     {
-        if (_hook != null) _hook.Chord = Chord.ById(_s.Chord);
-        UpdateHint();
+        ApplyRemote();
         // Paired, unpaired, paired again (a new key) or paired elsewhere: the HeyZubi window signs in afresh.
         var now = _s.Paired ? $"{_s.Server}|{_s.TokenProtected}" : "";
-        if (now != _pairedWith) { _pairedWith = now; _main?.ForceSignIn(); }
+        if (now != _pairedWith) { _pairedWith = now; _s.Remote = null; _main?.ForceSignIn(); _ = SyncAsync(); }
     }
 
     // ---- the HeyZubi window ----
@@ -148,7 +208,7 @@ internal sealed class TrayApp : ApplicationContext
             {
                 if (_s.ToldAboutTray) return;
                 _s.ToldAboutTray = true; _s.Save();
-                _tray.ShowBalloonTip(6000, "HeyZubi is still here", $"It keeps running in the tray, so {Chord.ById(_s.Chord)} and notifications still work. Quit it from the tray icon.", ToolTipIcon.Info);
+                _tray.ShowBalloonTip(6000, "HeyZubi is still here", $"It keeps running in the tray, so {PointerChord} and notifications still work. Quit it from the tray icon.", ToolTipIcon.Info);
             };
         }
         if (!_main.Visible) _main.Show();
@@ -168,16 +228,16 @@ internal sealed class TrayApp : ApplicationContext
     private void OnChordDown()
     {
         if (!_s.Paired) { _spark.Note("Pair this computer first: click the HeyZubi tray icon."); _shownAt = DateTime.Now; _after.Start(); return; }
-        if (_busy) return; // still thinking about the last question
+        if (_busy || _rec.Recording) return; // still thinking about the last question, or dictating
         StopAnswer();
-        var err = _rec.Start();
+        var err = _rec.Start(_s.Remote?.Dictation?.Mic);
         if (err != null) { _spark.Note(err); _shownAt = DateTime.Now; _after.Start(); return; }
         _spark.Listen(() => _rec.Level);
     }
 
     private void OnChordUp()
     {
-        if (!_rec.Recording) return;
+        if (!_rec.Recording || _dictating) return;
         var (wav, ms) = _rec.Stop();
         if (ms < 400) { _spark.Dismiss(); return; } // a tap, not a question
         _ = AskAsync(null, wav, ms);
@@ -185,9 +245,89 @@ internal sealed class TrayApp : ApplicationContext
 
     private void OnChordCancelled()
     {
-        if (!_rec.Recording) return;
+        if (!_rec.Recording || _dictating) return;
         _rec.Stop();
         _spark.Dismiss();
+    }
+
+    // ---- dictation: hold the dictation keys, talk, let go: the words are typed where the cursor is ----
+
+    private void OnDictDown()
+    {
+        if (!_s.Paired || _busy || _rec.Recording) return;
+        StopAnswer();
+        var err = _rec.Start(_s.Remote?.Dictation?.Mic);
+        if (err != null) { _spark.Note(err); _shownAt = DateTime.Now; _after.Start(); return; }
+        _dictating = true;
+        _spark.Listen(() => _rec.Level, "Dictating…");
+    }
+
+    private void OnDictUp()
+    {
+        if (!_dictating) return;
+        _dictating = false;
+        if (!_rec.Recording) return;
+        var (wav, ms) = _rec.Stop();
+        if (ms < 400) { _spark.Dismiss(); return; } // a tap, not dictation
+        _ = DictateAsync(wav, ms);
+    }
+
+    private void OnDictCancelled()
+    {
+        if (!_dictating) return;
+        _dictating = false;
+        if (_rec.Recording) _rec.Stop();
+        _spark.Dismiss();
+    }
+
+    private async Task DictateAsync(byte[] wav, int ms)
+    {
+        _busy = true;
+        _after.Stop();
+        _spark.Think(null, "Writing…");
+        try
+        {
+            string? text = null, error = null, local = null;
+            var started = DateTime.Now;
+            bool offline = _s.Remote?.Dictation?.Recognizer == "windows";
+            if (offline) (local, error) = await WinSpeech.RecognizeAsync(wav);
+            if (error == null && !(offline && string.IsNullOrWhiteSpace(local)))
+            {
+                // Windows' own words go to HeyZubi only for the tidy-up (when it's on); otherwise the recording goes.
+                if (offline && _s.Remote?.TidyDictation != true) text = local;
+                else (text, error) = await Api.Dictate(_s.Server, _s.Token!, offline ? null : wav, ms, local);
+            }
+            Log.Write($"dictate: {ms} ms, {(offline ? "Windows offline" : "HeyZubi")}, {(DateTime.Now - started).TotalSeconds:0.0}s → {(error != null ? $"error: {error}" : $"{text?.Length ?? 0} chars")}");
+            if (!_spark.Active) return; // stopped with Esc meanwhile
+            if (error != null) _spark.Note(error);
+            else if (string.IsNullOrWhiteSpace(text)) _spark.Note("Didn't catch that. Hold the keys while you talk.");
+            else { _spark.Dismiss(); TypeText(text); }
+        }
+        catch (Exception e) { Log.Write($"dictation failed: {e}"); _spark.Note($"Something went wrong: {e.Message}"); }
+        finally { _busy = false; _shownAt = DateTime.Now; _after.Start(); }
+    }
+
+    /// <summary>Types text into whatever has the keyboard focus, as Unicode key presses (any language, any script).</summary>
+    private static void TypeText(string text)
+    {
+        text = text.Replace("\r\n", "\n").Replace('\n', ' ');
+        var inputs = new List<Native.INPUT>(text.Length * 2);
+        foreach (char ch in text)
+        {
+            var down = new Native.INPUT { type = Native.INPUT_KEYBOARD };
+            down.u.ki.wScan = ch;
+            down.u.ki.dwFlags = Native.KEYEVENTF_UNICODE;
+            var up = down;
+            up.u.ki.dwFlags = Native.KEYEVENTF_UNICODE | Native.KEYEVENTF_KEYUP;
+            inputs.Add(down);
+            inputs.Add(up);
+        }
+        int size = System.Runtime.InteropServices.Marshal.SizeOf<Native.INPUT>();
+        for (int i = 0; i < inputs.Count; i += 200)
+        {
+            var part = inputs.Skip(i).Take(200).ToArray();
+            Native.SendInput((uint)part.Length, part, size);
+        }
     }
 
     // ---- asking ----
@@ -205,10 +345,11 @@ internal sealed class TrayApp : ApplicationContext
         {
             var started = DateTime.Now;
             var shots = ScreenGrab.CaptureAll();
-            var r = await Api.Ask(_s.Server, _s.Token!, _s.BotId, question, wav, ms, shots, _history, _s.Speak, _cts.Token);
+            var voice = _s.Remote?.Pointer?.Voice ?? "bot";
+            var r = await Api.Ask(_s.Server, _s.Token!, _s.BotId, question, wav, ms, shots, _history, _s.Speak && voice == "bot", _cts.Token);
             Log.Write($"ask: {(question != null ? "typed" : $"spoken {ms} ms")}, {shots.Count} screen(s), {(DateTime.Now - started).TotalSeconds:0.0}s → " +
                 (r.Error != null ? $"error: {r.Error}" : $"answer {r.Text?.Length ?? 0} chars, point {(r.Point != null ? $"screen {r.Point.Screen + 1}" : "none")}, {r.Marks?.Length ?? 0} marks, audio {(r.Audio != null ? "yes" : "no")}"));
-            if (_spark.State == SparkState.Hidden) return; // stopped with Esc meanwhile
+            if (!_spark.Active) return; // stopped with Esc meanwhile
             if (r.Error != null) { _spark.Note(r.Error); }
             else if (string.IsNullOrWhiteSpace(r.Text)) { _spark.Note(r.Note ?? "Didn't catch that. Hold the keys while you talk."); }
             else
@@ -220,6 +361,7 @@ internal sealed class TrayApp : ApplicationContext
                 ShowMarks(shots, r.Marks);
                 _spark.Answer(r.Heard is { Length: > 0 } h ? h : null, r.Text, target);
                 if (r.Audio != null) { try { _player.Play(Convert.FromBase64String(r.Audio)); } catch { /* the text is on screen anyway */ } }
+                else if (_s.Speak && voice == "windows") WinSpeech.Speak(r.Text, _s.Remote?.Pointer?.WindowsVoice);
             }
         }
         catch (OperationCanceledException) { return; }
@@ -253,7 +395,7 @@ internal sealed class TrayApp : ApplicationContext
     /// <summary>The answer stays while it's spoken, then 8 more seconds (Esc or the talk keys clear it sooner).</summary>
     private void AfterTick()
     {
-        if (_player.Playing || _busy || _rec.Recording) { _shownAt = DateTime.Now; return; }
+        if (_player.Playing || WinSpeech.Speaking || _busy || _rec.Recording) { _shownAt = DateTime.Now; return; }
         if ((DateTime.Now - _shownAt).TotalSeconds >= 8) StopAnswer();
     }
 
@@ -261,6 +403,7 @@ internal sealed class TrayApp : ApplicationContext
     {
         _after.Stop();
         _player.Stop();
+        WinSpeech.Stop();
         ClearMarks();
         _spark.Dismiss();
     }
@@ -268,6 +411,7 @@ internal sealed class TrayApp : ApplicationContext
     private void StopAll()
     {
         _cts?.Cancel();
+        _dictating = false;
         if (_rec.Recording) _rec.Stop();
         StopAnswer();
     }
@@ -318,7 +462,9 @@ internal sealed class TrayApp : ApplicationContext
     {
         if (_main is { IsDisposed: false }) { _main.AllowClose = true; _main.Close(); }
         StopAll();
+        _sync.Stop();
         _hook?.Dispose();
+        _dictHook?.Dispose();
         _rec.Dispose();
         _player.Dispose();
         _tray.Visible = false;

@@ -18,7 +18,8 @@ interface SessionRow { id: string; parent: string | null; source: string; starte
 
 const SOURCE_NAMES: Record<string, string> = {
   api_server: 'Other apps (Zubi HQ, tools)', cron: 'Scheduled jobs', telegram: 'Telegram', slack: 'Slack', whatsapp: 'WhatsApp',
-  desktop: 'Desktop app', cli: 'Terminal', oneshot: 'One-off runs', discord: 'Discord', email: 'Email',
+  desktop: 'Desktop app', cli: 'Terminal', tui: 'Terminal', oneshot: 'One-off runs', discord: 'Discord', email: 'Email',
+  kanban: 'Kanban tasks', local: 'Local runs',
 };
 
 function openRO(file: string): Database.Database | null {
@@ -119,3 +120,52 @@ export function claudeSpendToday(home = env.hermesHome): ClaudeSpend {
 
 // Take the day's baseline soon after midnight even when nobody opens the app.
 setInterval(() => { try { const rows = readSessions(env.hermesHome); if (rows) baseline(rows); } catch { /* next time */ } }, 5 * 60_000).unref();
+
+// ---------- usage over a window (Settings › Usage) ----------
+// Hermes keeps tokens and cost per session, not per message, and a HeyZubi chat is one long session. So a session's
+// share of a window is the share of its replies (assistant messages) that fall inside it; turns are the messages
+// people (or other bots) sent in it. Only roles and times are read, never what was said.
+
+export interface UsageLine { botId: string | null; key: string; label: string; turns: number; tokens: number; usd: number }
+interface WindowSession { id: string; parent: string | null; source: string; started: number; cost: number; tokens: number }
+
+/** One Hermes home's usage since `sinceMs`. Sessions not tied to a HeyZubi chat count toward `homeBot` (a team member's own engine) or, in the main engine, toward their channel. */
+export function claudeUsageSince(home: string, sinceMs: number, homeBot: string | null): UsageLine[] | null {
+  const s = openRO(path.join(home, 'state.db'));
+  if (!s) return null;
+  const since = sinceMs / 1000;
+  let sessions: WindowSession[];
+  let counts: { sid: string; a: number; aw: number; uw: number }[];
+  try {
+    sessions = s.prepare(`SELECT id, parent_session_id AS parent, COALESCE(source, '') AS source, COALESCE(started_at, 0) AS started,
+      COALESCE(estimated_cost_usd, 0) AS cost,
+      COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0) + COALESCE(cache_read_tokens, 0) + COALESCE(cache_write_tokens, 0) + COALESCE(reasoning_tokens, 0) AS tokens
+      FROM sessions WHERE COALESCE(last_activity_at, started_at, 0) >= ? OR started_at >= ?`).all(since, since) as WindowSession[];
+    counts = s.prepare(`SELECT session_id AS sid, SUM(role = 'assistant') AS a, SUM(role = 'assistant' AND timestamp >= ?) AS aw, SUM(role = 'user' AND timestamp >= ?) AS uw
+      FROM messages GROUP BY session_id`).all(since, since) as typeof counts;
+  } catch { return null; } finally { s.close(); }
+  const byCount = new Map(counts.map((c) => [c.sid, c]));
+  const chats = botSessions(home);
+  const byId = new Map(sessions.map((r) => [r.id, r]));
+  const botOf = (r: WindowSession): string | null => {
+    for (let x: WindowSession | undefined = r, hops = 0; x && hops < 4; x = x.parent ? byId.get(x.parent) : undefined, hops++) {
+      const b = chats.get(x.id);
+      if (b) return b;
+    }
+    return homeBot;
+  };
+  const lines = new Map<string, UsageLine>();
+  for (const r of sessions) {
+    const c = byCount.get(r.id);
+    const share = c && c.a > 0 ? c.aw / c.a : r.started >= since ? 1 : 0;
+    const turns = c?.uw ?? 0;
+    if (share <= 0 && turns <= 0) continue;
+    const bot = botOf(r);
+    const key = bot ? `bot:${bot}` : `src:${r.source || 'other'}`;
+    const line = lines.get(key) ?? { botId: bot, key, label: bot ? '' : SOURCE_NAMES[r.source] ?? (r.source || 'Other'), turns: 0, tokens: 0, usd: 0 };
+    line.turns += turns; line.tokens += r.tokens * share; line.usd += r.cost * share;
+    lines.set(key, line);
+  }
+  return [...lines.values()].filter((l) => l.turns > 0 || l.tokens >= 1 || l.usd >= 0.0001)
+    .map((l) => ({ ...l, tokens: Math.round(l.tokens), usd: Math.round(l.usd * 1e4) / 1e4 }));
+}

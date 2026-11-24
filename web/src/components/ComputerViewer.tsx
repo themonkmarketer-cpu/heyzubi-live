@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { usePrefs } from '../lib/appPrefs';
 import type RFBType from '@novnc/novnc';
 import type { Bot } from '@shared/types';
 import { BotAvatarFor } from '../avatar/BotAvatar';
@@ -220,7 +221,8 @@ export function ComputerScreen({ bot, variant, initialMode = 'watch', hint, paus
   };
 
   // Clicky: only in the large view, so the small panel never listens for the shortcut.
-  const clicky = useClicky(bot, phase === 'live' && large);
+  const pointerOn = usePrefs()?.products.pointer !== false;
+  const clicky = useClicky(bot, phase === 'live' && large && pointerOn);
   const asking = clicky.phase !== 'idle';
   const askBtn = (cls: string) => (
     <button
@@ -344,8 +346,8 @@ export function ComputerScreen({ bot, variant, initialMode = 'watch', hint, paus
                     <button type="button" className="screen__seg-btn" aria-pressed="false" onClick={takeControl}>{large && <Icon name="pointer" size={14} />}Take control</button>
                   </div>
                   <span className="screen__pill-rule" aria-hidden />
-                  {large && askBtn('screen__pill-btn')}
-                  {large && typeBtn('screen__pill-icon')}
+                  {large && pointerOn && askBtn('screen__pill-btn')}
+                  {large && pointerOn && typeBtn('screen__pill-icon')}
                   {canFullscreen && (
                     <button type="button" className="screen__pill-icon" onClick={toggleFullscreen} aria-label={fullscreen ? 'Leave full screen' : 'Full screen'} title={fullscreen ? 'Leave full screen' : 'Full screen'}>
                       <Icon name={fullscreen ? 'shrink' : 'expand'} size={15} />
@@ -367,7 +369,7 @@ export function ComputerScreen({ bot, variant, initialMode = 'watch', hint, paus
               <span>{hint || 'You’re driving'}</span>
             </span>
             <span className="screen__chin-actions">
-              {large && (typeAsk ? typeBox : <>{askBtn('screen__chin-btn')}{typeBtn('screen__chin-icon')}</>)}
+              {large && pointerOn && (typeAsk ? typeBox : <>{askBtn('screen__chin-btn')}{typeBtn('screen__chin-icon')}</>)}
               {pasteBox ? (
                 <input
                   className="screen__paste-input" type="password" autoFocus autoComplete="off" spellCheck={false}

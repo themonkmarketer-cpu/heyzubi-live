@@ -42,6 +42,8 @@ internal sealed class AppSettings
     public string? WindowBounds { get; set; }
     public bool WindowMaximized { get; set; }
     public bool ToldAboutTray { get; set; }
+    /// <summary>The settings HeyZubi sends (Settings › Products, Pointer Assistant, Dictation); never written to the file.</summary>
+    [JsonIgnore] public ServerSettings? Remote { get; set; }
 
     public static string Folder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "HeyZubi Desktop");
     private static string FilePath => Path.Combine(Folder, "settings.json");

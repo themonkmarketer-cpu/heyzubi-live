@@ -4,6 +4,7 @@
 // base branch. It never pushes to the base branch and never merges: the owner reviews and merges on GitHub.
 // HeyZubi writes a "coding" marker for that conversation; the hq_owner_words hook then refuses merges,
 // force pushes, pushes to the base branch and sending or deleting anything while the run works.
+import { dropOneOff } from './engine-sessions.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Hono } from 'hono';
@@ -114,8 +115,9 @@ export async function startCodingRun(userId: string, botId: string, a: { repo: s
 
   void (async () => {
     let text = '';
+    let res: Response | null = null;
     try {
-      const res = await fetch(`${engine.url}/v1/responses`, {
+      res = await fetch(`${engine.url}/v1/responses`, {
         method: 'POST',
         signal: ctrl.signal,
         headers: { 'content-type': 'application/json', accept: 'text/event-stream', ...(engine.key ? { authorization: `Bearer ${engine.key}` } : {}) },
@@ -146,6 +148,7 @@ export async function startCodingRun(userId: string, botId: string, a: { repo: s
     } finally {
       clearTimeout(timer);
       running.delete(id);
+      dropOneOff(engine, res); // the run's session goes; the team member keeps only its chat
       try { fs.unlinkSync(marker); } catch { /* gone */ }
       try { fs.rmSync(workdir, { recursive: true, force: true }); } catch { /* the engine's files; harmless if left */ }
     }

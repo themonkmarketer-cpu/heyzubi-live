@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Toolkit } from '@shared/types';
 import { BotAvatarFor } from '../../avatar/BotAvatar';
@@ -15,9 +15,17 @@ import { ToolkitLogo } from '../ToolkitLogo';
 import { Glyph } from './glyphs';
 import { ConfirmButton } from './ui';
 import { EngineSettings } from '../EngineSettings';
+import { USAGE_ROWS, usd } from '../VoiceSettings';
+import { DictationSection, PointerSection, ProductsSection } from './ProductSettings';
+import { removePhoto, saveDisplayName, uploadPhoto } from '../../lib/profile';
+import type { XaiUsage } from '../../voice/api';
 
 const SECTIONS: { id: AppSection; label: string }[] = [
   { id: 'status', label: 'Status' },
+  { id: 'usage', label: 'Usage' },
+  { id: 'products', label: 'Products' },
+  { id: 'pointer', label: 'Pointer Assistant' },
+  { id: 'dictation', label: 'Dictation' },
   { id: 'general', label: 'General' },
   { id: 'teams', label: 'Teams' },
   { id: 'computer', label: 'Computer' },
@@ -54,6 +62,10 @@ export function AppSettings() {
         <button type="button" className="app-settings__close icon-btn" onClick={close} aria-label="Close settings" title="Close (Esc)"><Icon name="close" opacity={0.8} /></button>
         <div className="app-settings__page">
           {section === 'status' && <StatusSection />}
+          {section === 'usage' && <UsageSection />}
+          {section === 'products' && <ProductsSection />}
+          {section === 'pointer' && <PointerSection />}
+          {section === 'dictation' && <DictationSection />}
           {section === 'general' && <GeneralSection />}
           {section === 'teams' && <TeamsSection />}
           {section === 'computer' && <ComputerSection />}
@@ -421,6 +433,47 @@ function NotificationsSetting() {
 interface StatusCard { key: string; title: string; ok: boolean; state: string; line: string }
 interface StatusData { checked: number; cards: StatusCard[]; dataMode: { live: boolean; text: string }; google: { gmail: boolean; calendar: boolean } }
 
+interface HealthItem { key: string; title: string; status: 'ok' | 'warn' | 'bad'; line: string; detail: string[] }
+
+/** Health, after Theo's: what HeyZubi needs to work, each with what to do when it isn't right. */
+function HealthList() {
+  const [items, setItems] = useState<HealthItem[] | null>(null);
+  const [checked, setChecked] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState<string | null>(null);
+  const run = useCallback(() => {
+    setBusy(true);
+    fetch('/api/status/health', { credentials: 'include' }).then((r) => (r.ok ? r.json() : null)).then((j) => { if (j) { setItems(j.items); setChecked(j.checked); } }).catch(() => {}).finally(() => setBusy(false));
+  }, []);
+  useEffect(run, [run]);
+  const bad = items?.filter((i) => i.status !== 'ok').length ?? 0;
+  return (
+    <section className="cfg-section">
+      <div className="health-head">
+        <div className="cfg-section__label">Health</div>
+        <span className="cfg-field__hint">{!items ? 'Checking…' : bad ? `${bad} thing${bad === 1 ? '' : 's'} to look at` : 'Everything looks right'}{checked ? ` · checked ${relativeShort(checked)}` : ''}</span>
+        <button type="button" className="cfg-btn" onClick={run} disabled={busy}>{busy ? 'Checking…' : 'Run checks'}</button>
+      </div>
+      <div className="health-list">
+        {(items ?? []).map((i) => (
+          <div key={i.key} className={`health-item is-${i.status}`}>
+            <button type="button" className="health-item__row" onClick={() => setOpen(open === i.key ? null : i.key)} aria-expanded={open === i.key} disabled={!i.detail.length}>
+              <i aria-hidden />
+              <span className="health-item__title">{i.title}</span>
+              <span className="health-item__line">{i.line}</span>
+              {i.detail.length > 0 && <span className="health-item__more" aria-hidden>{open === i.key ? '−' : '+'}</span>}
+            </button>
+            {open === i.key && <ul className="health-item__detail">{i.detail.map((d, n) => <li key={n}>{d}</li>)}</ul>}
+            {i.key === 'sessions' && i.status !== 'ok' && (
+              <div className="health-item__fix"><button type="button" className="cfg-btn" disabled={busy} onClick={async () => { setBusy(true); await fetch('/api/status/tidy-sessions', { method: 'POST', credentials: 'include' }).catch(() => null); setBusy(false); run(); }}>Remove now</button></div>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 /** Status, after Zubi HQ's Settings: live checks, data mode, the agent's model and effort, a test prompt. */
 function StatusSection() {
   const [data, setData] = useState<StatusData | null>(null);
@@ -464,6 +517,8 @@ function StatusSection() {
         {data && <div className="cfg-field__hint">Checked {relativeShort(data.checked)}.</div>}
       </section>
 
+      <HealthList />
+
       <section className="cfg-section">
         <div className="cfg-section__label">Agent</div>
         <div className="cfg-field__hint">{primary ? `${primary.name} runs on Hermes. Model and reasoning effort apply to every task ${primary.name} does in HeyZubi.` : 'No main team member yet.'}</div>
@@ -494,6 +549,92 @@ function StatusSection() {
         <div className="cfg-section__label">Obsidian</div>
         <div className="cfg-field__hint">{card('obsidian')?.state || '…'} · {card('obsidian')?.line ?? ''}. The vault is read-only here; Zubi and Claude write to it through the shared brain.</div>
       </section>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+interface UsageRow { botId: string; name: string; turns: number; tokens: number; usd: number }
+interface UsageData {
+  days: number; since: number; available: boolean; note: string;
+  rows: UsageRow[]; other: { key: string; label: string; turns: number; tokens: number; usd: number }[];
+  total: { turns: number; tokens: number; usd: number };
+  services: { by: XaiUsage['by']; total: number; note: string };
+}
+const WINDOWS = [{ d: 1, label: 'Today' }, { d: 7, label: 'Last 7 days' }, { d: 30, label: 'Last 30 days' }];
+const tokensShort = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(Math.round(n)));
+
+/** Usage, after Theo's: each team member's turns, tokens and Claude cost over a window, then the other services. */
+function UsageSection() {
+  const [days, setDays] = useState(() => { try { return Number(localStorage.getItem('usageDays')) || 7; } catch { return 7; } });
+  const [data, setData] = useState<UsageData | null>(null);
+  const [failed, setFailed] = useState(false);
+  const bots = useStore((s) => s.bots);
+  useEffect(() => {
+    let on = true;
+    setFailed(false);
+    fetch(`/api/usage?days=${days}`, { credentials: 'include' }).then((r) => (r.ok ? r.json() : Promise.reject())).then((j) => { if (on) setData(j); }).catch(() => { if (on) setFailed(true); });
+    try { localStorage.setItem('usageDays', String(days)); } catch { /* not kept */ }
+    return () => { on = false; };
+  }, [days]);
+  const shown = data?.days === days ? data : null;
+  const max = Math.max(0.0001, ...(shown?.rows.map((r) => r.usd) ?? [0]), ...(shown?.other.map((r) => r.usd) ?? [0]));
+  return (
+    <>
+      <PageHead title="Usage" sub="How much each team member worked, and what it cost. Read from the engine’s own records and the app’s spend log; nothing you said is read." />
+      <section className="cfg-section">
+        <div className="cfg-seg" role="radiogroup" aria-label="Period">
+          {WINDOWS.map((w) => <button key={w.d} type="button" role="radio" aria-checked={days === w.d} className={days === w.d ? 'is-active' : ''} onClick={() => setDays(w.d)}>{w.label}</button>)}
+        </div>
+        {failed && <div className="st-result is-bad">Couldn’t load usage. Try again in a moment.</div>}
+        {!failed && !shown && <div className="cfg-field__hint">Loading…</div>}
+        {shown && !shown.available && <div className="cfg-field__hint">The engine’s records couldn’t be read, so Claude usage is missing.</div>}
+        {shown && (
+          <table className="usage-table">
+            <thead><tr><th>Team member</th><th>Turns</th><th>Tokens</th><th>Claude cost</th></tr></thead>
+            <tbody>
+              {shown.rows.map((r) => {
+                const bot = bots.find((b) => b.id === r.botId);
+                return (
+                  <tr key={r.botId} className={r.turns || r.usd ? '' : 'is-idle'}>
+                    <td><span className="usage-table__bar" style={{ width: `${(r.usd / max) * 100}%` }} /><span className="usage-table__who">{bot && <BotAvatarFor bot={bot} size={22} />}{r.name}</span></td>
+                    <td>{r.turns.toLocaleString()}</td>
+                    <td>{tokensShort(r.tokens)}</td>
+                    <td>{r.usd ? usd(r.usd) : '—'}</td>
+                  </tr>
+                );
+              })}
+              {shown.other.map((r) => (
+                <tr key={r.key} className="is-channel">
+                  <td><span className="usage-table__bar" style={{ width: `${(r.usd / max) * 100}%` }} /><span className="usage-table__who">{r.label}</span></td>
+                  <td>{r.turns.toLocaleString()}</td>
+                  <td>{tokensShort(r.tokens)}</td>
+                  <td>{r.usd ? usd(r.usd) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot><tr><td>Total</td><td>{shown.total.turns.toLocaleString()}</td><td>{tokensShort(shown.total.tokens)}</td><td>{usd(shown.total.usd)}</td></tr></tfoot>
+          </table>
+        )}
+        {shown && <div className="cfg-field__hint">{shown.note} Turns are the messages sent to a team member (by you or another bot).</div>}
+      </section>
+      {shown && (
+        <section className="cfg-section">
+          <div className="cfg-section__label">Voice, images and other services</div>
+          <table className="usage-table is-services">
+            <tbody>
+              {USAGE_ROWS.filter((r) => shown.services.by[r.k].uses > 0).map((r) => {
+                const s = shown.services.by[r.k];
+                return <tr key={r.k}><td>{r.label}</td><td>{r.qty(s.qty)}</td><td>{usd(s.usd)}</td></tr>;
+              })}
+              {!USAGE_ROWS.some((r) => shown.services.by[r.k].uses > 0) && <tr className="is-idle"><td colSpan={3}>Nothing used in this period.</td></tr>}
+            </tbody>
+            <tfoot><tr><td>Total</td><td /><td>{usd(shown.services.total)}</td></tr></tfoot>
+          </table>
+          <div className="cfg-field__hint">{shown.services.note}</div>
+        </section>
+      )}
     </>
   );
 }
@@ -656,6 +797,51 @@ function AppsSection() {
 
 // ---------------------------------------------------------------------------
 
+/** Profile: the photo and the name shown in the sidebar's account row (moved here from the account menu). */
+function ProfileSection() {
+  const user = useStore((s) => s.user);
+  const input = useRef<HTMLInputElement>(null);
+  const [name, setName] = useState<string | null>(null);
+  const [busy, setBusy] = useState<'photo' | 'name' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const initials = (user?.name ?? user?.email ?? '?').trim().split(/\s+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase();
+  const run = async (what: 'photo' | 'name', job: () => Promise<void>) => {
+    setBusy(what); setError(null);
+    try { await job(); if (what === 'name') { setName(null); setSaved(true); window.setTimeout(() => setSaved(false), 1500); } }
+    catch (e) { setError((e as Error).message); }
+    finally { setBusy(null); }
+  };
+  const shown = user?.displayName || '';
+  const draft = name ?? shown;
+  return (
+    <section className="cfg-section">
+      <div className="cfg-section__label">Profile</div>
+      <div className="profile">
+        <div className="profile__photo">
+          {user?.avatarUrl ? <img src={user.avatarUrl} alt="Your photo" width={72} height={72} /> : <span className="account__initials profile__initials">{initials}</span>}
+          <div className="profile__photo-actions">
+            <button type="button" className="cfg-btn" disabled={busy === 'photo'} onClick={() => input.current?.click()}>{busy === 'photo' ? 'Saving…' : user?.avatarUrl ? 'Change photo' : 'Add a photo'}</button>
+            {user?.avatarUrl && <button type="button" className="cfg-btn cfg-btn--ghost-danger" disabled={busy === 'photo'} onClick={() => void run('photo', removePhoto)}>Remove photo</button>}
+            <span className="cfg-field__hint">JPEG, PNG or WebP. It’s cropped to a square.</span>
+          </div>
+          <input ref={input} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void run('photo', () => uploadPhoto(f)); }} />
+        </div>
+        <label className="profile__name">
+          <span className="cfg-row__title">Display name</span>
+          <span className="profile__name-row">
+            <input className="pa-input" value={draft} maxLength={40} placeholder={user?.name ?? ''} onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && name !== null && name.trim() !== shown) void run('name', () => saveDisplayName(name)); }} />
+            <button type="button" className="cfg-btn" disabled={busy === 'name' || name === null || name.trim() === shown} onClick={() => void run('name', () => saveDisplayName(draft))}>{busy === 'name' ? 'Saving…' : saved ? 'Saved' : 'Save'}</button>
+          </span>
+          <span className="cfg-field__hint">Shown in the sidebar. Leave it empty to show your account’s name ({user?.name}); your team still calls you by that.</span>
+        </label>
+        {error && <div className="st-result is-bad" role="alert">{error}</div>}
+      </div>
+    </section>
+  );
+}
+
 function AccountSection() {
   const user = useStore((s) => s.user);
   const [busy, setBusy] = useState(false);
@@ -663,10 +849,11 @@ function AccountSection() {
   return (
     <>
       <PageHead title="Account" />
+      <ProfileSection />
       <section className="cfg-section">
         <div className="cfg-card">
           <div className="cfg-row">
-            <span className="account__initials">{initials}</span>
+            {user?.avatarUrl ? <img className="account__photo" src={user.avatarUrl} alt="" width={36} height={36} /> : <span className="account__initials">{initials}</span>}
             <div className="cfg-row__text">
               <div className="cfg-row__title">{user?.name}</div>
               <div className="cfg-row__sub">{user?.email}</div>

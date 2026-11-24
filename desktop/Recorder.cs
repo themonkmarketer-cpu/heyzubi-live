@@ -5,7 +5,8 @@ using static HeyZubiDesktop.Native;
 namespace HeyZubiDesktop;
 
 /// <summary>
-/// Records the default microphone as 16 kHz mono 16-bit PCM through waveIn, and hands back a WAV file.
+/// Records a microphone (the default one, or one picked in HeyZubi by its Windows name) as 16 kHz mono 16-bit PCM
+/// through waveIn, and hands back a WAV file.
 /// Windows' microphone privacy switch applies: if desktop apps may not use the mic, the clip is silent.
 /// </summary>
 internal sealed class Recorder : IDisposable
@@ -23,13 +24,32 @@ internal sealed class Recorder : IDisposable
     public volatile float Level;
     public bool Recording => _running;
 
-    /// <summary>Starts recording. Returns an error to show, or null.</summary>
-    public string? Start()
+    /// <summary>The microphones Windows lists, by name (waveIn shortens names to 31 characters).</summary>
+    public static List<string> Microphones()
+    {
+        var names = new List<string>();
+        int n = waveInGetNumDevs();
+        for (int i = 0; i < n; i++)
+        {
+            var caps = new WAVEINCAPS();
+            if (waveInGetDevCaps((IntPtr)i, ref caps, Marshal.SizeOf<WAVEINCAPS>()) == 0 && !string.IsNullOrWhiteSpace(caps.szPname)) names.Add(caps.szPname.Trim());
+        }
+        return names;
+    }
+
+    /// <summary>Starts recording (a named microphone if it's there, else the default one). Returns an error to show, or null.</summary>
+    public string? Start(string? mic = null)
     {
         if (_running) return null;
         if (waveInGetNumDevs() == 0) return "No microphone found. Plug one in.";
+        int device = WAVE_MAPPER;
+        if (!string.IsNullOrWhiteSpace(mic))
+        {
+            int i = Microphones().FindIndex(m => string.Equals(m, mic.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (i >= 0) device = i;
+        }
         var fmt = new WAVEFORMATEX { wFormatTag = 1, nChannels = 1, nSamplesPerSec = Rate, nAvgBytesPerSec = Rate * 2, nBlockAlign = 2, wBitsPerSample = 16, cbSize = 0 };
-        int r = waveInOpen(out _wave, WAVE_MAPPER, ref fmt, IntPtr.Zero, IntPtr.Zero, 0 /* CALLBACK_NULL */);
+        int r = waveInOpen(out _wave, device, ref fmt, IntPtr.Zero, IntPtr.Zero, 0 /* CALLBACK_NULL */);
         if (r != 0) return $"The microphone couldn't open (code {r}). Check Windows Settings › Privacy › Microphone.";
         _pcm = new MemoryStream();
         int hdrSize = Marshal.SizeOf<WAVEHDR>();

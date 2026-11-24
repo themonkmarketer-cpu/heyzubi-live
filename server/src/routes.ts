@@ -22,6 +22,8 @@ import { runRoutine, scheduleRoutine, unscheduleRoutine } from './routines.js';
 import { deleteEventTrigger } from './triggers.js';
 import { dispatchRoomMessage } from './agent/rooms.js';
 import { voiceApi } from './voice.js';
+import { usageApi } from './usage-report.js';
+import { retireChatSession } from './engine-sessions.js';
 import { clickyApi } from './clicky.js';
 import { whatsappApi } from './whatsapp.js';
 import { generationsApi } from './generations.js';
@@ -394,7 +396,9 @@ api.post('/bots/:id/fresh', (c) => {
   const b = ownBot(c.get('user').id, c.req.param('id'));
   if (!b) return c.json({ error: 'not found' }, 404);
   interrupt(b.id);
+  const oldGeneration = getBotRow(b.id).generation;
   clearConversation(b.id);
+  void retireChatSession(b.id, oldGeneration); // the old chat's Hermes session goes: one per team member
   emitBot(b.id);
   return c.json({ ok: true });
 });
@@ -594,6 +598,7 @@ api.delete('/policies/:tool', (c) => {
 });
 
 api.route('/voice', voiceApi);
+api.route('/usage', usageApi);
 api.route('/clicky', clickyApi);
 api.route('/whatsapp', whatsappApi);
 api.route('/generations', generationsApi);
