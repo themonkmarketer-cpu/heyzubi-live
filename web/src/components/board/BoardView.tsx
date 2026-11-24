@@ -6,10 +6,12 @@ import { CreateDialog, MoveDialog } from './BoardDialogs';
 import { TaskCard } from './TaskCard';
 import { TaskDrawer } from './TaskDrawer';
 import {
-  ADDABLE, canMove, COLUMN_HINT, isFiltering, landingIndex, matches, newKey, NO_FILTERS, planMove, PRIORITISED, UNASSIGNED,
-  type Filters, type MovePlan,
+  ADDABLE, canMove, COLUMN_HINT, isFiltering, landingIndex, matches, newKey, NO_FILTERS, orderCards, planMove, PRIORITISED, UNASSIGNED,
+  type CardOrder, type Filters, type MovePlan,
 } from './boardModel';
+import { lsGet, lsSet } from '../../lib/storage';
 import '../../styles/board.css';
+import '../../styles/routines.css'; // the Bot and Sort pickers, shared with Tasks and Routines
 
 /**
  * The Board: Hermes's own Kanban as columns of cards. Hermes is the source of truth for everything shown here: its
@@ -85,6 +87,8 @@ export function BoardView() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [order, setOrder] = useState<CardOrder>(() => (lsGet('kanbanSort') === 'bot' ? 'bot' : 'hermes'));
+  const pickOrder = (o: CardOrder) => { setOrder(o); lsSet('kanbanSort', o); };
   const [creating, setCreating] = useState<string | null>(null);
   const [pending, setPending] = useState<{ card: KanbanCard; to: string; plan: MovePlan } | null>(null);
   const cursor = useRef(0);
@@ -169,9 +173,9 @@ export function BoardView() {
     const byName = new Map(data.columns.map((c) => [c.name, c.tasks]));
     return workflow.columns.map((c) => {
       const cards = byName.get(c.key) ?? [];
-      return { ...c, cards, shown: cards.filter((t) => matches(t, filters)) };
+      return { ...c, cards, shown: orderCards(c.key, cards.filter((t) => matches(t, filters)), order, who) };
     });
-  }, [workflow, data, filters]);
+  }, [workflow, data, filters, order, who]);
   const filtering = isFiltering(filters);
   const total = allCards.length;
   const shownTotal = columns.reduce((n, c) => n + c.shown.length, 0);
@@ -272,7 +276,6 @@ export function BoardView() {
 
   const setF = (patch: Partial<Filters>) => setFilters((f) => ({ ...f, ...patch }));
   const chips: { label: string; clear: () => void }[] = [
-    ...(filters.assignee ? [{ label: `Assignee: ${filters.assignee === UNASSIGNED ? 'Unassigned' : who(filters.assignee)}`, clear: () => setF({ assignee: null }) }] : []),
     ...(filters.priority ? [{ label: `Priority: ${filters.priority === PRIORITISED ? 'any set' : `P${filters.priority}`}`, clear: () => setF({ priority: null }) }] : []),
     ...(filters.tenant ? [{ label: `Tenant: ${filters.tenant}`, clear: () => setF({ tenant: null }) }] : []),
   ];
@@ -308,6 +311,21 @@ export function BoardView() {
             <input ref={search} type="search" value={filters.q} placeholder="Search tasks…" aria-label="Search tasks by title or ID"
               onChange={(e) => setF({ q: e.target.value })} onKeyDown={(e) => { if (e.key === 'Escape' && filters.q) { e.stopPropagation(); setF({ q: '' }); } }} />
           </label>
+          <label className="routines-pick kb-pick">
+            <span>Bot</span>
+            <select value={filters.assignee ?? ''} onChange={(e) => setF({ assignee: e.target.value || null })} aria-label="Filter tasks by bot">
+              <option value="">All bots</option>
+              {people.map((p) => <option key={p} value={p}>{who(p)}</option>)}
+              <option value={UNASSIGNED}>Unassigned</option>
+            </select>
+          </label>
+          <label className="routines-pick kb-pick">
+            <span>Sort</span>
+            <select value={order} onChange={(e) => pickOrder(e.target.value as CardOrder)} aria-label="Sort cards">
+              <option value="hermes">Hermes order</option>
+              <option value="bot">Bot</option>
+            </select>
+          </label>
           <div className="kb-filter">
             <button type="button" className={`cfg-btn cfg-btn--secondary kb-filter__btn${chips.length ? ' is-on' : ''}`} aria-expanded={filterOpen} aria-controls="kb-filters"
               onClick={() => setFilterOpen((o) => !o)}>
@@ -318,16 +336,8 @@ export function BoardView() {
               <div id="kb-filters" className="kb-filter__pop" role="group" aria-label="Filters"
                 onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setFilterOpen(false); } }}>
                 <label className="cfg-field">
-                  <span className="cfg-field__label">Assignee</span>
-                  <select className="text-input" value={filters.assignee ?? ''} onChange={(e) => setF({ assignee: e.target.value || null })} autoFocus>
-                    <option value="">Anyone</option>
-                    <option value={UNASSIGNED}>Unassigned</option>
-                    {people.map((p) => <option key={p} value={p}>{who(p) !== p ? `${who(p)} (${p})` : p}</option>)}
-                  </select>
-                </label>
-                <label className="cfg-field">
                   <span className="cfg-field__label">Priority</span>
-                  <select className="text-input" value={filters.priority ?? ''} onChange={(e) => setF({ priority: e.target.value || null })}>
+                  <select className="text-input" value={filters.priority ?? ''} onChange={(e) => setF({ priority: e.target.value || null })} autoFocus>
                     <option value="">Any</option>
                     <option value={PRIORITISED}>Has a priority</option>
                     {priorities.map((p) => <option key={p} value={String(p)}>P{p}</option>)}
@@ -364,7 +374,7 @@ export function BoardView() {
               {columns.map((col) => {
                 const canDrop = !!drag && canMove(workflow, drag.from, col.key);
                 const state = !drag ? '' : drag.from === col.key ? ' is-source' : canDrop ? ' is-target' : ' is-closed';
-                const markerAt = canDrop && over === col.key && dragged ? landingIndex(col.key, dragged, col.shown) : -1;
+                const markerAt = canDrop && over === col.key && dragged ? landingIndex(col.key, dragged, col.shown, order, who) : -1;
                 const count = filtering ? `${col.shown.length} of ${col.cards.length}` : String(col.cards.length);
                 return (
                   <section key={col.key} className={`kb-col${state}${over === col.key && canDrop ? ' is-over' : ''}`} data-s={col.key}

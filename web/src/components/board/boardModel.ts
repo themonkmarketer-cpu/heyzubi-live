@@ -42,11 +42,30 @@ export function comesBefore(column: string, a: KanbanCard, b: KanbanCard) {
   return (a.created_at ?? 0) < (b.created_at ?? 0);
 }
 
-/** Where a card will land among `cards` (shown cards of the target column), so the drop marker shows Hermes's real place for it. */
-export function landingIndex(column: string, card: KanbanCard, cards: KanbanCard[]) {
+/** How cards are shown in a column: Hermes's own order, or grouped by bot (Hermes's order within each bot). */
+export type CardOrder = 'hermes' | 'bot';
+
+const botKey = (c: KanbanCard, who: (p: string) => string) => (c.assignee ? who(c.assignee).toLowerCase() : '\uffff'); // unassigned last
+
+function before(column: string, a: KanbanCard, b: KanbanCard, order: CardOrder, who: (p: string) => string) {
+  if (order === 'bot') {
+    const d = botKey(a, who).localeCompare(botKey(b, who));
+    if (d) return d < 0;
+  }
+  return comesBefore(column, a, b);
+}
+
+/** A column's cards in the chosen order (they arrive in Hermes's order). Display only: Hermes keeps its own. */
+export function orderCards(column: string, cards: KanbanCard[], order: CardOrder, who: (p: string) => string) {
+  if (order === 'hermes') return cards;
+  return [...cards].sort((a, b) => (before(column, a, b, order, who) ? -1 : before(column, b, a, order, who) ? 1 : 0));
+}
+
+/** Where a card will land among `cards` (shown cards of the target column, in the order shown), for the drop marker. */
+export function landingIndex(column: string, card: KanbanCard, cards: KanbanCard[], order: CardOrder = 'hermes', who: (p: string) => string = (p) => p) {
   const moved = column === 'done' ? { ...card, completed_at: Date.now() / 1000 } : card;
   const others = cards.filter((c) => c.id !== card.id);
-  const i = others.findIndex((c) => comesBefore(column, moved, c));
+  const i = others.findIndex((c) => before(column, moved, c, order, who));
   return i < 0 ? others.length : i;
 }
 

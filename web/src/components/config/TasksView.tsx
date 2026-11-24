@@ -67,9 +67,15 @@ export function TasksView() {
   const [filter, setFilter] = useState<Filter>('open');
   const [order, setOrder] = useState<Order>(() => (['status', 'newest', 'bot'].includes(lsGet('tasksSort') ?? '') ? lsGet('tasksSort') as Order : 'status'));
   const pickOrder = (o: Order) => { setOrder(o); lsSet('tasksSort', o); };
+  const [botPick, setBotPick] = useState(() => lsGet('tasksBot') ?? '');
+  const pickBot = (id: string) => { setBotPick(id); lsSet('tasksBot', id); };
   const byId = useMemo(() => new Map(bots.map((b) => [b.id, b])), [bots]);
-  const counts = useMemo(() => ({ open: tasks?.filter((t) => t.state !== 'done').length ?? 0, done: tasks?.filter((t) => t.state === 'done').length ?? 0 }), [tasks]);
-  const shown = useMemo(() => sortTasks((tasks ?? []).filter((t) => filter === 'all' || (filter === 'done' ? t.state === 'done' : t.state !== 'done')), order, (id) => byId.get(id)?.name ?? '~'), [tasks, filter, order, byId]);
+  // Only bots that have tasks are offered; a saved pick for a bot with none left shows everyone.
+  const withTasks = useMemo(() => bots.filter((b) => (tasks ?? []).some((t) => t.botId === b.id)), [bots, tasks]);
+  const botId = withTasks.some((b) => b.id === botPick) ? botPick : '';
+  const mine = useMemo(() => (tasks ?? []).filter((t) => !botId || t.botId === botId), [tasks, botId]);
+  const counts = useMemo(() => ({ open: mine.filter((t) => t.state !== 'done').length, done: mine.filter((t) => t.state === 'done').length }), [mine]);
+  const shown = useMemo(() => sortTasks(mine.filter((t) => filter === 'all' || (filter === 'done' ? t.state === 'done' : t.state !== 'done')), order, (id) => byId.get(id)?.name ?? '~'), [mine, filter, order, byId]);
 
   return (
     <main className="chat tasks-view">
@@ -85,6 +91,13 @@ export function TasksView() {
         <div className="tasks-view__inner">
           {!!tasks?.length && (
             <div className="routines-tools">
+              <label className="routines-pick">
+                <span>Bot</span>
+                <select value={botId} onChange={(e) => pickBot(e.target.value)} aria-label="Filter tasks by bot">
+                  <option value="">All bots</option>
+                  {withTasks.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              </label>
               <label className="routines-pick">
                 <span>Sort</span>
                 <select value={order} onChange={(e) => pickOrder(e.target.value as Order)} aria-label="Sort tasks">
