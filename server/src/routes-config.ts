@@ -5,6 +5,7 @@ import { newId } from './lib/ids.js';
 import { hub } from './lib/hub.js';
 import { requireUser, type AuthVars } from './lib/auth.js';
 import fs from 'node:fs';
+import path from 'node:path';
 import { Readable } from 'node:stream';
 import { env } from './env.js';
 import { libraryRoot } from './paths.js';
@@ -13,7 +14,7 @@ import { computerState, readyScreen, resetBotScreen } from './computer.js';
 import { box } from './box.js';
 import { orgo } from './orgo.js';
 import { openTerminal } from './desk.js';
-import { engineHome, engineInfo, engineKind, forgetEngineOptions, restartEngine, stopOwnScreen } from './engine.js';
+import { engineHome, engineInfo, engineKind, forgetEngineOptions, pruneDeadPool, restartEngine, stopOwnScreen } from './engine.js';
 import { listMemories } from './engine-memory.js';
 import { idleConfig, viewerCount } from './idle.js';
 import type { LibraryFile, Skill } from './types.js';
@@ -70,6 +71,71 @@ function cleanSkill(p: any, partial = false): { name?: string; description?: str
 configApi.get('/bots/:id/skills', (c) => {
   const b = ownBot(c.get('user').id, c.req.param('id'));
   return b ? c.json({ skills: listSkills(b.id) }) : c.json({ error: 'not found' }, 404);
+});
+
+// ---------- skills the agent wrote itself (from Theo) ----------
+// Hermes lets the agent save and update step-by-step skills in its own home (skills/**/SKILL.md) as it learns.
+// Shown here read-only, newest first, with a warning on any that look like they hold a secret.
+
+const SECRET_LIKE = /(\bsk-[A-Za-z0-9_-]{20,}|\bxai-[A-Za-z0-9]{20,}|\bAIza[0-9A-Za-z_-]{30,}|\bgh[pousr]_[A-Za-z0-9]{30,}|\bAKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY|\b(api[_-]?key|secret|token|password|passwd)\b["']?\s*[:=]\s*["']?[A-Za-z0-9_\-/+=]{16,})/i;
+const front = (text: string, key: string) => {
+  const m = /^---\s*\n([\s\S]*?)\n---/.exec(text);
+  const line = m?.[1].split('\n').find((l) => l.toLowerCase().startsWith(`${key}:`));
+  return line ? line.slice(key.length + 1).trim().replace(/^["']|["']$/g, '') : '';
+};
+
+function agentSkillFiles(home: string): string[] {
+  const root = path.join(home, 'skills');
+  const out: string[] = [];
+  const walk = (dir: string, depth: number) => {
+    let entries: fs.Dirent[] = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      if (e.name.startsWith('.')) continue;
+      const p = path.join(dir, e.name);
+      if (e.isDirectory() && depth < 4) walk(p, depth + 1);
+      else if (e.isFile() && e.name === 'SKILL.md') out.push(p);
+    }
+  };
+  walk(root, 0);
+  return out;
+}
+
+configApi.get('/bots/:id/agent-skills', (c) => {
+  const b = ownBot(c.get('user').id, c.req.param('id'));
+  if (!b) return c.json({ error: 'not found' }, 404);
+  const home = engineHome(b.id);
+  if (!home) return c.json({ skills: [] });
+  const root = path.join(home, 'skills');
+  const skills = agentSkillFiles(home).map((file) => {
+    let text = '';
+    let updated = 0;
+    try { text = fs.readFileSync(file, 'utf8').slice(0, 200_000); updated = fs.statSync(file).mtimeMs; } catch { /* unreadable */ }
+    const rel = path.relative(root, file).split(path.sep).join('/');
+    const parts = rel.split('/');
+    return {
+      path: rel,
+      name: front(text, 'name') || parts[parts.length - 2] || rel,
+      description: front(text, 'description').slice(0, 300),
+      category: parts.length > 2 ? parts[0] : '',
+      updated,
+      size: text.length,
+      secretLike: SECRET_LIKE.test(text),
+    };
+  }).sort((x, y) => y.updated - x.updated);
+  return c.json({ skills });
+});
+
+configApi.get('/bots/:id/agent-skills/view', (c) => {
+  const b = ownBot(c.get('user').id, c.req.param('id'));
+  if (!b) return c.json({ error: 'not found' }, 404);
+  const home = engineHome(b.id);
+  const rel = String(c.req.query('path') ?? '');
+  if (!home || !rel.endsWith('SKILL.md')) return c.json({ error: 'not found' }, 404);
+  const root = path.resolve(home, 'skills');
+  const file = path.resolve(root, rel);
+  if (!file.startsWith(root + path.sep)) return c.json({ error: 'not found' }, 404);
+  try { return c.json({ path: rel, content: fs.readFileSync(file, 'utf8').slice(0, 200_000) }); } catch { return c.json({ error: 'not found' }, 404); }
 });
 
 configApi.post('/bots/:id/skills', async (c) => {
@@ -150,7 +216,24 @@ configApi.post('/bots/:id/engine/login', async (c) => {
   if (!box.local) return c.json({ error: 'Sign-in opens a terminal on the computer. It works once the app runs on that computer.' }, 409);
   const { provider } = await c.req.json<{ provider?: string }>().catch(() => ({} as { provider?: string }));
   if (provider !== undefined && !/^[a-z0-9][a-z0-9._-]{0,40}$/.test(provider)) return c.json({ error: 'bad provider' }, 400);
-  const hermes = `HERMES_HOME=${box.quote(home)} ${box.quote(env.hermesBin)}`;
+  // A fresh sign-in replaces the refused ones (for a team member, usually a dead copy of Zubi's).
+  if (provider && engineKind(b.id) === 'managed') pruneDeadPool(home, provider);
+  // The sign-in opens its page in a browser on this bot's screen. The screens run as root, where Chromium only starts
+  // with --no-sandbox, so Python's webbrowser (which Hermes uses) gets a small launcher through BROWSER: it starts
+  // Chromium in the background with a throwaway profile (apart from the bot's own browser) and returns at once.
+  const launcher = '/tmp/heyzubi-open-browser';
+  try {
+    fs.writeFileSync(launcher, [
+      '#!/bin/sh',
+      '# HeyZubi: open a sign-in link in Chromium on this screen (root needs --no-sandbox).',
+      `chromium --no-sandbox --no-first-run --no-default-browser-check --user-data-dir="\${HEYZUBI_SIGNIN_PROFILE:-/tmp/heyzubi-signin}" "$@" >/dev/null 2>&1 &`,
+      'exit 0',
+      '',
+    ].join('\n'), { mode: 0o755 });
+    fs.chmodSync(launcher, 0o755);
+  } catch (e) { console.warn('[engine] sign-in browser launcher not written:', (e as Error).message); }
+  const browser = `BROWSER=${box.quote(`${launcher} %s`)} HEYZUBI_SIGNIN_PROFILE=${box.quote(`/tmp/heyzubi-signin-${b.id}`)}`;
+  const hermes = `${browser} HERMES_HOME=${box.quote(home)} ${box.quote(env.hermesBin)}`;
   // Claude subscriptions sign in with OAuth; without the flag Hermes asks for an API key.
   const cmd = !provider ? `${hermes} model` : `${hermes} auth add ${provider}${provider === 'anthropic' ? ' --type oauth' : ''}`;
   try {
@@ -161,6 +244,91 @@ configApi.post('/bots/:id/engine/login', async (c) => {
   } catch (e: any) {
     return c.json({ error: String(e?.message ?? e).slice(0, 300) }, 502);
   }
+});
+
+// ---------- Claude sign-in in the owner's own browser (team members) ----------
+// Hermes' Claude sign-in prints a link, then waits for the code Claude shows after "Authorize". HeyZubi runs it in the
+// background and hands the link to the owner's own browser (already signed in to Claude), and the code the owner
+// pastes back in the app goes to Hermes' prompt. No screen needed. Only for team members (managed agents): the
+// primary agent's sign-in belongs to the computer's own Hermes. The code is never logged or stored.
+interface SignIn { proc: import('node:child_process').ChildProcess; out: string; url: string | null; timer: NodeJS.Timeout }
+const signIns = new Map<string, SignIn>();
+const CLAUDE_URL = /https:\/\/claude\.ai\/oauth\/authorize\?[^\s'"<>]+/;
+// Anything that looks like a token is cut from what goes back to the page.
+const scrub = (s: string) => s.replace(/sk-ant-[\w-]+/g, '[hidden]').replace(/\b[A-Za-z0-9_-]{40,}\b/g, '[hidden]');
+
+function endSignIn(botId: string) {
+  const s = signIns.get(botId);
+  if (!s) return;
+  clearTimeout(s.timer);
+  if (s.proc.exitCode === null) s.proc.kill();
+  signIns.delete(botId);
+}
+
+configApi.post('/bots/:id/engine/signin/start', async (c) => {
+  const b = ownBot(c.get('user').id, c.req.param('id'));
+  if (!b) return c.json({ error: 'not found' }, 404);
+  const home = engineHome(b.id);
+  if (!home || engineKind(b.id) !== 'managed') return c.json({ error: `${b.name} uses the computer's own agent; sign it in there.` }, 409);
+  endSignIn(b.id);
+  pruneDeadPool(home, 'anthropic'); // the fresh sign-in replaces refused ones (usually a dead copy of Zubi's)
+  const { spawn } = await import('node:child_process');
+  const proc = spawn(env.hermesBin, ['auth', 'add', 'anthropic', '--type', 'oauth'], {
+    env: {
+      PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin', HOME: process.env.HOME ?? '/root', LANG: process.env.LANG ?? 'C.UTF-8',
+      HERMES_HOME: home, PYTHONUNBUFFERED: '1', BROWSER: '/bin/true', // no screen: the owner opens the link
+    },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  const s: SignIn = { proc, out: '', url: null, timer: setTimeout(() => endSignIn(b.id), 10 * 60_000) };
+  signIns.set(b.id, s);
+  const take = (d: Buffer) => { s.out = (s.out + d.toString()).slice(-20_000); s.url ??= CLAUDE_URL.exec(s.out)?.[0] ?? null; };
+  proc.stdout?.on('data', take);
+  proc.stderr?.on('data', take);
+  proc.on('error', (e) => { s.out += `\n${e.message}`; });
+  for (const until = Date.now() + 20_000; !s.url && proc.exitCode === null && Date.now() < until;) await new Promise((r) => setTimeout(r, 200));
+  if (!s.url) {
+    const tail = scrub(s.out.trim().split('\n').slice(-4).join(' ')).slice(0, 300);
+    endSignIn(b.id);
+    return c.json({ error: `Hermes didn't give a sign-in link${tail ? `: ${tail}` : '.'}` }, 502);
+  }
+  return c.json({ url: s.url });
+});
+
+configApi.post('/bots/:id/engine/signin/finish', async (c) => {
+  const b = ownBot(c.get('user').id, c.req.param('id'));
+  if (!b) return c.json({ error: 'not found' }, 404);
+  const s = signIns.get(b.id);
+  if (!s || s.proc.exitCode !== null) return c.json({ error: 'That sign-in has ended. Start it again.' }, 409);
+  const { code } = await c.req.json<{ code?: string }>().catch(() => ({ code: '' }));
+  const clean = String(code ?? '').trim();
+  if (clean.length < 10 || clean.length > 2000 || /[\r\n]/.test(clean)) return c.json({ error: 'Paste the whole code Claude showed after Authorize.' }, 400);
+  const before = s.out.length;
+  s.proc.stdin?.end(`${clean}\n`);
+  const exit = await new Promise<number | null>((resolve) => {
+    if (s.proc.exitCode !== null) return resolve(s.proc.exitCode);
+    const t = setTimeout(() => resolve(null), 45_000);
+    s.proc.once('exit', (code) => { clearTimeout(t); resolve(code); });
+  });
+  const said = scrub(s.out.slice(before).trim()).split('\n').map((l) => l.trim()).filter(Boolean).slice(-3).join(' ').slice(0, 300);
+  endSignIn(b.id);
+  const home = engineHome(b.id)!;
+  let ok = false;
+  try {
+    const pool = JSON.parse(fs.readFileSync(path.join(home, 'auth.json'), 'utf8'))?.credential_pool?.anthropic;
+    ok = exit === 0 && Array.isArray(pool) && pool.some((p: any) => p?.last_status !== 'dead');
+  } catch { /* no pool */ }
+  if (!ok) return c.json({ error: `The sign-in didn't go through${said ? `: ${said}` : '.'} Start it again and paste the newest code.` }, 502);
+  forgetEngineOptions(b.id);
+  try { await restartEngine(b.id); } catch (e) { console.warn('[engine] restart after sign-in:', (e as Error).message); }
+  return c.json({ ok: true, engine: await engineInfo(b.id) });
+});
+
+configApi.post('/bots/:id/engine/signin/cancel', (c) => {
+  const b = ownBot(c.get('user').id, c.req.param('id'));
+  if (!b) return c.json({ error: 'not found' }, 404);
+  endSignIn(b.id);
+  return c.json({ ok: true });
 });
 
 configApi.post('/bots/:id/engine/restart', async (c) => {

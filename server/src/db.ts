@@ -146,6 +146,15 @@ function addColumn(table: string, col: string, ddl: string) {
 addColumn('bots', 'voice', "TEXT NOT NULL DEFAULT 'luna'");
 addColumn('bots', 'voice_speed', 'REAL NOT NULL DEFAULT 1');
 addColumn('bots', 'voice_language', "TEXT NOT NULL DEFAULT 'auto'");
+addColumn('bots', 'voice_engine', "TEXT NOT NULL DEFAULT 'xai'");
+addColumn('bots', 'gemini_voice', "TEXT NOT NULL DEFAULT 'Kore'");
+addColumn('bots', 'voice_msg_engine', "TEXT NOT NULL DEFAULT 'xai'");
+addColumn('bots', 'sarvam_voice', "TEXT NOT NULL DEFAULT 'simran_enhi_companion'");
+// Group chats: the member who wraps up the group's answer (from Theo's group head).
+addColumn('bots', 'lead_bot_id', 'TEXT');
+// Teams (from Theo): a bot's team, and whether it manages it. The primary bot is the CEO above all teams.
+addColumn('bots', 'team', 'TEXT');
+addColumn('bots', 'is_manager', 'INTEGER NOT NULL DEFAULT 0');
 // Hermes engine: per-bot model choice, which engine runs the bot ('primary' = the existing agent,
 // 'managed' = a gateway we start), and the managed gateway's port.
 addColumn('bots', 'model', 'TEXT');

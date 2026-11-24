@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { startEvents } from './lib/events';
+import { startNotifications } from './lib/notify';
 import { isConnectedMessage } from './lib/api';
 import { useStore } from './store';
 import { ChatView } from './components/ChatView';
@@ -18,6 +19,8 @@ import { WhatsAppWindow } from './components/WhatsAppWindow';
 import { CameraBubble } from './components/CameraBubble';
 import { GenerationsView } from './components/GenerationsView';
 import { CapabilityWatcher, LivePanels } from './components/LivePanels';
+import { WallpaperPicker } from './components/WallpaperPicker';
+import { useWallpaper } from './lib/wallpapers';
 
 function Shell() {
   const detailsOpen = useStore((s) => s.detailsOpen);
@@ -27,12 +30,15 @@ function Shell() {
   const collapsed = useStore((s) => s.sidebarCollapsed);
   const hasBot = useStore((s) => !!s.selectedBotId);
   const view = useConfigUI((s) => s.view);
+  const wallpaperPicker = useWallpaper((s) => s.pickerOpen);
 
   useEffect(() => {
     const st = useStore.getState();
+    void useWallpaper.getState().load(); // the saved chat wallpaper (a local copy already shows it)
     st.loadBots().catch(console.error);
     st.loadComputer().catch(console.error);
     const stop = startEvents();
+    const stopNotify = startNotifications();
     // OAuth popups post back here; refresh connection-dependent views and the open transcript.
     const onMsg = (e: MessageEvent) => {
       if (!isConnectedMessage(e)) return;
@@ -41,7 +47,7 @@ function Shell() {
       if (s.selectedBotId) s.loadRows(s.selectedBotId).catch(() => {});
     };
     window.addEventListener('message', onMsg);
-    return () => { stop(); window.removeEventListener('message', onMsg); };
+    return () => { stop(); stopNotify(); window.removeEventListener('message', onMsg); };
   }, []);
 
   // Global shortcuts: ⌘K search, ⌘B sidebar, ⇧⌘, details, ⌘N new bot.
@@ -69,6 +75,7 @@ function Shell() {
       {modal === 'group' && <CreateGroupModal />}
       {modal === 'search' && <SearchModal />}
       {modal === 'apps' && <ConnectAppsModal />}
+      {wallpaperPicker && <WallpaperPicker />}
       {viewerOpen && <ComputerViewer />}
       {waOpen && <WhatsAppWindow />}
       <CameraBubble />

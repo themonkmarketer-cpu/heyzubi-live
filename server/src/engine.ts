@@ -116,6 +116,29 @@ export function assignEngine(botId: string): EngineKind {
   return 'managed';
 }
 
+// ---------- the owner's-words hook (see deploy/hermes-box/agent-hooks/hq_owner_words.py) ----------
+
+const OWNER_HOOK_SCRIPT = () => path.join(env.hermesHome, 'agent-hooks', 'hq_owner_words.py');
+/** Only tool names that could act outward reach the script (Composio covers app actions named in a batch). */
+const OWNER_HOOK_MATCHER = '(?i).*(send|delete|remove|trash|share|post|publish|reply|forward|tweet|upload|invite|transfer|pay|comment|broadcast|composio|workbench|proxy|_dm).*';
+
+function ownerWordsHook(): { matcher: string; command: string; timeout: number } | null {
+  const script = OWNER_HOOK_SCRIPT();
+  return fs.existsSync(script) ? { matcher: OWNER_HOOK_MATCHER, command: `python3 ${script}`, timeout: 5 } : null;
+}
+
+/** Record consent for the hook in this home's allowlist (Hermes's own format), so its gateway runs it. */
+function approveHook(home: string, command: string) {
+  const file = path.join(home, 'shell-hooks-allowlist.json');
+  let data: any = { approvals: [] };
+  try { data = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* none yet */ }
+  const approvals = (Array.isArray(data?.approvals) ? data.approvals : []).filter((e: any) => !(e?.event === 'pre_tool_call' && e?.command === command));
+  let mtime: string | null = null;
+  try { mtime = new Date(fs.statSync(OWNER_HOOK_SCRIPT()).mtimeMs).toISOString().replace(/\.\d{3}Z$/, 'Z'); } catch { /* script gone */ }
+  approvals.push({ event: 'pre_tool_call', command, approved_at: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'), script_mtime_at_approval: mtime });
+  writePrivate(file, JSON.stringify({ ...data, approvals }, null, 2));
+}
+
 // ---------- a managed bot's Hermes home ----------
 
 /** Model credentials a managed agent may inherit from the primary agent. Never messaging tokens. */
@@ -206,15 +229,21 @@ async function writeHome(botId: string): Promise<{ home: string; key: string; di
     ...extraMcpServers(),
     hq: { url: `${env.mcpBaseUrl}/mcp/${botId}`, headers: { Authorization: `Bearer ${mcpToken(botId)}` }, timeout: 1800, connect_timeout: 30 },
   };
+  // The owner's rule, as on the primary agent: a run that isn't the owner's own words can't send, share,
+  // post or delete (deploy/hermes-box/agent-hooks/hq_owner_words.py, installed in the primary agent's home).
+  const hook = ownerWordsHook();
+  if (hook) {
+    const others = (Array.isArray(cfg.hooks?.pre_tool_call) ? cfg.hooks.pre_tool_call : []).filter((h: any) => h?.command !== hook.command);
+    cfg.hooks = { ...(cfg.hooks ?? {}), pre_tool_call: [...others, hook] };
+    approveHook(home, hook.command);
+  }
   writePrivate(cfgFile, YAML.stringify(cfg));
 
   if (!fs.existsSync(path.join(home, 'SOUL.md'))) fs.writeFileSync(path.join(home, 'SOUL.md'), soul(b));
 
-  // Subscription sign-ins live in auth.json. Start from the primary agent's; later sign-ins are this bot's own.
-  const auth = path.join(home, 'auth.json');
-  if (!fs.existsSync(auth)) {
-    try { writePrivate(auth, fs.readFileSync(path.join(env.hermesHome, 'auth.json'), 'utf8')); } catch { /* the primary agent has none */ }
-  }
+  // Subscription sign-ins live in auth.json and are NOT copied from the primary agent: they rotate, so a copy dies the
+  // first time the primary renews its own (and could kill the primary's if this agent renewed first). Each agent signs
+  // in for itself (bot settings › Engine › Sign in to Claude); API keys are inherited through .env below.
 
   // .env is ours entirely: the API server plus inherited model keys. Keys the user added by hand are kept.
   const envFile = path.join(home, '.env');
@@ -489,7 +518,44 @@ async function modelOptions(botId: string, e: { url: string; key: string }): Pro
   } catch { return null; }
 }
 
-function toProviders(data: any): EngineProvider[] {
+/** Hermes signs in to some providers with OAuth (a subscription) even when it lists them as API-key providers: read its credential pool. */
+function oauthOnly(home: string | null, provider: string): boolean {
+  if (!home) return false;
+  try {
+    const pool = JSON.parse(fs.readFileSync(path.join(home, 'auth.json'), 'utf8'))?.credential_pool?.[provider];
+    return Array.isArray(pool) && pool.length > 0 && pool.every((c: any) => String(c?.auth_type ?? '').includes('oauth'));
+  } catch { return false; }
+}
+
+/** Every saved sign-in for this provider was refused (Hermes marks them "dead"): it needs signing in again. */
+function poolDead(home: string | null, provider: string): boolean {
+  if (!home) return false;
+  try {
+    const pool = JSON.parse(fs.readFileSync(path.join(home, 'auth.json'), 'utf8'))?.credential_pool?.[provider];
+    return Array.isArray(pool) && pool.length > 0 && pool.every((c: any) => c?.last_status === 'dead');
+  } catch { return false; }
+}
+
+/**
+ * Drops a provider's dead sign-ins from a managed agent's auth.json before a fresh sign-in, so the new one is the
+ * only one tried. Claude subscription sign-ins rotate, so a copy of another agent's sign-in dies as soon as that
+ * agent renews its own; each agent needs a sign-in of its own.
+ */
+export function pruneDeadPool(home: string, provider: string): number {
+  const file = path.join(home, 'auth.json');
+  try {
+    const auth = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const pool = auth?.credential_pool?.[provider];
+    if (!Array.isArray(pool)) return 0;
+    const alive = pool.filter((c: any) => c?.last_status !== 'dead');
+    if (alive.length === pool.length) return 0;
+    auth.credential_pool[provider] = alive;
+    writePrivate(file, JSON.stringify(auth, null, 2));
+    return pool.length - alive.length;
+  } catch { return 0; }
+}
+
+function toProviders(data: any, home: string | null = null): EngineProvider[] {
   const list: any[] = Array.isArray(data?.providers) ? data.providers : [];
   const out = list
     .filter((p) => p?.slug && (p.authenticated || WELL_KNOWN.includes(p.slug)))
@@ -499,8 +565,9 @@ function toProviders(data: any): EngineProvider[] {
         id: String(p.slug),
         name: p.slug === 'anthropic' ? 'Claude (Anthropic)' : String(p.name ?? p.slug),
         // Hermes lists Anthropic as an API-key provider, yet it can also sign in to a Claude subscription. Offer that until a key is in place.
-        kind: String(p.auth_type ?? '').includes('oauth') || (p.slug === 'anthropic' && !p.authenticated) ? 'subscription' : 'api_key',
-        connected: !!p.authenticated,
+        kind: String(p.auth_type ?? '').includes('oauth') || (p.slug === 'anthropic' && !p.authenticated) || (p.authenticated && oauthOnly(home, String(p.slug))) ? 'subscription' : 'api_key',
+        // Saved but refused sign-ins (Hermes still counts them) are not a connection: offer to sign in again.
+        connected: !!p.authenticated && !poolDead(home, String(p.slug)),
         models: featured.filter((m: unknown) => typeof m === 'string').slice(0, 12),
       };
     });
@@ -540,7 +607,7 @@ export async function engineInfo(botId: string): Promise<EngineInfo> {
     version: typeof health.version === 'string' && health.version !== 'unknown' ? health.version : null,
     model: b.model ?? data?.model ?? null,
     provider: b.provider ?? data?.provider ?? null,
-    providers: toProviders(data),
+    providers: toProviders(data, engineHome(botId)),
   };
 }
 

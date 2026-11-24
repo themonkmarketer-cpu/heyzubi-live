@@ -51,7 +51,22 @@ export const api = {
   connect: (slug: string, botId?: string, seq?: number) => req<{ redirectUrl: string }>('POST', `/apps/${slug}/connect`, { botId, seq }),
   disconnect: (slug: string) => req<{ ok: true }>('DELETE', `/apps/${slug}`),
 
-  roomMembers: (id: string) => req<{ members: RoomMember[] }>('GET', `/rooms/${id}/members`),
+  /** API keys for outside programs (n8n, scripts) to message bots. */
+  apiKeys: () => req<{ keys: { id: string; name: string; createdAt: number; lastUsedAt: number | null }[] }>('GET', '/keys'),
+  createApiKey: (name: string) => req<{ id: string; name: string; key: string }>('POST', '/keys', { name }),
+  deleteApiKey: (id: string) => req<{ ok: true }>('DELETE', `/keys/${id}`),
+  /** HeyZubi for Windows: paired computers and one-time pairing codes. */
+  desktopDevices: () => req<{ devices: { id: string; name: string; createdAt: number; lastUsedAt: number | null }[] }>('GET', '/desktop-devices'),
+  desktopPair: () => req<{ code: string; expiresAt: number }>('POST', '/desktop-devices/pair'),
+  deleteDesktopDevice: (id: string) => req<{ ok: true }>('DELETE', `/desktop-devices/${id}`),
+  /** Teams (from Theo): list, ready-made teams, export and import; a bot's team and manager role. */
+  teams: () => req<{ teams: { name: string; managerId: string | null; memberIds: string[] }[]; ready: { key: string; team: string; blurb: string; size: number }[]; room: number }>('GET', '/teams'),
+  addReadyTeam: (key: string) => req<{ bots: unknown[] }>('POST', '/teams/ready', { key }),
+  exportTeam: (name: string) => req<Record<string, unknown>>('GET', `/teams/${encodeURIComponent(name)}/export`),
+  importTeam: (file: unknown) => req<{ bots: unknown[] }>('POST', '/teams/import', file),
+  setBotTeam: (botId: string, p: { team?: string | null; isManager?: boolean }) => req<{ bot: unknown }>('PATCH', `/bots/${botId}`, p),
+  roomMembers: (id: string) => req<{ members: RoomMember[]; leadId: string | null }>('GET', `/rooms/${id}/members`),
+  setRoomLead: (id: string, botId: string | null) => req<{ ok: true; leadId: string | null }>('PUT', `/rooms/${id}/lead`, { botId }),
   setRoomMembers: (id: string, botIds: string[]) => req<{ ok: true; members: string[] }>('PUT', `/rooms/${id}/members`, { botIds }),
   createRoom: (name: string, botIds: string[]) => req<{ id: string }>('POST', '/rooms', { name, botIds }),
 };

@@ -9,11 +9,12 @@ import { Icon } from './Icon';
 export function MembersCard({ room }: { room: Bot }) {
   const bots = useStore((s) => s.bots);
   const [members, setMembers] = useState<RoomMember[] | null>(null);
+  const [leadId, setLeadId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    api.roomMembers(room.id).then((r) => setMembers(r.members)).catch((e) => setError((e as Error).message));
+    api.roomMembers(room.id).then((r) => { setMembers(r.members); setLeadId(r.leadId ?? null); }).catch((e) => setError((e as Error).message));
   }, [room.id]);
   useEffect(load, [load]);
 
@@ -23,6 +24,11 @@ export function MembersCard({ room }: { room: Bot }) {
   };
 
   const ids = members?.map((m) => m.id) ?? [];
+  const lead = members?.find((m) => m.id === leadId);
+  const setLead = async (id: string | null) => {
+    setError(null);
+    try { const r = await api.setRoomLead(room.id, id); setLeadId(r.leadId); } catch (e) { setError((e as Error).message); }
+  };
   const candidates = bots.filter((b) => b.kind !== 'room' && !ids.includes(b.id));
 
   return (
@@ -38,6 +44,15 @@ export function MembersCard({ room }: { room: Bot }) {
               <span className="members__name">{m.name}</span>
               {m.label && <span className="members__label">{m.label}</span>}
             </span>
+            <button
+              type="button"
+              className={`members__lead${m.id === leadId ? ' is-lead' : ''}`}
+              onClick={() => void setLead(m.id === leadId ? null : m.id)}
+              aria-pressed={m.id === leadId}
+              title={m.id === leadId ? `${m.name} leads: the others give their view, then ${m.name} wraps up. Click to have no lead.` : `Make ${m.name} the lead: the others give their view first, then ${m.name} wraps up one answer.`}
+            >
+              {m.id === leadId ? 'Lead' : 'Make lead'}
+            </button>
             <button
               type="button"
               className="icon-btn members__remove"
@@ -66,7 +81,7 @@ export function MembersCard({ room }: { room: Bot }) {
         </button>
       )}
       {error && <div className="card__error">{error}</div>}
-      <div className="members__hint">@mention a team member to ask just them; otherwise the group answers.</div>
+      <div className="members__hint">{lead ? `@mention a team member to ask just them. Otherwise everyone gives their honest view, then ${lead.name} wraps up one answer.` : '@mention a team member to ask just them; otherwise the group answers. Pick a lead to get one combined answer.'}</div>
     </div>
   );
 }

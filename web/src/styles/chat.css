@@ -285,3 +285,6 @@
 .composer__pic.is-busy { width: auto; padding: 0 12px; display: grid; place-items: center; font-size: 12px; color: var(--color-text-tertiary); }
 .bubble__pics { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
 .bubble__pics img { max-width: 220px; max-height: 220px; border-radius: 12px; display: block; object-fit: cover; }
+
+/* Team headings in the sidebar */
+.bot-list__team { padding: 10px 12px 4px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--color-text-tertiary); }

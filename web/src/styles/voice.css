@@ -102,3 +102,19 @@
 .xai-usage__row > span:last-child { text-align: right; color: var(--color-text-primary); }
 .xai-usage__qty { color: var(--color-text-tertiary); }
 .xai-usage__note { margin-top: 6px; font-size: 11px; color: var(--color-text-tertiary); }
+
+/* Gemini note under the call button */
+.voice-note { font-size: 11.5px; line-height: 1.4; color: var(--color-text-tertiary); padding: 2px 12px 6px; }
+.composer__btn.is-recording:hover:not(:disabled) { background: var(--color-danger); } /* stay red under the mouse while recording */
+
+/* Personal dictionary + tidy-up */
+.voice-dict { padding: 4px 12px 8px; display: flex; flex-direction: column; gap: 6px; }
+.voice-dict textarea { width: 100%; resize: vertical; min-height: 54px; padding: 7px 9px; border-radius: 8px; border: 0.5px solid var(--color-border-secondary); background: var(--color-bg-pane); color: var(--color-text-primary); font: inherit; font-size: 12.5px; }
+.voice-dict__actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--color-text-tertiary); }
+.voice-toggle { cursor: pointer; }
+.voice-toggle input { width: 16px; height: 16px; accent-color: var(--color-brand); }
+
+/* Group lead */
+.members__lead { margin-left: auto; font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 0.5px solid var(--color-border-secondary); color: var(--color-text-tertiary); background: none; cursor: pointer; opacity: 0; transition: opacity .15s; }
+.members__row:hover .members__lead, .members__lead.is-lead, .members__lead:focus-visible { opacity: 1; }
+.members__lead.is-lead { color: var(--color-brand); border-color: var(--color-brand); font-weight: 600; }

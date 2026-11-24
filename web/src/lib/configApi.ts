@@ -34,6 +34,8 @@ export interface ComputerDetails {
 
 export type BotPatch = Partial<Pick<Bot, 'name' | 'label' | 'description' | 'instructions' | 'avatarShape' | 'avatarColor' | 'effort' | 'mode'>>;
 
+export interface AgentSkill { path: string; name: string; description: string; category: string; updated: number; size: number; secretLike: boolean }
+
 export const configApi = {
   settings: (botId: string) => req<BotSettingsBundle>('GET', `/bots/${botId}/settings`),
   updateBot: (botId: string, p: BotPatch) => req<{ bot: Bot }>('PATCH', `/bots/${botId}`, p),
@@ -44,6 +46,9 @@ export const configApi = {
   deleteMemory: (id: string) => req<{ ok: true }>('DELETE', `/memories/${id}`),
 
   createSkill: (botId: string, s: Pick<Skill, 'name' | 'description' | 'body'>) => req<{ skill: Skill }>('POST', `/bots/${botId}/skills`, s),
+  /** Skills the agent saved itself in its engine (read-only). */
+  agentSkills: (botId: string) => req<{ skills: AgentSkill[] }>('GET', `/bots/${botId}/agent-skills`),
+  agentSkill: (botId: string, path: string) => req<{ path: string; content: string }>('GET', `/bots/${botId}/agent-skills/view?path=${encodeURIComponent(path)}`),
   updateSkill: (id: string, s: Partial<Pick<Skill, 'name' | 'description' | 'body'>>) => req<{ skill: Skill }>('PATCH', `/skills/${id}`, s),
   deleteSkill: (id: string) => req<{ ok: true }>('DELETE', `/skills/${id}`),
 
@@ -68,6 +73,10 @@ export const configApi = {
   setEngine: (botId: string, p: { provider?: string | null; model?: string | null }) => req<{ engine: EngineInfo }>('PATCH', `/bots/${botId}/engine`, p),
   /** Opens the provider's sign-in flow in a terminal on the bot's screen. */
   engineLogin: (botId: string, provider?: string) => req<{ ok: true }>('POST', `/bots/${botId}/engine/login`, provider ? { provider } : {}),
+  /** Claude sign-in in the owner's own browser (team members): get the link, then send back the code Claude shows. */
+  claudeSignInStart: (botId: string) => req<{ url: string }>('POST', `/bots/${botId}/engine/signin/start`),
+  claudeSignInFinish: (botId: string, code: string) => req<{ ok: true; engine?: EngineInfo }>('POST', `/bots/${botId}/engine/signin/finish`, { code }),
+  claudeSignInCancel: (botId: string) => req<{ ok: true }>('POST', `/bots/${botId}/engine/signin/cancel`),
   restartEngine: (botId: string) => req<{ engine: EngineInfo }>('POST', `/bots/${botId}/engine/restart`),
   /** Stops the private screen the agent runs for itself, so its computer work shows on the screen in the app. */
   stopOwnScreen: (botId: string) => req<{ engine: EngineInfo }>('POST', `/bots/${botId}/engine/screen/stop`),

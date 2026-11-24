@@ -16,6 +16,9 @@ import { createImage } from '../generations.js';
 import { panelArg, showPanel } from '../panels.js';
 import type { ActivityKind } from '../types.js';
 import { Cron } from 'croner';
+import { runResearch } from '../research.js';
+import { listCodingRuns, startCodingRun } from '../coding.js';
+import { turnIsOwner } from './loop.js';
 
 export interface ToolCtx {
   userId: string;
@@ -123,6 +126,54 @@ export const TOOLS: ToolDef[] = [
       const r = await xSearch(a, ctx.userId);
       return { output: r, summary: 'Searched X' };
     },
+  },
+  {
+    name: 'research',
+    description: 'Research a question on the web with a small team: 2 to 4 research helpers each take one angle, search and read pages in parallel, and a writer returns one brief with numbered sources (also saved to your Library). Takes a minute or two. Use it when the request needs current facts from the web and more than a quick lookup.',
+    parameters: obj({
+      question: { type: 'string', description: 'What to find out, in plain words.' },
+      helpers: { type: 'integer', description: 'How many research helpers, 2 to 4 (default 2).' },
+    }, ['question']),
+    activity: 'searching_web',
+    label: 'Researching on the web',
+    impl: async (a, ctx) => {
+      const q = String(a.question ?? '').trim();
+      if (!q) return { output: 'Error: question is empty.', summary: 'No question' };
+      const r = await runResearch(ctx.userId, q, Number(a.helpers) || 2);
+      const name = `research-${new Date().toISOString().slice(0, 10)}-${q.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40).replace(/-+$/, '')}.md`;
+      try { await box.writeFile(`${libraryRoot()}/${ctx.botId}/${name}`, `# ${q}
+
+${r.brief}
+`); } catch { /* the brief still comes back */ }
+      return { output: `${r.brief}
+
+(Saved to your Library as ${name}.)`, summary: `Brief with ${r.sources.length} sources` };
+    },
+  },
+  {
+    name: 'coding_run',
+    description: 'Change code in a GitHub repository as a pull request. Your engine works in the background on a new branch, runs the checks it can, and opens a pull request into the base branch; it never pushes to the base branch and never merges. The owner gets a message with the pull request link when it is done (it can take up to 45 minutes). Only for when the owner asked in their own words; confirm the repository and the change with them first if either is unclear.',
+    parameters: obj({
+      repo: { type: 'string', description: 'The repository, "owner/name" or its github.com link.' },
+      task: { type: 'string', description: 'The change to make, in plain words, with any detail the owner gave.' },
+      base: { type: 'string', description: 'The branch the pull request goes into (default main).' },
+    }, ['repo', 'task']),
+    activity: 'working',
+    label: 'Starting a coding run',
+    impl: async (a, ctx) => {
+      if (!turnIsOwner(ctx.botId)) return { output: 'Not started: coding runs start only from the owner’s own message in HeyZubi (not from a routine, another bot, an outside program or another app). Ask the owner to request it in the HeyZubi chat.', summary: 'Owner only' };
+      const r = await startCodingRun(ctx.userId, ctx.botId, a);
+      if (typeof r === 'string') return { output: `Not started: ${r}`, summary: 'Not started' };
+      return { output: JSON.stringify({ ok: true, run: r.id, repo: r.repo, branch: r.branch, base: r.base, note: 'Working in the background. Tell the owner it has started; a message with the pull request link will follow in this chat.' }), summary: `Coding on ${r.repo}` };
+    },
+  },
+  {
+    name: 'coding_runs',
+    description: 'List your recent coding runs: repository, branch, status (running, done, no-pr, failed, stopped) and pull request link.',
+    parameters: obj({}),
+    activity: 'working',
+    label: 'Checking coding runs',
+    impl: async (_a, ctx) => ({ output: JSON.stringify(listCodingRuns(ctx.userId, ctx.botId, 10).map((r) => ({ ...r, summary: r.summary?.slice(0, 400) ?? null }))), summary: 'Listed coding runs' }),
   },
   {
     name: 'create_routine',

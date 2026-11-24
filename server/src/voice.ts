@@ -14,8 +14,18 @@ import { computerState } from './computer.js';
 import type { ActivityKind, EventBody, MessageBody, RowBody, VoiceCallRecord, VoiceOption } from './types.js';
 import { listMemories } from './engine-memory.js';
 import { whatsappClose, whatsappDraft } from './whatsapp.js';
-import { usage, usageToday } from './usage.js';
+import { geminiSpendToday, sarvamInrToday, usage, usageToday } from './usage.js';
+import { claudeSpendToday } from './claude-spend.js';
+import { getPrefs } from './prefs.js';
+import {
+  DEFAULT_SARVAM_VOICE, INR_PER_USD, SARVAM_DAILY_CAP_INR, SARVAM_RATES, SARVAM_STT_MAX_MS, SARVAM_VOICES, isSarvamVoice, sarvamConfigured, sarvamSpeak,
+  sarvamTranscribe, sttCostInr, ttsCostInr,
+} from './sarvam.js';
 import { openPanelsFor, panelArg, showPanel } from './panels.js';
+import {
+  DEFAULT_GEMINI_VOICE, GEMINI_DAILY_CAP, GEMINI_MODEL, GEMINI_RATES, GEMINI_VOICES, functionDeclarations, geminiConfigured, geminiCost, isGeminiVoice, mintGeminiToken,
+  type GeminiSetup, type GeminiTokens,
+} from './voice-gemini.js';
 
 export const voiceApi = new Hono<AuthVars>();
 
@@ -68,7 +78,13 @@ const clampSpeed = (s: unknown) => {
 const langName = (code: string) => LANGUAGES.find((l) => l.code.toLowerCase() === code?.toLowerCase())?.name;
 function settingsOf(bot: any) {
   const language = langName(bot.voice_language) ? String(bot.voice_language) : 'auto';
-  return { voice: String(bot.voice || 'luna'), speed: clampSpeed(bot.voice_speed ?? 1), language };
+  return {
+    voice: String(bot.voice || 'luna'), speed: clampSpeed(bot.voice_speed ?? 1), language,
+    engine: (bot.voice_engine === 'gemini' ? 'gemini' : 'xai') as 'xai' | 'gemini',
+    geminiVoice: isGeminiVoice(bot.gemini_voice) ? String(bot.gemini_voice) : DEFAULT_GEMINI_VOICE,
+    msgEngine: (bot.voice_msg_engine === 'sarvam' ? 'sarvam' : 'xai') as 'xai' | 'sarvam',
+    sarvamVoice: isSarvamVoice(bot.sarvam_voice) ? String(bot.sarvam_voice) : DEFAULT_SARVAM_VOICE,
+  };
 }
 
 // ---------- helpers ----------
@@ -239,7 +255,7 @@ ${recent || '(no messages yet)'}`;
 
 // ---------- calls ----------
 
-interface ActiveCall { id: string; botId: string; userId: string; startedAt: number; startSeq: number; tasks: string[] }
+interface ActiveCall { id: string; botId: string; userId: string; startedAt: number; startSeq: number; tasks: string[]; engine: 'xai' | 'gemini'; gemini?: GeminiSetup }
 const calls = new Map<string, ActiveCall>();
 
 function callEvent(text: string, call: VoiceCallRecord): EventBody {
@@ -251,7 +267,33 @@ const fmtDuration = (ms: number) => {
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
 };
 
-voiceApi.get('/options', async (c) => c.json({ voices: await listVoices(), languages: LANGUAGES, speeds: SPEEDS }));
+const geminiLeft = (userId: string) => Math.max(0, GEMINI_DAILY_CAP - geminiSpendToday(userId));
+
+voiceApi.get('/options', async (c) => c.json({
+  voices: await listVoices(), languages: LANGUAGES, speeds: SPEEDS,
+  geminiVoices: GEMINI_VOICES,
+  gemini: { ready: geminiConfigured(), model: GEMINI_MODEL, cap: GEMINI_DAILY_CAP, left: geminiLeft(c.get('user').id), rates: GEMINI_RATES },
+  sarvamVoices: SARVAM_VOICES,
+  sarvam: { ready: sarvamConfigured(), capInr: SARVAM_DAILY_CAP_INR, leftInr: sarvamLeftInr(c.get('user').id), rates: SARVAM_RATES },
+}));
+
+/** Sarvam is used only while it is set up and today's spend is under its cap; otherwise xAI. */
+const sarvamLeftInr = (userId: string) => Math.max(0, SARVAM_DAILY_CAP_INR - sarvamInrToday(userId));
+const useSarvam = (userId: string, s: { msgEngine: string }) => s.msgEngine === 'sarvam' && sarvamConfigured() && sarvamLeftInr(userId) > 0.05;
+
+/** Gemini Live call: a single-use key with the setup locked in; the browser connects to Google directly. */
+async function startGemini(c: any, user: { id: string }, bot: any, s: ReturnType<typeof settingsOf>) {
+  const left = geminiLeft(user.id);
+  if (left <= 0.005) return c.json({ error: `Gemini calls are paused for today: they reached the $${GEMINI_DAILY_CAP.toFixed(2)} daily cap. Switch to xAI under Voice chat, or call again tomorrow.` }, 402);
+  const setup: GeminiSetup = { voice: s.geminiVoice, instructions: voiceInstructions(user.id, bot, s.language), tools: functionDeclarations(VOICE_TOOLS), language: s.language };
+  const t = await mintGeminiToken(setup);
+  if ('error' in t) return c.json({ error: t.error }, t.status);
+  const callId = newId('call');
+  const startRow = appendRow(bot.id, 'event', callEvent(`Voice call with ${bot.name} started (Gemini)`, { id: callId, phase: 'started' }));
+  calls.set(callId, { id: callId, botId: bot.id, userId: user.id, startedAt: now(), startSeq: startRow.seq, tasks: [], engine: 'gemini', gemini: setup });
+  emitBot(bot.id);
+  return c.json({ engine: 'gemini', callId, model: GEMINI_MODEL, websocketUrl: t.websocketUrl, sampleRate: SAMPLE_RATE, voice: s.geminiVoice, language: s.language, capLeft: left, rates: GEMINI_RATES });
+}
 
 voiceApi.post('/session', async (c) => {
   const user = c.get('user');
@@ -259,6 +301,7 @@ voiceApi.post('/session', async (c) => {
   const bot = ownBot(user.id, botId);
   if (!bot) return c.json({ error: 'not found' }, 404);
   const s = settingsOf(bot);
+  if (s.engine === 'gemini') return startGemini(c, user, bot, s);
 
   const r = await fetch(`${XAI}/realtime/client_secrets`, {
     method: 'POST',
@@ -292,10 +335,11 @@ voiceApi.post('/session', async (c) => {
 
   const callId = newId('call');
   const startRow = appendRow(bot.id, 'event', callEvent(`Voice call with ${bot.name} started`, { id: callId, phase: 'started' }));
-  calls.set(callId, { id: callId, botId: bot.id, userId: user.id, startedAt: now(), startSeq: startRow.seq, tasks: [] });
+  calls.set(callId, { id: callId, botId: bot.id, userId: user.id, startedAt: now(), startSeq: startRow.seq, tasks: [], engine: 'xai' });
   emitBot(bot.id);
 
   return c.json({
+    engine: 'xai',
     callId,
     clientSecret: secret.value,
     expiresAt: secret.expires_at,
@@ -411,9 +455,24 @@ async function summarizeCall(userId: string, botName: string, transcript: { role
   return text ? clip(text.replace(/\s+/g, ' '), 240) : null;
 }
 
+/** Gemini closes a connection after about 10 minutes: a fresh single-use key resumes the same session. */
+voiceApi.post('/gemini/resume', async (c) => {
+  const user = c.get('user');
+  const { botId, callId, handle } = await c.req.json<{ botId: string; callId: string; handle: string }>().catch(() => ({} as any));
+  const bot = ownBot(user.id, botId);
+  const call = callId ? calls.get(callId) : undefined;
+  if (!bot || !call || call.botId !== bot.id || call.engine !== 'gemini' || !call.gemini) return c.json({ error: 'not found' }, 404);
+  if (typeof handle !== 'string' || !handle || handle.length > 2000) return c.json({ error: 'handle required' }, 400);
+  const t = await mintGeminiToken(call.gemini, handle);
+  if ('error' in t) return c.json({ error: t.error }, t.status as 502);
+  return c.json({ websocketUrl: t.websocketUrl });
+});
+
+const tokenCount = (v: unknown) => (Number.isFinite(Number(v)) ? Math.max(0, Math.min(5e7, Math.round(Number(v)))) : 0);
+
 voiceApi.post('/end', async (c) => {
   const user = c.get('user');
-  const { botId, callId, transcript, error } = await c.req.json<{ botId: string; callId: string; transcript?: { role: string; text: string }[]; error?: string }>();
+  const { botId, callId, transcript, error, tokens } = await c.req.json<{ botId: string; callId: string; transcript?: { role: string; text: string }[]; error?: string; tokens?: Partial<GeminiTokens> }>();
   const bot = ownBot(user.id, botId);
   if (!bot) return c.json({ error: 'not found' }, 404);
   const call = calls.get(callId);
@@ -429,7 +488,11 @@ voiceApi.post('/end', async (c) => {
   const record: VoiceCallRecord = { id: callId, phase: 'ended', durationMs, transcript: lines, tasks: call.tasks };
   const row = appendRow(bot.id, 'event', callEvent(base, record));
   emitBot(bot.id);
-  usage.liveCall(user.id, durationMs, call.tasks.length);
+  if (call.engine === 'gemini') {
+    // Priced from the token counts Gemini reported to the browser during the call.
+    const t: GeminiTokens = { textIn: tokenCount(tokens?.textIn), audioIn: tokenCount(tokens?.audioIn), audioOut: tokenCount(tokens?.audioOut), textOut: tokenCount(tokens?.textOut) };
+    usage.geminiCall(user.id, durationMs, geminiCost(t), { ...t });
+  } else usage.liveCall(user.id, durationMs, call.tasks.length);
 
   // Summarise in the background and rewrite the row.
   summarizeCall(user.id, bot.name, lines, call.tasks)
@@ -451,8 +514,18 @@ setInterval(() => {
 
 voiceApi.post('/preview', async (c) => {
   const user = c.get('user');
-  const p = await c.req.json<{ botId?: string; voice?: string; speed?: number; language?: string; text?: string; codec?: 'mp3' | 'pcm' }>().catch(() => ({} as any));
+  const p = await c.req.json<{ botId?: string; voice?: string; speed?: number; language?: string; text?: string; codec?: 'mp3' | 'pcm'; engine?: string }>().catch(() => ({} as any));
   const bot = ownBot(user.id, p.botId);
+  if (p.engine === 'sarvam') {
+    if (!sarvamConfigured()) return c.json({ error: 'Sarvam isn’t set up on hermes-box.' }, 503);
+    if (sarvamLeftInr(user.id) <= 0.05) return c.json({ error: `Sarvam reached today’s ₹${SARVAM_DAILY_CAP_INR} cap.` }, 402);
+    const speaker = isSarvamVoice(p.voice) ? String(p.voice) : DEFAULT_SARVAM_VOICE;
+    const sample = String(p.text || `नमस्ते, मैं ${bot?.name ?? 'आपकी टीम'} हूँ। Voice messages ka jawab main isi awaaz mein doongi.`).slice(0, 300);
+    const out = await sarvamSpeak(sample, speaker);
+    if ('error' in out) return c.json({ error: `Preview unavailable: ${out.error}.` }, 502);
+    usage.sarvamTts(user.id, sample.length, ttsCostInr(sample.length), INR_PER_USD, 'Voice preview');
+    return c.body(out.mp3, 200, { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-store' });
+  }
   const s = bot ? settingsOf(bot) : { voice: 'luna', speed: 1, language: 'auto' };
   const voice = String(p.voice || s.voice).slice(0, 80);
   const language = p.language && langName(p.language) ? p.language : s.language;
@@ -491,16 +564,20 @@ function speakable(md: string): string {
 }
 const SPEAK_MAX = 3000;
 
-/** Read one of the bot's replies aloud in its own voice (standalone text to speech, billed per character). */
-voiceApi.post('/speak', async (c) => {
-  const user = c.get('user');
-  const p = await c.req.json<{ botId?: string; text?: string }>().catch(() => ({} as any));
-  const bot = ownBot(user.id, p.botId);
-  if (!bot) return c.json({ error: 'not found' }, 404);
-  let text = speakable(String(p.text ?? ''));
-  if (!text) return c.json({ error: 'Nothing to read aloud.' }, 400);
+/** Text to speech in the bot's own voice (Sarvam for Hindi voices, else xAI); logs the spend. Shared with the Windows app. */
+export async function speakFor(userId: string, bot: any, rawText: string, what = 'Spoken reply'): Promise<{ mp3: Buffer } | { error: string }> {
+  let text = speakable(String(rawText ?? ''));
+  if (!text) return { error: 'Nothing to read aloud.' };
   if (text.length > SPEAK_MAX) text = `${text.slice(0, SPEAK_MAX).replace(/\s+\S*$/, '')}. The rest is in the chat.`;
   const s = settingsOf(bot);
+  if (useSarvam(userId, s)) {
+    const out = await sarvamSpeak(text, s.sarvamVoice, s.speed);
+    if (!('error' in out)) {
+      usage.sarvamTts(userId, text.length, ttsCostInr(text.length), INR_PER_USD, what);
+      return { mp3: out.mp3 };
+    }
+    console.warn('[voice] sarvam read-aloud failed, using xAI:', out.error);
+  }
   const r = await fetch(`${XAI}/tts`, {
     method: 'POST',
     headers: { ...xaiHeaders(), 'Content-Type': 'application/json' },
@@ -510,14 +587,69 @@ voiceApi.post('/speak', async (c) => {
   if (!r?.ok) {
     const detail = (await r?.text().catch(() => '')) ?? '';
     console.warn('[voice] speak failed', r?.status, detail.slice(0, 200));
-    return c.json({ error: /credits|spending limit/i.test(detail) ? 'Voice is paused: the xAI account is out of credits or at its monthly spending limit.' : 'Could not read it aloud just now.' }, 502);
+    return { error: /credits|spending limit/i.test(detail) ? 'Voice is paused: the xAI account is out of credits or at its monthly spending limit.' : 'Could not read it aloud just now.' };
   }
-  usage.speech(user.id, text.length, 'Spoken reply');
-  return c.body(Buffer.from(await r.arrayBuffer()), 200, { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-store' });
+  usage.speech(userId, text.length, what);
+  return { mp3: Buffer.from(await r.arrayBuffer()) };
+}
+
+/** Read one of the bot's replies aloud in its own voice (standalone text to speech, billed per character). */
+voiceApi.post('/speak', async (c) => {
+  const user = c.get('user');
+  const p = await c.req.json<{ botId?: string; text?: string }>().catch(() => ({} as any));
+  const bot = ownBot(user.id, p.botId);
+  if (!bot) return c.json({ error: 'not found' }, 404);
+  const out = await speakFor(user.id, bot, String(p.text ?? ''));
+  if ('error' in out) return c.json({ error: out.error }, out.error === 'Nothing to read aloud.' ? 400 : 502);
+  return c.body(out.mp3, 200, { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-store' });
 });
 
 /** Today's xAI spend for this owner, by service (estimates; the exact bill is in xAI's console). */
 voiceApi.get('/usage', (c) => c.json(usageToday(c.get('user').id)));
+
+/** Today's Claude spend: this owner's bots (their HeyZubi chats) and the agent's other channels. */
+voiceApi.get('/claude-spend', (c) => {
+  const user = c.get('user');
+  const s = claudeSpendToday();
+  const mine = new Set((db.prepare('SELECT id FROM bots WHERE user_id=?').all(user.id) as { id: string }[]).map((b) => b.id));
+  const ownsPrimary = !!db.prepare("SELECT 1 FROM bots WHERE user_id=? AND engine='primary'").get(user.id);
+  const byBot = Object.fromEntries(Object.entries(s.byBot).filter(([id]) => mine.has(id)));
+  return c.json({ ...s, byBot, bySource: ownsPrimary ? s.bySource : [], total: ownsPrimary ? s.total : Object.values(byBot).reduce((a, b) => a + b, 0) });
+});
+
+/**
+ * Speech to text for a clip in the bot's language (Sarvam for clips up to 30 s when the bot's voice messages use
+ * it, else xAI); logs the spend. `what` names the use in the spend list. Shared with the Windows app.
+ */
+export async function transcribeFor(userId: string, bot: any | null, file: Blob, name: string, clipMs: number, what: string, language = ''): Promise<{ text: string; engine?: string } | { error: string }> {
+  const prefs = getPrefs(userId);
+  if (bot) {
+    const s = settingsOf(bot);
+    if (useSarvam(userId, s) && clipMs > 0 && clipMs <= SARVAM_STT_MAX_MS) {
+      const res = await sarvamTranscribe(file as any, name, s.language, prefs.dictionary);
+      if (!('error' in res)) {
+        usage.sarvamStt(userId, clipMs, sttCostInr(clipMs), INR_PER_USD, what);
+        return { text: res.text, engine: 'sarvam' };
+      }
+      console.warn('[voice] sarvam transcription failed, using xAI:', res.error);
+    }
+  }
+  const out = new FormData();
+  out.append('model', STT_MODEL);
+  if (language && language !== 'auto' && /^[a-z]{2}$/.test(language)) out.append('language', language);
+  out.append('file', file, name); // must be last
+  const r = await fetch(`${XAI}/stt`, { method: 'POST', headers: xaiHeaders(), body: out, signal: AbortSignal.timeout(60_000) }).catch(() => null);
+  if (!r?.ok) {
+    const detail = (await r?.text().catch(() => '')) ?? '';
+    console.warn('[voice] stt failed', r?.status, detail.slice(0, 200));
+    return { error: /credits|spending limit/i.test(detail) ? 'Couldn’t transcribe: the xAI account is out of credits or at its monthly spending limit. Add credits at console.x.ai, or type your message.' : 'Transcription failed' };
+  }
+  const j = (await r.json()) as { text?: string; duration?: number };
+  // Billed by audio length: xAI's own figure when it gives one, else the length that was recorded.
+  const ms = Number(j.duration) > 0 ? Number(j.duration) * 1000 : Math.min(600_000, clipMs || 0);
+  usage.transcription(userId, ms, what);
+  return { text: (j.text ?? '').trim() };
+}
 
 voiceApi.post('/stt', async (c) => {
   const user = c.get('user');
@@ -526,20 +658,41 @@ voiceApi.post('/stt', async (c) => {
   if (!file || typeof file === 'string') return c.json({ error: 'file required' }, 400);
   if (file.size > 25 * 1024 * 1024) return c.json({ error: 'recording too long' }, 413);
   if (file.size < 200) return c.json({ text: '' });
-  const out = new FormData();
-  out.append('model', STT_MODEL);
-  const lang = String(form?.get('language') ?? '');
-  if (lang && lang !== 'auto' && /^[a-z]{2}$/.test(lang)) out.append('language', lang);
-  out.append('file', file, file.name || 'dictation.webm'); // must be last
-  const r = await fetch(`${XAI}/stt`, { method: 'POST', headers: xaiHeaders(), body: out, signal: AbortSignal.timeout(60_000) }).catch(() => null);
-  if (!r?.ok) {
-    const detail = (await r?.text().catch(() => '')) ?? '';
-    console.warn('[voice] stt failed', r?.status, detail.slice(0, 200));
-    return c.json({ error: /credits|spending limit/i.test(detail) ? 'Couldn’t transcribe: the xAI account is out of credits or at its monthly spending limit. Add credits at console.x.ai, or type your message.' : 'Transcription failed' }, 502);
-  }
-  const j = (await r.json()) as { text?: string; duration?: number };
-  // Billed by audio length: xAI's own figure when it gives one, else the length the browser recorded.
-  const ms = Number(j.duration) > 0 ? Number(j.duration) * 1000 : Math.min(600_000, Number(form?.get('ms')) || 0);
-  usage.transcription(user.id, ms, String(form?.get('what') ?? '') === 'voice-message' ? 'Voice message' : 'Dictation');
-  return c.json({ text: (j.text ?? '').trim() });
+  const what = String(form?.get('what') ?? '') === 'voice-message' ? 'Voice message' : 'Dictation';
+  const clipMs = Math.min(600_000, Number(form?.get('ms')) || 0);
+  const prefs = getPrefs(user.id);
+  const sbot = ownBot(user.id, String(form?.get('botId') ?? '') || undefined);
+  const res = await transcribeFor(user.id, sbot ?? null, file, file.name || 'dictation.webm', clipMs, what, String(form?.get('language') ?? ''));
+  if ('error' in res) return c.json({ error: res.error }, 502);
+  // Dictation lands in the message box for the owner to send, so it is tidied (when on) and spelled with the
+  // dictionary; a voice message goes straight to the bot, which copes with it as heard.
+  const text = what === 'Dictation' && prefs.tidyDictation ? await tidyDictation(user.id, res.text, prefs.dictionary) : res.text;
+  return c.json({ text, ...(res.engine ? { engine: res.engine } : {}) });
 });
+
+/**
+ * Dictation tidy-up (from Theo): punctuation, casing, filler words and false starts, with the dictionary's
+ * spellings; the speaker's words, language and script are kept. Falls back to the text as heard.
+ */
+async function tidyDictation(userId: string, text: string, dictionary: string[]): Promise<string> {
+  const said = text.trim();
+  if (said.length < 3) return said;
+  try {
+    const res: any = await xai.responses.create({
+      model: env.xaiModel,
+      reasoning: { effort: 'low' },
+      store: false,
+      input: [
+        { role: 'system', content: 'Clean up dictated text so it reads well typed into a chat box: fix punctuation and capitals, remove filler words (um, uh, like, you know) and false starts. Keep the speaker\'s own words, meaning, language and script exactly (Hindi, English or Hinglish as spoken; Devanagari stays Devanagari, Latin stays Latin). Do not answer, add or translate anything. Return only the cleaned text.' + (dictionary.length ? `\nSpell these names and words exactly like this when they appear: ${dictionary.slice(0, 100).join(', ')}.` : '') },
+        { role: 'user', content: said },
+      ],
+    } as any);
+    usage.grok(userId, res.usage, 'Dictation tidy-up');
+    const out = String(res.output_text ?? '').trim();
+    // A tidy-up never changes much: anything far shorter or longer is a model going off script.
+    return out && out.length >= said.length * 0.4 && out.length <= said.length * 1.6 + 20 ? out : said;
+  } catch (e) {
+    console.warn('[voice] dictation tidy-up skipped:', (e as Error)?.message);
+    return said;
+  }
+}

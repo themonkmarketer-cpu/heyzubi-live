@@ -13,8 +13,13 @@ design/
 docs/research/
 docs/INTERNAL-*.md
 docs/SPEC.md
+docs/vello/
 web/screenshots/
 tests/out/
 
 # Built by scripts/pack.sh for deploy/hermes-box
 deploy/hermes-box/hq-app.tgz
+
+# HeyZubi for Windows build output
+desktop/bin/
+desktop/obj/

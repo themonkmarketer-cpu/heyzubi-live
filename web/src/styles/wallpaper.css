@@ -1,0 +1,62 @@
+/* ---------- chat wallpaper picker ---------- */
+.wp-modal { width: min(760px, calc(100vw - 48px)); }
+.wp-body { display: grid; grid-template-columns: 260px 1fr; gap: 18px; padding: 16px; overflow-y: auto; }
+@media (max-width: 680px) { .wp-body { grid-template-columns: 1fr; } }
+
+/* A small chat in the real bubble styles, over the chosen wallpaper. */
+.wp-preview { position: relative; height: 340px; border-radius: 12px; overflow: hidden; border: 0.5px solid var(--color-border-secondary); background: var(--color-bg-chrome); }
+.wp-preview__bg, .wp-preview__dim { position: absolute; inset: 0; transition: opacity 160ms; }
+.wp-preview__dim { background: var(--color-bg-chrome); pointer-events: none; }
+.wp-preview__chat { position: relative; display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; height: 100%; padding: 14px 12px; }
+.wp-preview__pill { align-self: center; font-size: 11px; line-height: 14px; color: var(--color-text-secondary); padding: 2px 9px; border-radius: 999px; margin-bottom: 4px; }
+.wp-preview__chat.has-wallpaper .wp-preview__pill { background: color-mix(in srgb, var(--color-bg-pane) 82%, transparent); backdrop-filter: blur(8px); }
+.wp-preview__bubble { max-width: 82%; font-size: 12.5px; line-height: 17px; padding: 7px 11px !important; }
+.wp-preview__bubble--right { align-self: flex-end; }
+
+.wp-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.wp-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.wp-tile { display: flex; flex-direction: column; gap: 6px; padding: 0; background: none; border: 0; text-align: center; cursor: pointer; border-radius: 10px; }
+.wp-tile:disabled { cursor: progress; }
+.wp-tile__swatch {
+  display: flex; align-items: center; justify-content: center; aspect-ratio: 4 / 3; border-radius: 10px;
+  background: var(--color-bg-chrome); border: 0.5px solid var(--color-border-secondary);
+  box-shadow: 0 0 0 0 transparent; transition: box-shadow 120ms, transform 120ms;
+}
+.wp-tile:hover .wp-tile__swatch { transform: translateY(-1px); }
+.wp-tile.is-on .wp-tile__swatch { box-shadow: 0 0 0 2px var(--color-bg-elevated), 0 0 0 4px var(--color-primary); }
+.wp-tile:focus-visible { outline: none; }
+.wp-tile:focus-visible .wp-tile__swatch { box-shadow: 0 0 0 2px var(--color-bg-elevated), 0 0 0 4px var(--color-border-primary); }
+.wp-tile--default .wp-tile__swatch { background: var(--color-bg-chrome); }
+.wp-tile--upload .wp-tile__swatch { border-style: dashed; }
+.wp-tile__name { font-size: 12px; line-height: 16px; color: var(--color-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wp-tile.is-on .wp-tile__name { color: var(--color-ink); font-weight: 500; }
+
+.wp-row { display: flex; gap: 14px; flex-wrap: wrap; }
+.wp-dim { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--color-ink); }
+.wp-dim span { display: flex; justify-content: space-between; }
+.wp-dim em { font-style: normal; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
+.wp-dim input { width: 100%; accent-color: var(--color-primary); }
+.wp-dim.is-off { opacity: 0.45; }
+.wp-hint { font-size: 12px; line-height: 16px; color: var(--color-text-tertiary); }
+.wp-error { font-size: 13px; line-height: 18px; padding: 8px 10px; border-radius: 10px; background: var(--color-danger-bg); color: var(--color-danger-text); }
+.wp-footer-left { margin-right: auto; }
+
+/* ---------- the wallpaper in the chat ---------- */
+.chat__wallpaper, .chat__wallpaper-dim { position: absolute; inset: 0; pointer-events: none; }
+.chat__wallpaper { z-index: 0; }
+.chat__wallpaper-dim { background: var(--color-bg-chrome); transition: opacity 160ms; }
+.chat.has-wallpaper .transcript-wrap, .chat.has-wallpaper .composer-area, .chat.has-wallpaper > .vcall { position: relative; z-index: 1; }
+.chat.has-wallpaper .chat__header { background: none; }
+/* Lines of plain text between bubbles get a soft backing so they read on any picture. */
+.chat.has-wallpaper .divider,
+.chat.has-wallpaper .system-event,
+.chat.has-wallpaper .sender-label,
+.chat.has-wallpaper .bubble-wrap:hover .bubble__time {
+  background: color-mix(in srgb, var(--color-bg-pane) 82%, transparent);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  border-radius: 999px;
+}
+.chat.has-wallpaper .divider { padding: 3px 10px; margin: 8px 0 2px; }
+.chat.has-wallpaper .system-event { padding: 4px 12px; border-radius: 12px; }
+.chat.has-wallpaper .sender-label { padding: 2px 8px 2px 4px; }
+.chat.has-wallpaper .bubble-wrap:hover .bubble__time { padding: 1px 6px; margin-bottom: 8px; }

@@ -14,7 +14,7 @@ import { initSubagents } from './agent/subagents.js';
 import { initRooms } from './agent/rooms.js';
 import { checkinsApi } from './routes-proactive.js';
 import { roomsApi } from './routes-rooms.js';
-import { enqueue, expireStaleApprovals } from './agent/loop.js';
+import { enqueue, expireStaleApprovals, resumeInterrupted } from './agent/loop.js';
 import { desSelfTest } from './lib/des.js';
 import { configApi } from './routes-config.js';
 import { startIdleWatcher } from './idle.js';
@@ -28,6 +28,8 @@ initSubagents();
 initRooms();
 // Approvals wait in memory; whatever was still open when the last process stopped can no longer be answered.
 expireStaleApprovals();
+// A message the owner sent just before a restart would otherwise never get its reply.
+setTimeout(resumeInterrupted, 3000);
 
 const app = new Hono();
 // Nothing the server sends is meant to be shown inside another site's frame (clickjacking), so every

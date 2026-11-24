@@ -38,6 +38,10 @@ export function EngineSettings({ bot }: { bot: Bot }) {
   useEffect(() => { setEffort(bot.effort ?? 'medium'); }, [bot.effort]);
   const [note, setNote] = useState<string | null>(null);
   const [signingIn, setSigningIn] = useState(false);
+  // Claude sign-in in the owner's own browser (team members): the link, then the code pasted back here.
+  const [claude, setClaude] = useState<{ url: string } | null>(null);
+  const [code, setCode] = useState('');
+  const [claudeBusy, setClaudeBusy] = useState(false);
   const dirty = useRef(false);
   const botId = bot.id;
 
@@ -140,8 +144,34 @@ export function EngineSettings({ bot }: { bot: Bot }) {
     finally { setBusy(null); }
   };
 
+  // A team member signs in to Claude in your own browser: HeyZubi gets the link from Hermes, you paste the code back.
+  const browserClaude = signInTo?.id === 'anthropic' && engine.profile !== 'default';
+
+  const startClaude = async () => {
+    setBusy('signin'); setNote(null); setCode('');
+    try { const r = await configApi.claudeSignInStart(botId); setClaude({ url: r.url }); }
+    catch (e) { setNote(`Couldn’t start sign-in: ${(e as Error).message || 'the engine did not answer'}`); }
+    finally { setBusy(null); }
+  };
+
+  const finishClaude = async () => {
+    if (!code.trim() || claudeBusy) return;
+    setClaudeBusy(true); setNote(null);
+    try {
+      const r = await configApi.claudeSignInFinish(botId, code.trim());
+      setClaude(null); setCode('');
+      if (r.engine) apply(r.engine);
+      setNote(`${bot.name} is signed in to Claude. Send it a message to check.`);
+      setTimeout(() => load(true), 4000);
+    } catch (e) { setNote((e as Error).message || 'The sign-in didn’t go through.'); }
+    finally { setClaudeBusy(false); }
+  };
+
+  const cancelClaude = () => { setClaude(null); setCode(''); void configApi.claudeSignInCancel(botId).catch(() => {}); };
+
   const signIn = async () => {
     if (busy) return;
+    if (browserClaude) { await startClaude(); return; }
     setBusy('signin'); setNote(null);
     try {
       await configApi.engineLogin(botId, signInTo?.id);
@@ -233,6 +263,20 @@ export function EngineSettings({ bot }: { bot: Bot }) {
           <Icon name="monitor" size={14} opacity={0.56} />
           {busy === 'signin' ? 'Opening sign-in…' : signInTo ? `Sign in to ${signInTo.name}…` : 'Sign in to a subscription…'}
         </button>
+      )}
+      {claude && (
+        <div className="engine__notice" style={{ display: 'block' }}>
+          <ol style={{ margin: '0 0 8px', paddingLeft: 18, lineHeight: 1.5 }}>
+            <li><a href={claude.url} target="_blank" rel="noreferrer"><b>Open Claude’s sign-in page</b></a> (it opens in your own browser) and click <b>Authorize</b>.</li>
+            <li>Claude shows a code. Copy it, paste it here and press <b>Finish</b>.</li>
+          </ol>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input className="text-input" style={{ flex: 1, minWidth: 0 }} value={code} onChange={(e) => setCode(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') void finishClaude(); }} placeholder="Paste the code" autoComplete="off" spellCheck={false} aria-label="Claude sign-in code" />
+            <button type="button" className="cfg-btn cfg-btn--primary" onClick={() => void finishClaude()} disabled={!code.trim() || claudeBusy}>{claudeBusy ? 'Signing in…' : 'Finish'}</button>
+          </div>
+          <button type="button" className="link-btn link-btn--small" style={{ marginTop: 6 }} onClick={cancelClaude}>Cancel</button>
+        </div>
       )}
       {engine.ownScreen && (
         <div className="engine__notice">

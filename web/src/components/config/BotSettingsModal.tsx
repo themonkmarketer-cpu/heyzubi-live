@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { AvatarColor, AvatarShape, Bot, Memory, Routine, Skill } from '@shared/types';
 import { BotAvatar, BotAvatarFor, PICKER_SHAPES } from '../../avatar/BotAvatar';
 import { COLOR_ORDER, botVars, palette } from '../../lib/colors';
-import { configApi, type BotSettingsBundle } from '../../lib/configApi';
+import { configApi, type AgentSkill, type BotSettingsBundle } from '../../lib/configApi';
+import { api } from '../../lib/api';
 import { useConfigUI, useVersion, type BotSettingsTab } from '../../configStore';
 import { useStore } from '../../store';
 import { Icon } from '../Icon';
 import { Modal } from '../modals/Modal';
+import { backgroundOf, byId, customUrl, useWallpaper } from '../../lib/wallpapers';
 import { Glyph } from './glyphs';
 import { ConfirmButton, Field, Segmented, Switch, nextRunLabel, shortDate } from './ui';
 
@@ -89,6 +91,23 @@ export function BotSettingsModal() {
 type Draft = Pick<Bot, 'name' | 'label' | 'description' | 'instructions' | 'avatarShape' | 'avatarColor' | 'effort' | 'mode'>;
 const draftOf = (b: Bot): Draft => ({ name: b.name, label: b.label, description: b.description, instructions: b.instructions, avatarShape: b.avatarShape, avatarColor: b.avatarColor, effort: b.effort, mode: b.mode });
 
+/** The chat wallpaper (it is the same for every chat): what's on now, and the picker, opened over the chat. */
+function WallpaperRow({ onOpen }: { onOpen: () => void }) {
+  const pref = useWallpaper((s) => s.pref);
+  const bg = backgroundOf(pref.wallpaper, customUrl(pref.wallpaperFile));
+  const name = pref.wallpaper === 'custom' ? 'Your picture' : byId(pref.wallpaper)?.name ?? 'Default';
+  return (
+    <div className="cfg-row">
+      <span aria-hidden style={{ width: 48, height: 34, borderRadius: 7, flexShrink: 0, border: '0.5px solid var(--color-border-secondary)', background: bg ?? 'var(--color-bg-chrome)' }} />
+      <div className="cfg-row__text">
+        <div className="cfg-row__title">Chat wallpaper · {name}</div>
+        <div className="cfg-row__sub">The background behind your chats (all of them): 10 built-in wallpapers or a picture of your own.</div>
+      </div>
+      <button type="button" className="cfg-btn cfg-btn--secondary" onClick={() => { onOpen(); useWallpaper.getState().openPicker(); }}>Change…</button>
+    </div>
+  );
+}
+
 function GeneralTab({ bot, onClose }: { bot: Bot; onClose: () => void }) {
   const [draft, setDraft] = useState<Draft>(() => draftOf(bot));
   const [picker, setPicker] = useState(false);
@@ -158,6 +177,8 @@ function GeneralTab({ bot, onClose }: { bot: Bot; onClose: () => void }) {
         </Field>
       </section>
 
+      <TeamSetting bot={bot} />
+
       <div className={`cfg-savebar${dirty ? ' is-dirty' : ''}`}>
         <span className={`cfg-savebar__note${note?.tone === 'error' ? ' is-error' : ''}`} role="status">{note?.text ?? (dirty ? 'Unsaved changes' : '')}</span>
         <button type="button" className="cfg-btn cfg-btn--secondary" disabled={!dirty || saving} onClick={() => setDraft(draftOf(bot))}>Discard</button>
@@ -167,6 +188,7 @@ function GeneralTab({ bot, onClose }: { bot: Bot; onClose: () => void }) {
       <section className="cfg-section">
         <div className="cfg-section__label">Conversation</div>
         <div className="cfg-card">
+          <WallpaperRow onOpen={onClose} />
           <div className="cfg-row">
             <div className="cfg-row__text">
               <div className="cfg-row__title">New conversation</div>
@@ -284,6 +306,86 @@ function SkillsTab({ bot, skills, onChange }: { bot: Bot; skills: Skill[] | unde
           ))}
         </div>
       )}
+      <AgentSkills bot={bot} />
+    </div>
+  );
+}
+
+/** The bot's team and whether it manages it (saved straight away). The primary bot is the CEO. */
+function TeamSetting({ bot }: { bot: Bot }) {
+  const bots = useStore((s) => s.bots);
+  const [team, setTeam] = useState(bot.team ?? '');
+  const [note, setNote] = useState('');
+  useEffect(() => setTeam(bot.team ?? ''), [bot.team]);
+  if (bot.isPrimary) {
+    return <section className="cfg-section"><div className="cfg-section__label">Team</div><div className="cfg-field__hint">{bot.name} is the CEO: every team reports to {bot.name}.</div></section>;
+  }
+  const names = [...new Set(bots.map((b) => b.team).filter(Boolean) as string[])];
+  const save = async (p: { team?: string | null; isManager?: boolean }) => {
+    setNote('');
+    try { await api.setBotTeam(bot.id, p); await useStore.getState().loadBots(); setNote('Saved'); } catch (e) { setNote((e as Error).message); }
+  };
+  return (
+    <section className="cfg-section">
+      <div className="cfg-section__label">Team</div>
+      <div className="cfg-grid">
+        <Field label="Team" htmlFor="cfg-team" hint="Like Finance, Sales or Support. Leave empty for no team.">
+          <input id="cfg-team" className="text-input" list="cfg-team-names" value={team} maxLength={40} placeholder="No team" onChange={(e) => setTeam(e.target.value)} onBlur={() => { if ((team.trim() || null) !== (bot.team ?? null)) void save({ team: team.trim() || null }); }} />
+          <datalist id="cfg-team-names">{names.map((n) => <option key={n} value={n} />)}</datalist>
+        </Field>
+        <Field label="Manager" hint={bot.team ? `The manager hands out the ${bot.team} team’s work and reports to the CEO.` : 'Pick a team first.'}>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input type="checkbox" disabled={!bot.team} checked={bot.isManager} onChange={(e) => void save({ isManager: e.target.checked })} />
+            <span>{bot.isManager ? `Manages ${bot.team}` : 'Make manager'}</span>
+          </label>
+        </Field>
+      </div>
+      {note && <div className="cfg-field__hint" role="status">{note}</div>}
+    </section>
+  );
+}
+
+/** Skills the bot saved and keeps up to date itself as it learns (read-only here). */
+function AgentSkills({ bot }: { bot: Bot }) {
+  const [list, setList] = useState<AgentSkill[] | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+  const [text, setText] = useState('');
+  const [q, setQ] = useState('');
+  useEffect(() => { configApi.agentSkills(bot.id).then((r) => setList(r.skills)).catch(() => setList([])); }, [bot.id]);
+  const show = async (p: string) => {
+    if (open === p) { setOpen(null); return; }
+    setOpen(p); setText('Loading…');
+    try { setText((await configApi.agentSkill(bot.id, p)).content); } catch { setText('Couldn’t open this skill.'); }
+  };
+  if (!list || !list.length) return null;
+  const shown = q ? list.filter((s) => `${s.name} ${s.description} ${s.category}`.toLowerCase().includes(q.toLowerCase())) : list;
+  const flagged = list.filter((s) => s.secretLike).length;
+  return (
+    <div className="cfg-agent-skills">
+      <div className="cfg-page__head">
+        <div>
+          <div className="cfg-page__title">Skills {bot.name} wrote herself ({list.length})</div>
+          <div className="cfg-page__sub">
+            Saved as {bot.name} works out better ways to do things, and updated rather than duplicated. Newest first.
+            {flagged ? ` ${flagged} may contain a key or password: open it and ask ${bot.name} to take it out.` : ''}
+          </div>
+        </div>
+      </div>
+      <input className="cfg-input" placeholder="Search skills" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search the skills she wrote" />
+      <div className="cfg-list">
+        {shown.slice(0, 200).map((s) => (
+          <div key={s.path}>
+            <button type="button" className="cfg-item cfg-item--button" onClick={() => void show(s.path)} aria-expanded={open === s.path}>
+              <span className="cfg-item__icon"><Glyph name="spark" size={14} /></span>
+              <div className="cfg-item__text">
+                <div className="cfg-item__title">{s.secretLike ? '⚠ ' : ''}{s.name}</div>
+                <div className="cfg-item__sub">{[s.category, s.description, s.updated ? `updated ${shortDate(s.updated)}` : ''].filter(Boolean).join(' · ')}</div>
+              </div>
+            </button>
+            {open === s.path && <pre className="cfg-skill-view">{text}</pre>}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

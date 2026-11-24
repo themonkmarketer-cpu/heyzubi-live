@@ -9,8 +9,12 @@ import { Icon } from './Icon';
 import { Menu } from './Menu';
 import { Transcript } from './Transcript';
 import { VoiceCallBar } from './VoiceCallBar';
+import { backgroundOf, useShownWallpaper, useWallpaper } from '../lib/wallpapers';
+import '../styles/wallpaper.css';
 
 export function ChatView() {
+  const wallpaper = useShownWallpaper();
+  const wallBg = backgroundOf(wallpaper.wallpaper, wallpaper.custom);
   const bot = useSelectedBot();
   const transcript = useStore((s) => (bot ? s.transcripts[bot.id] : undefined));
   const live = useStore((s) => (bot ? s.live[bot.id] : undefined));
@@ -31,7 +35,12 @@ export function ChatView() {
   const flash = (t: string) => { setToast(t); setTimeout(() => setToast(null), 2000); };
 
   return (
-    <main className="chat" style={botVars(bot.avatarColor)}>
+    <main className={`chat${wallBg ? ' has-wallpaper' : ''}`} style={botVars(bot.avatarColor)}>
+      {wallBg && (
+        <div className="chat__wallpaper" style={{ background: wallBg }} aria-hidden>
+          <div className="chat__wallpaper-dim" style={{ opacity: wallpaper.dim }} />
+        </div>
+      )}
       <Transcript bot={bot} rows={rows} live={live} loaded={!!transcript?.loaded} />
       <VoiceCallBar />
       <Composer bot={bot} running={!!live?.isRunning} />
@@ -49,6 +58,7 @@ export function ChatView() {
                 { label: detailsOpen ? 'Hide details' : 'Show details', hint: '⇧⌘,', onSelect: () => set({ detailsOpen: !detailsOpen }) },
                 { label: 'Open computer', onSelect: () => set({ viewerOpen: true, viewerMode: 'watch', viewerHint: null }) },
                 { label: 'New conversation', onSelect: () => api.fresh(bot.id).then(() => flash('Started a new conversation')).catch((e) => flash(e.message)) },
+                { label: 'Chat wallpaper…', onSelect: () => useWallpaper.getState().openPicker() },
                 { label: 'Settings', onSelect: () => useConfigUI.getState().openBotSettings(bot.id) },
               ]}
             />

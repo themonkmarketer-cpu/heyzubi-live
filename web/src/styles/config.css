@@ -241,3 +241,10 @@
 .theme-tile__art.is-navy .theme-tile__pane { background: #121C3A; }
 .theme-tile__art.is-navy .theme-tile__pane i { background: #F1EEF61F; }
 .theme-tile__art.is-navy .theme-tile__pane b { background: #A98BFF; }
+
+/* Skills the agent wrote itself */
+.cfg-agent-skills { margin-top: 22px; display: flex; flex-direction: column; gap: 8px; }
+.cfg-item--button { width: 100%; text-align: left; background: none; border: 0; font: inherit; color: inherit; cursor: pointer; }
+.cfg-item--button:hover { background: var(--color-bg-hover); }
+.cfg-skill-view { margin: 4px 0 10px 34px; padding: 10px 12px; max-height: 320px; overflow: auto; white-space: pre-wrap; font-size: 12px; line-height: 1.5; background: var(--color-bg-subtle); border-radius: 8px; }
+.cfg-agent-skills > .cfg-input { padding: 7px 10px; border-radius: 8px; border: 0.5px solid var(--color-border-secondary); background: var(--color-bg-pane); color: var(--color-text-primary); font: inherit; font-size: 13px; }

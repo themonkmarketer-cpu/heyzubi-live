@@ -15,7 +15,7 @@ function pickMime(): string | undefined {
   return undefined;
 }
 
-export function useDictation(onText: (text: string) => void, onError: (msg: string) => void, language?: string, what?: 'dictation' | 'voice-message') {
+export function useDictation(onText: (text: string) => void, onError: (msg: string) => void, language?: string, what?: 'dictation' | 'voice-message', botId?: string) {
   const [state, setState] = useState<DictationState>('idle');
   /** Recording was started with a tap (not held): it goes on until the button is tapped again. */
   const [tap, setTap] = useState(false);
@@ -23,8 +23,8 @@ export function useDictation(onText: (text: string) => void, onError: (msg: stri
   const starting = useRef(false);
   const toggleMode = useRef(false);
   const stopWhenOpen = useRef(false);
-  const cb = useRef({ onText, onError, language, what });
-  cb.current = { onText, onError, language, what };
+  const cb = useRef({ onText, onError, language, what, botId });
+  cb.current = { onText, onError, language, what, botId };
 
   const finish = useCallback((cancel = false) => {
     const r = rec.current;
@@ -55,7 +55,7 @@ export function useDictation(onText: (text: string) => void, onError: (msg: stri
         if (r.cancelled || !r.chunks.length || Date.now() - r.downAt < 250) { setState('idle'); return; }
         setState('transcribing');
         try {
-          const text = await voiceApi.transcribe(new Blob(r.chunks, { type: mr.mimeType || mime || 'audio/webm' }), cb.current.language, { ms: Date.now() - r.downAt, what: cb.current.what });
+          const text = await voiceApi.transcribe(new Blob(r.chunks, { type: mr.mimeType || mime || 'audio/webm' }), cb.current.language, { ms: Date.now() - r.downAt, what: cb.current.what, botId: cb.current.botId });
           if (text) cb.current.onText(text);
         } catch (e) {
           cb.current.onError((e as Error).message || 'Transcription failed');
@@ -118,5 +118,8 @@ export function useDictation(onText: (text: string) => void, onError: (msg: stri
     else if (starting.current) stopWhenOpen.current = true;
   }, [finish]);
 
-  return { state, tap, onPointerDown, onPointerUp, onKeyDown, start, stop, cancel: () => finish(true) };
+  /** Start from a menu or a click: records until stop() (or the button) is pressed. */
+  const startTap = useCallback(() => { toggleMode.current = true; stopWhenOpen.current = false; setTap(true); void begin(); }, [begin]);
+
+  return { state, tap, onPointerDown, onPointerUp, onKeyDown, start, startTap, stop, cancel: () => finish(true) };
 }

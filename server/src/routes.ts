@@ -24,6 +24,12 @@ import { panelsApi } from './panels.js';
 import { statusApi } from './status.js';
 import { openPanelsFor } from './panels.js';
 import type { AvatarColor, AvatarShape, Toolkit } from './types.js';
+import { isGeminiVoice } from './voice-gemini.js';
+import { isSarvamVoice } from './sarvam.js';
+import { prefsApi } from './prefs.js';
+import { apiKeysApi, inboundApi } from './inbound.js';
+import { codingApi } from './coding.js';
+import { desktopApi, desktopDevicesApi } from './desktop.js';
 
 export const api = new Hono<AuthVars>();
 
@@ -46,7 +52,7 @@ class UserError extends Error {}
 
 const agentCount = () => (db.prepare("SELECT COUNT(*) n FROM bots WHERE COALESCE(kind,'agent')<>'room' AND COALESCE(hidden,0)=0").get() as any).n as number;
 
-function createBot(userId: string, b: { name: string; label?: string; description?: string; instructions?: string; avatarShape?: string; avatarColor?: string; mode?: string; isPrimary?: boolean }) {
+function createBot(userId: string, b: { name: string; label?: string; description?: string; instructions?: string; avatarShape?: string; avatarColor?: string; mode?: string; isPrimary?: boolean; team?: string | null; isManager?: boolean }) {
   // Every bot needs a screen of its own on the one shared computer.
   if (agentCount() >= env.maxBots) throw new UserError(`The team is full: the computer has room for ${env.maxBots} bots. Remove one to add another.`);
   const id = newId('bot');
@@ -55,6 +61,7 @@ function createBot(userId: string, b: { name: string; label?: string; descriptio
   db.prepare(
     'INSERT INTO bots(id,user_id,name,label,description,instructions,avatar_shape,avatar_color,mode,is_primary,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
   ).run(id, userId, b.name.trim().slice(0, 60) || 'New Bot', b.label ?? '', b.description ?? '', b.instructions ?? '', shape, color, b.mode === 'teammate' ? 'teammate' : 'personal', b.isPrimary ? 1 : 0, now(), now());
+  if (b.team && !b.isPrimary) db.prepare('UPDATE bots SET team=?, is_manager=? WHERE id=?').run(String(b.team).slice(0, 40), b.isManager ? 1 : 0, id);
   // The first bot is the agent that already runs on the computer; the others get an engine of their own.
   if (assignEngine(id) === 'managed') provisionEngine(id);
   hub.emit(userId, { type: 'roster' });
@@ -228,7 +235,8 @@ api.post('/auth/logout', (c) => { destroySession(c); return c.json({ ok: true })
 // that happen to start the same way (DELETE /api/apps/callback is "disconnect the app `callback`").
 // Every route under /api/auth/ is defined above and is meant to work signed out.
 api.use('/*', async (c, next) => {
-  const open = c.req.path.startsWith('/api/auth/') || (c.req.method === 'GET' && c.req.path === '/api/apps/callback') || c.req.path === '/api/health';
+  // /api/inbound/ checks its own API key (outside programs; see inbound.ts).
+  const open = c.req.path.startsWith('/api/auth/') || (c.req.method === 'GET' && c.req.path === '/api/apps/callback') || c.req.path === '/api/health' || c.req.path.startsWith('/api/inbound/') || c.req.path.startsWith('/api/desktop/');
   return open ? next() : requireUser(c, next);
 });
 
@@ -277,7 +285,20 @@ api.patch('/bots/:id', async (c) => {
   const b = ownBot(c.get('user').id, c.req.param('id'));
   if (!b) return c.json({ error: 'not found' }, 404);
   const p = await c.req.json();
-  const cols: Record<string, string> = { name: 'name', label: 'label', description: 'description', instructions: 'instructions', avatarShape: 'avatar_shape', avatarColor: 'avatar_color', mode: 'mode', effort: 'effort', pinned: 'pinned', voice: 'voice', voiceSpeed: 'voice_speed', voiceLanguage: 'voice_language' };
+  const cols: Record<string, string> = { name: 'name', label: 'label', description: 'description', instructions: 'instructions', avatarShape: 'avatar_shape', avatarColor: 'avatar_color', mode: 'mode', effort: 'effort', pinned: 'pinned', voice: 'voice', voiceSpeed: 'voice_speed', voiceLanguage: 'voice_language', voiceEngine: 'voice_engine', geminiVoice: 'gemini_voice', voiceMsgEngine: 'voice_msg_engine', sarvamVoice: 'sarvam_voice' };
+  if (p.team !== undefined || p.isManager !== undefined) {
+    if (b.is_primary) return c.json({ error: `${b.name} is the CEO, above every team.` }, 400);
+    const team = p.team !== undefined ? (String(p.team ?? '').replace(/\s+/g, ' ').trim().slice(0, 40) || null) : b.team;
+    const manager = team ? (p.isManager !== undefined ? p.isManager === true : !!b.is_manager) : false;
+    // One manager per team: making this bot the manager hands the role over.
+    if (manager) db.prepare('UPDATE bots SET is_manager=0 WHERE user_id=? AND team=? AND id<>?').run(b.user_id, team, b.id);
+    db.prepare('UPDATE bots SET team=?, is_manager=?, updated_at=? WHERE id=?').run(team, manager ? 1 : 0, now(), b.id);
+    hub.emit(b.user_id, { type: 'roster' });
+  }
+  if (p.voiceMsgEngine !== undefined && p.voiceMsgEngine !== 'xai' && p.voiceMsgEngine !== 'sarvam') return c.json({ error: 'voiceMsgEngine must be xai or sarvam' }, 400);
+  if (p.sarvamVoice !== undefined && !isSarvamVoice(p.sarvamVoice)) return c.json({ error: 'unknown Sarvam voice' }, 400);
+  if (p.voiceEngine !== undefined && p.voiceEngine !== 'xai' && p.voiceEngine !== 'gemini') return c.json({ error: 'voiceEngine must be xai or gemini' }, 400);
+  if (p.geminiVoice !== undefined && !isGeminiVoice(p.geminiVoice)) return c.json({ error: 'unknown Gemini voice' }, 400);
   for (const [k, col] of Object.entries(cols)) {
     if (p[k] !== undefined) db.prepare(`UPDATE bots SET ${col}=?, updated_at=? WHERE id=?`).run(typeof p[k] === 'boolean' ? (p[k] ? 1 : 0) : p[k], now(), b.id);
   }
@@ -399,7 +420,7 @@ api.post('/bots/:id/cards/:seq/dismiss', (c) => {
   if (!row || row.body.type !== 'card') return c.json({ error: 'not a card' }, 400);
   const body: any = { ...row.body, status: row.body.card === 'connect' ? 'skipped' : 'dismissed' };
   updateRow(b.id, row.seq, body);
-  if (row.body.card === 'connect') enqueue(b.id, { type: 'system', text: `The user skipped connecting ${row.body.toolkitName}. Continue without it.` });
+  if (row.body.card === 'connect') enqueue(b.id, { type: 'system', owner: true, text: `The user skipped connecting ${row.body.toolkitName}. Continue without it.` });
   return c.json({ ok: true });
 });
 
@@ -537,7 +558,7 @@ api.get('/apps/callback', async (c) => {
           const row = getRow(botId, seq);
           if (row?.body.type === 'card' && row.body.card === 'connect') updateRow(botId, seq, { ...row.body, status: 'connected' });
         }
-        enqueue(botId, { type: 'system', text: `The user connected ${info?.name ?? slug}. Continue with what you were doing.` });
+        enqueue(botId, { type: 'system', owner: true, text: `The user connected ${info?.name ?? slug}. Continue with what you were doing.` });
       }
     }
   }
@@ -567,3 +588,95 @@ api.route('/whatsapp', whatsappApi);
 api.route('/generations', generationsApi);
 api.route('/panels', panelsApi);
 api.route('/status', statusApi);
+api.route('/prefs', prefsApi);
+api.route('/keys', apiKeysApi);
+api.route('/inbound', inboundApi);
+api.route('/coding-runs', codingApi);
+api.route('/desktop-devices', desktopDevicesApi);
+api.route('/desktop', desktopApi);
+
+// ---------- teams (from Theo) ----------
+// A team is a name on its bots, with at most one manager. The primary bot is the CEO above every team.
+
+const READY_TEAMS: Record<string, { team: string; blurb: string; bots: { name: string; label: string; description: string; instructions: string; isManager?: boolean }[] }> = {
+  finance: {
+    team: 'Finance', blurb: 'Tracks spending, budgets and invoices.',
+    bots: [
+      { name: 'Finance Lead', label: 'Finance manager', isManager: true, description: 'Tracks spending, budgets and invoices.', instructions: 'You manage the Finance team. Keep track of spending, budgets and invoices. Roll your team\'s reports up into one short report for the CEO when asked or on your routine. Never pay, send or delete anything yourself.' },
+      { name: 'Budget Watcher', label: 'Budget analyst', description: 'Compares spending with the budget and flags overruns.', instructions: 'Compare spending with the budget and flag overruns, with the numbers. Report to your manager. Never pay, send or delete anything yourself.' },
+    ],
+  },
+  sales: {
+    team: 'Sales', blurb: 'Keeps the pipeline moving and says what needs you.',
+    bots: [
+      { name: 'Sales Lead', label: 'Sales manager', isManager: true, description: 'Reports the pipeline: new leads, conversations going, and what needs the owner.', instructions: 'You manage the Sales team. Report the pipeline in a few lines: new leads, conversations going, and what needs the owner. Roll your team\'s reports up for the CEO. Never send messages yourself; prepare drafts.' },
+      { name: 'Lead Researcher', label: 'Lead research', description: 'Finds and qualifies new leads.', instructions: 'Find and qualify new leads, with why each fits and how to reach them. Report to your manager. Never send messages yourself; prepare drafts.' },
+    ],
+  },
+  support: {
+    team: 'Support', blurb: 'Watches what customers ask and what keeps coming up.',
+    bots: [
+      { name: 'Support Lead', label: 'Support manager', isManager: true, description: 'Reports what\'s urgent, what\'s answered and any problem that keeps coming up.', instructions: 'You manage the Support team. Report what\'s urgent, what\'s answered and any problem that keeps coming up. Roll your team\'s reports up for the CEO. Never send replies yourself; prepare drafts.' },
+      { name: 'Inbox Triage', label: 'Support inbox', description: 'Sorts incoming questions and drafts replies.', instructions: 'Sort incoming customer questions by urgency and draft replies for the owner to send. Report to your manager. Never send replies yourself.' },
+    ],
+  },
+};
+
+function listTeams(userId: string) {
+  const rows = db.prepare("SELECT id, name, team, is_manager FROM bots WHERE user_id=? AND team IS NOT NULL AND COALESCE(kind,'agent')<>'room' AND COALESCE(hidden,0)=0 ORDER BY created_at").all(userId) as any[];
+  const by = new Map<string, { name: string; managerId: string | null; memberIds: string[] }>();
+  for (const r of rows) {
+    const t = by.get(r.team) ?? { name: r.team as string, managerId: null as string | null, memberIds: [] as string[] };
+    if (r.is_manager) t.managerId = r.id; else t.memberIds.push(r.id);
+    by.set(r.team, t);
+  }
+  return [...by.values()];
+}
+
+const uniqueName = (userId: string, name: string) => {
+  let n = name.slice(0, 60);
+  for (let i = 2; db.prepare('SELECT 1 FROM bots WHERE user_id=? AND lower(name)=lower(?)').get(userId, n); i++) n = `${name.slice(0, 56)} ${i}`;
+  return n;
+};
+
+function addTeam(userId: string, team: string, bots: { name: string; label?: string; description?: string; instructions?: string; isManager?: boolean; avatarShape?: string; avatarColor?: string }[]) {
+  const free = env.maxBots - agentCount();
+  if (bots.length > free) throw new UserError(`That team has ${bots.length} bots but there's room for ${Math.max(0, free)} more (the computer holds ${env.maxBots}). Remove a bot or raise MAX_BOTS first.`);
+  let name = team.replace(/\s+/g, ' ').trim().slice(0, 40) || 'Team';
+  for (let i = 2; db.prepare('SELECT 1 FROM bots WHERE user_id=? AND team=?').get(userId, name); i++) name = `${team.slice(0, 36)} ${i}`;
+  const hasManager = bots.some((x) => x.isManager);
+  return bots.map((x, i) => createBot(userId, { ...x, name: uniqueName(userId, x.name || 'Team member'), team: name, isManager: hasManager ? !!x.isManager : i === 0 }));
+}
+
+api.get('/teams', (c) => c.json({
+  teams: listTeams(c.get('user').id),
+  ready: Object.entries(READY_TEAMS).map(([key, t]) => ({ key, team: t.team, blurb: t.blurb, size: t.bots.length })),
+  room: Math.max(0, env.maxBots - agentCount()),
+}));
+
+api.post('/teams/ready', async (c) => {
+  const { key } = await c.req.json<{ key: string }>().catch(() => ({ key: '' }));
+  const t = READY_TEAMS[key];
+  if (!t) return c.json({ error: 'No such ready-made team.' }, 404);
+  try { return c.json({ bots: addTeam(c.get('user').id, t.team, t.bots) }); }
+  catch (e: any) { if (e instanceof UserError) return c.json({ error: e.message }, 409); throw e; }
+});
+
+/** A team file: its bots' names, roles and instructions (no chats, memories or keys). */
+api.get('/teams/:name/export', (c) => {
+  const user = c.get('user');
+  const team = decodeURIComponent(c.req.param('name'));
+  const bots = (db.prepare("SELECT * FROM bots WHERE user_id=? AND team=? AND COALESCE(kind,'agent')<>'room' AND COALESCE(hidden,0)=0 ORDER BY is_manager DESC, created_at").all(user.id, team) as any[])
+    .map((b) => ({ name: b.name, label: b.label, description: b.description, instructions: b.instructions, isManager: !!b.is_manager, avatarShape: b.avatar_shape, avatarColor: b.avatar_color }));
+  if (!bots.length) return c.json({ error: 'not found' }, 404);
+  return c.json({ format: 'heyzubi-team', version: 1, team, bots });
+});
+
+api.post('/teams/import', async (c) => {
+  const f = await c.req.json().catch(() => null) as any;
+  if (!f || f.format !== 'heyzubi-team' || !Array.isArray(f.bots) || !f.bots.length) return c.json({ error: 'That file has no team HeyZubi can read. A team file comes from Export.' }, 400);
+  const str = (v: unknown, n: number) => String(v ?? '').slice(0, n);
+  const bots = f.bots.slice(0, 8).map((b: any) => ({ name: str(b.name, 60), label: str(b.label, 80), description: str(b.description, 500), instructions: str(b.instructions, 8000), isManager: b.isManager === true, avatarShape: str(b.avatarShape, 20), avatarColor: str(b.avatarColor, 20) }));
+  try { return c.json({ bots: addTeam(c.get('user').id, str(f.team, 40) || 'Team', bots) }); }
+  catch (e: any) { if (e instanceof UserError) return c.json({ error: e.message }, 409); throw e; }
+});

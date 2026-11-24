@@ -15,10 +15,11 @@ const TTL_MS = 30 * 24 * 3600 * 1000;
 export type AuthVars = { Variables: { user: User } };
 
 /** `owner`: the session was made with the owner key (or a sign-in link made with it), see userFromToken. */
-export function createSession(c: Context, userId: string, opts: { owner?: boolean } = {}) {
+export function createSession(c: Context, userId: string, opts: { owner?: boolean } = {}): string {
   const t = token();
   db.prepare('INSERT INTO auth_sessions(token,user_id,created_at,expires_at,owner) VALUES (?,?,?,?,?)').run(t, userId, now(), now() + TTL_MS, opts.owner ? 1 : 0);
   setCookie(c, COOKIE, t, { httpOnly: true, sameSite: 'Lax', secure: env.appUrl.startsWith('https:'), path: '/', maxAge: TTL_MS / 1000 });
+  return t;
 }
 
 export function destroySession(c: Context) {

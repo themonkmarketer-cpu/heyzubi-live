@@ -3,7 +3,10 @@ import { createPortal } from 'react-dom';
 import type { Toolkit } from '@shared/types';
 import { BotAvatarFor } from '../../avatar/BotAvatar';
 import { configApi, type ComputerDetails } from '../../lib/configApi';
+import { api } from '../../lib/api';
 import { relativeShort } from '../../lib/time';
+import { notifyEnabled, notifySupported, setNotify } from '../../lib/notify';
+import { backgroundOf, byId, customUrl, useWallpaper } from '../../lib/wallpapers';
 import { useConfigUI, type AppSection, type Theme } from '../../configStore';
 import { useStore } from '../../store';
 import { computerStatusText } from '../DetailsPanel';
@@ -16,9 +19,12 @@ import { EngineSettings } from '../EngineSettings';
 const SECTIONS: { id: AppSection; label: string }[] = [
   { id: 'status', label: 'Status' },
   { id: 'general', label: 'General' },
+  { id: 'teams', label: 'Teams' },
   { id: 'computer', label: 'Computer' },
   { id: 'permissions', label: 'Permissions' },
   { id: 'apps', label: 'Connected apps' },
+  { id: 'api', label: 'Outside programs' },
+  { id: 'desktop', label: 'Windows app' },
   { id: 'account', label: 'Account' },
 ];
 
@@ -49,9 +55,12 @@ export function AppSettings() {
         <div className="app-settings__page">
           {section === 'status' && <StatusSection />}
           {section === 'general' && <GeneralSection />}
+          {section === 'teams' && <TeamsSection />}
           {section === 'computer' && <ComputerSection />}
           {section === 'permissions' && <PermissionsSection />}
           {section === 'apps' && <AppsSection />}
+          {section === 'api' && <ApiKeysSection />}
+          {section === 'desktop' && <DesktopSection />}
           {section === 'account' && <AccountSection />}
         </div>
       </div>
@@ -99,7 +108,305 @@ function GeneralSection() {
         </div>
         <div className="cfg-field__hint">System follows your device’s light or dark setting. White, Dark and Navy match Zubi HQ’s themes.</div>
       </section>
+      <ChatWallpaperSetting />
+      <NotificationsSetting />
     </>
+  );
+}
+
+/** Teams (from Theo): the primary bot is the CEO; teams have a manager; ready-made teams; export and import. */
+function TeamsSection() {
+  const bots = useStore((s) => s.bots);
+  const [data, setData] = useState<Awaited<ReturnType<typeof api.teams>> | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const load = useCallback(() => { api.teams().then(setData).catch((e) => setMsg((e as Error).message)); }, []);
+  useEffect(load, [load, bots.length]);
+  const ceo = bots.find((b) => b.isPrimary);
+  const nameOf = (id: string | null) => bots.find((b) => b.id === id)?.name ?? '';
+  const ready = async (key: string, team: string) => {
+    setBusy(key); setMsg(null);
+    try { await api.addReadyTeam(key); await useStore.getState().loadBots(); setMsg(`${team} team added. Its bots are in the sidebar.`); load(); }
+    catch (e) { setMsg((e as Error).message); } finally { setBusy(null); }
+  };
+  const exportTeam = async (name: string) => {
+    try {
+      const file = await api.exportTeam(name);
+      const url = URL.createObjectURL(new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' }));
+      const a = document.createElement('a'); a.href = url; a.download = `${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.heyzubi-team.json`; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    } catch (e) { setMsg((e as Error).message); }
+  };
+  const importTeam = async (f: File | undefined) => {
+    if (!f) return;
+    setBusy('import'); setMsg(null);
+    try { await api.importTeam(JSON.parse(await f.text())); await useStore.getState().loadBots(); setMsg('Team imported. Its bots are in the sidebar.'); load(); }
+    catch (e) { setMsg(e instanceof SyntaxError ? 'That file isn’t a team file.' : (e as Error).message); } finally { setBusy(null); }
+  };
+  return (
+    <>
+      <PageHead title="Teams" />
+      <section className="cfg-section">
+        <div className="cfg-field__hint">{ceo ? `${ceo.name} is the CEO: every team reports to ${ceo.name}, and work for a team goes through its manager.` : ''} Set a bot’s team and manager in its settings.</div>
+      </section>
+      <section className="cfg-section">
+        <div className="cfg-section__label">Your teams</div>
+        {!data ? <div className="cfg-empty">Loading…</div> : data.teams.length === 0 ? <div className="cfg-empty">No teams yet. Add a ready-made one below, or give bots a team in their settings.</div> : (
+          <div className="cfg-card">
+            {data.teams.map((t) => (
+              <div key={t.name} className="cfg-row">
+                <div className="cfg-row__text">
+                  <div className="cfg-row__title">{t.name}</div>
+                  <div className="cfg-row__sub">{t.managerId ? `Manager: ${nameOf(t.managerId)}` : 'No manager yet'}{t.memberIds.length ? ` · ${t.memberIds.map(nameOf).join(', ')}` : ''}</div>
+                </div>
+                <button type="button" className="cfg-btn cfg-btn--secondary" onClick={() => void exportTeam(t.name)}>Export</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+      <section className="cfg-section">
+        <div className="cfg-section__label">Ready-made teams</div>
+        <div className="cfg-field__hint">Each is a manager and a team member with their roles written. {data ? `Room for ${data.room} more bot${data.room === 1 ? '' : 's'} on this computer.` : ''} Bots only cost money when they work.</div>
+        <div className="cfg-card">
+          {data?.ready.map((r) => (
+            <div key={r.key} className="cfg-row">
+              <div className="cfg-row__text">
+                <div className="cfg-row__title">{r.team}</div>
+                <div className="cfg-row__sub">{r.blurb} · {r.size} bots</div>
+              </div>
+              <button type="button" className="cfg-btn cfg-btn--secondary" disabled={!!busy || (data?.room ?? 0) < r.size} onClick={() => void ready(r.key, r.team)}>{busy === r.key ? 'Adding…' : 'Add'}</button>
+            </div>
+          ))}
+        </div>
+      </section>
+      <section className="cfg-section">
+        <div className="cfg-section__label">Import a team</div>
+        <label className="cfg-btn cfg-btn--secondary" style={{ display: 'inline-flex', cursor: 'pointer' }}>
+          {busy === 'import' ? 'Importing…' : 'Choose a team file'}
+          <input type="file" accept="application/json,.json" hidden onChange={(e) => { void importTeam(e.target.files?.[0]); e.target.value = ''; }} />
+        </label>
+        <div className="cfg-field__hint">A team file comes from Export: names, roles and instructions only, no chats, memories or keys.</div>
+      </section>
+      {msg && <div className="cfg-field__hint" role="status">{msg}</div>}
+    </>
+  );
+}
+
+/** The chat wallpaper: what's on now, and the picker (opened over the chat, so its preview shows there too). */
+function ChatWallpaperSetting() {
+  const pref = useWallpaper((s) => s.pref);
+  const bg = backgroundOf(pref.wallpaper, customUrl(pref.wallpaperFile));
+  const name = pref.wallpaper === 'custom' ? 'Your picture' : byId(pref.wallpaper)?.name ?? 'Default';
+  return (
+    <section className="cfg-section">
+      <div className="cfg-section__label">Chat wallpaper</div>
+      <div className="cfg-card">
+        <div className="cfg-row">
+          <span aria-hidden style={{ width: 56, height: 40, borderRadius: 8, flexShrink: 0, border: '0.5px solid var(--color-border-secondary)', background: bg ?? 'var(--color-bg-chrome)' }} />
+          <div className="cfg-row__text">
+            <div className="cfg-row__title">{name}</div>
+            <div className="cfg-row__sub">The background behind your chats: 10 built-in wallpapers or a picture of your own.</div>
+          </div>
+          <button type="button" className="cfg-btn cfg-btn--secondary" onClick={() => { useConfigUI.getState().closeAppSettings(); useWallpaper.getState().openPicker(); }}>Change…</button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** HeyZubi for Windows (from Vello's Pointer Assistant): pair a PC so its talk keys can ask a bot about the screen. */
+function DesktopSection() {
+  const [devices, setDevices] = useState<Awaited<ReturnType<typeof api.desktopDevices>>['devices'] | null>(null);
+  const [pairing, setPairing] = useState<{ code: string; key: string; expiresAt: number } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [, tick] = useState(0);
+  // The app ships with each deploy (scripts/pack.sh); the manifest is missing when it was packed without .NET.
+  const [download, setDownload] = useState<{ version: string; size: number; sha256: string } | null | undefined>(undefined);
+  // Inside the Windows app itself (its window adds HeyZubiDesktop/<version> to the user agent).
+  const inApp = /HeyZubiDesktop\/([\d.]+)/.exec(navigator.userAgent)?.[1] ?? null;
+  useEffect(() => {
+    fetch('/downloads/heyzubi-windows.json', { cache: 'no-store' })
+      .then((r) => (r.ok && (r.headers.get('content-type') ?? '').includes('json') ? r.json() : null))
+      .then((j) => setDownload(j && typeof j.sha256 === 'string' ? j : null))
+      .catch(() => setDownload(null));
+  }, []);
+  const load = useCallback(() => { api.desktopDevices().then((r) => setDevices(r.devices)).catch((e) => setMsg((e as Error).message)); }, []);
+  useEffect(load, [load]);
+  // While a code is out, watch for the computer to show up, and count down.
+  useEffect(() => {
+    if (!pairing) return;
+    const t = setInterval(() => { tick((n) => n + 1); load(); if (Date.now() > pairing.expiresAt) setPairing(null); }, 3000);
+    return () => clearInterval(t);
+  }, [pairing, load]);
+  const known = devices?.length ?? 0;
+  const [startCount, setStartCount] = useState(0);
+  useEffect(() => { if (pairing && devices && devices.length > startCount) { setPairing(null); setMsg('Paired. Hold the talk keys on that computer and ask away.'); } }, [devices, pairing, startCount]);
+  const pair = async () => {
+    setMsg(null); setCopied(false);
+    try {
+      const r = await api.desktopPair();
+      const key = `hzpair1.${btoa(JSON.stringify({ u: location.origin, c: r.code })).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`;
+      setStartCount(known);
+      setPairing({ code: r.code, key, expiresAt: r.expiresAt });
+    } catch (e) { setMsg((e as Error).message); }
+  };
+  const copy = async () => { if (!pairing) return; try { await navigator.clipboard.writeText(pairing.key); setCopied(true); } catch { setMsg('Couldn’t copy: select the key and copy it.'); } };
+  const left = pairing ? Math.max(0, Math.round((pairing.expiresAt - Date.now()) / 60000)) : 0;
+  return (
+    <>
+      <PageHead title="Windows app" />
+      <section className="cfg-section">
+        <div className="cfg-field__hint">
+          HeyZubi for Windows is your whole HeyZubi in its own window, with its own taskbar icon and Windows notifications. It also adds the talk keys: hold Ctrl + Win in any app, ask about what’s on your screen and let go, and your bot answers out loud while an orange spark points at the thing to click (it only looks, talks and points; each question’s screenshots are used for that one answer). Closing the window keeps it in the tray. A paired computer is signed in to HeyZubi as you; removing it here signs it out.
+        </div>
+      </section>
+      <section className="cfg-section">
+        <div className="cfg-section__label">Get the app</div>
+        {inApp ? (
+          <div className="cfg-card" style={{ padding: 12 }}>
+            <div className="cfg-row__title">You’re using HeyZubi for Windows {inApp}.</div>
+            <div className="cfg-row__sub">Talk keys, pairing and “start with Windows” are in its tray icon’s menu: Talk keys and pairing.</div>
+          </div>
+        ) : download === undefined ? <div className="cfg-empty">Checking…</div> : !download ? (
+          <div className="cfg-empty">The Windows app isn’t included in this install (it was packed on a computer without .NET).</div>
+        ) : (
+          <div className="cfg-card" style={{ padding: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <a className="cfg-btn cfg-btn--primary" style={{ textDecoration: 'none' }} href="/downloads/HeyZubi.exe" download="HeyZubi.exe">Download HeyZubi for Windows</a>
+              <span className="cfg-row__sub">Version {download.version} · {Math.max(1, Math.round(download.size / 1024))} KB · Windows 10 or 11, 64-bit</span>
+            </div>
+            <ol className="cfg-field__hint" style={{ margin: '10px 0 0', paddingLeft: 18 }}>
+              <li>It needs Microsoft’s free <a href="https://dotnet.microsoft.com/download/dotnet/10.0" target="_blank" rel="noreferrer">.NET 10 Desktop Runtime</a> (x64). Many PCs already have it; the app tells you if it’s missing.</li>
+              <li>Put HeyZubi.exe anywhere (for example a HeyZubi folder in Documents) and open it. It isn’t signed yet, so Windows may say it’s from an unknown publisher: choose <b>More info</b> › <b>Run anyway</b>.</li>
+              <li>It opens its settings: pair it with a key from <b>Pair a computer</b> below. After that it lives in the tray.</li>
+            </ol>
+            <div className="cfg-row__sub" style={{ marginTop: 8, wordBreak: 'break-all' }}>SHA-256 {download.sha256}</div>
+          </div>
+        )}
+      </section>
+      <section className="cfg-section">
+        <div className="cfg-section__label">Pair a computer</div>
+        {!pairing ? (
+          <button type="button" className="cfg-btn cfg-btn--primary" style={{ alignSelf: 'flex-start' }} onClick={() => void pair()}>Pair a computer</button>
+        ) : (
+          <div className="cfg-card" style={{ padding: 12 }}>
+            <div className="cfg-row__title">Paste this pairing key into HeyZubi for Windows (Settings › Pair). It works once, for {left} more minute{left === 1 ? '' : 's'}.</div>
+            <pre className="cfg-skill-view" style={{ margin: '8px 0', userSelect: 'all', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{pairing.key}</pre>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" className="cfg-btn cfg-btn--primary" onClick={() => void copy()}>{copied ? 'Copied' : 'Copy key'}</button>
+              <button type="button" className="cfg-btn cfg-btn--secondary" onClick={() => setPairing(null)}>Cancel</button>
+            </div>
+            <div className="cfg-row__sub" style={{ marginTop: 8 }}>Or type the server address and the code {pairing.code}. Waiting for the computer…</div>
+          </div>
+        )}
+      </section>
+      <section className="cfg-section">
+        <div className="cfg-section__label">Paired computers</div>
+        {!devices ? <div className="cfg-empty">Loading…</div> : devices.length === 0 ? <div className="cfg-empty">No computers yet.</div> : (
+          <div className="cfg-card">
+            {devices.map((d) => (
+              <div key={d.id} className="cfg-row">
+                <div className="cfg-row__text">
+                  <div className="cfg-row__title">{d.name}</div>
+                  <div className="cfg-row__sub">Paired {relativeShort(d.createdAt)} ago · {d.lastUsedAt ? `last used ${relativeShort(d.lastUsedAt)} ago` : 'not used yet'}</div>
+                </div>
+                <ConfirmButton className="cfg-btn cfg-btn--secondary" confirmLabel="Remove computer" onConfirm={async () => { await api.deleteDesktopDevice(d.id); load(); }}>Remove</ConfirmButton>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+      {msg && <div className="cfg-field__hint" role="status">{msg}</div>}
+    </>
+  );
+}
+
+/** Outside programs (from Theo's local API): keys that let n8n or a script message a bot. */
+function ApiKeysSection() {
+  const [keys, setKeys] = useState<Awaited<ReturnType<typeof api.apiKeys>>['keys'] | null>(null);
+  const [name, setName] = useState('n8n');
+  const [fresh, setFresh] = useState<{ name: string; key: string } | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const load = useCallback(() => { api.apiKeys().then((r) => setKeys(r.keys)).catch((e) => setMsg((e as Error).message)); }, []);
+  useEffect(load, [load]);
+  const create = async () => {
+    setMsg(null);
+    try { const r = await api.createApiKey(name); setFresh({ name: r.name, key: r.key }); load(); } catch (e) { setMsg((e as Error).message); }
+  };
+  const origin = location.origin;
+  const example = fresh ? `curl -X POST ${origin}/api/inbound/messages \\\n  -H "Authorization: Bearer ${fresh.key}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"bot":"Zubi","text":"New lead from the website form: …","wait":true}'` : '';
+  return (
+    <>
+      <PageHead title="Outside programs" />
+      <section className="cfg-section">
+        <div className="cfg-field__hint">
+          Let n8n, a script or another app send a bot a message. It shows in the chat as “Outside program”, and because it isn’t your own words the bot can look things up and draft, but never send, share, post or delete anything.
+        </div>
+      </section>
+      <section className="cfg-section">
+        <div className="cfg-section__label">New key</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input className="text-input" value={name} maxLength={40} onChange={(e) => setName(e.target.value)} placeholder="What will use it, e.g. n8n" aria-label="Key name" />
+          <button type="button" className="cfg-btn cfg-btn--primary" onClick={() => void create()}>Create key</button>
+        </div>
+        {fresh && (
+          <div className="cfg-card" style={{ marginTop: 10, padding: 12 }}>
+            <div className="cfg-row__title">Copy this key now: it won’t be shown again.</div>
+            <pre className="cfg-skill-view" style={{ margin: '8px 0', userSelect: 'all' }}>{fresh.key}</pre>
+            <div className="cfg-row__sub">Example (with "wait": true the reply comes back in the response):</div>
+            <pre className="cfg-skill-view" style={{ margin: '8px 0' }}>{example}</pre>
+            <button type="button" className="cfg-btn cfg-btn--secondary" onClick={() => setFresh(null)}>Done</button>
+          </div>
+        )}
+      </section>
+      <section className="cfg-section">
+        <div className="cfg-section__label">Keys</div>
+        {!keys ? <div className="cfg-empty">Loading…</div> : keys.length === 0 ? <div className="cfg-empty">No keys yet.</div> : (
+          <div className="cfg-card">
+            {keys.map((k) => (
+              <div key={k.id} className="cfg-row">
+                <div className="cfg-row__text">
+                  <div className="cfg-row__title">{k.name}</div>
+                  <div className="cfg-row__sub">Made {relativeShort(k.createdAt)} ago · {k.lastUsedAt ? `last used ${relativeShort(k.lastUsedAt)} ago` : 'not used yet'}</div>
+                </div>
+                <ConfirmButton className="cfg-btn cfg-btn--secondary" confirmLabel="Remove key" onConfirm={async () => { await api.deleteApiKey(k.id); load(); }}>Remove</ConfirmButton>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+      {msg && <div className="cfg-field__hint" role="status">{msg}</div>}
+    </>
+  );
+}
+
+/** Desktop notifications when a bot finishes or needs your OK while HeyZubi isn't in front. */
+function NotificationsSetting() {
+  const [on, setOn] = useState(notifyEnabled());
+  const [note, setNote] = useState('');
+  if (!notifySupported()) return null;
+  const toggle = async () => {
+    const next = await setNotify(!on);
+    setOn(next);
+    setNote(!on && !next ? (Notification.permission === 'denied'
+      ? 'Your browser is blocking notifications for this site: allow them in the site settings (the icon left of the address), then try again.'
+      : 'Notifications weren’t allowed. Inside Zubi HQ, open HeyZubi on its own to turn them on.') : '');
+    if (next) try { new Notification('HeyZubi notifications are on', { body: 'You’ll hear when a bot is done or needs your OK while you’re in another window.' }); } catch { /* fine */ }
+  };
+  return (
+    <section className="cfg-section">
+      <div className="cfg-section__label">Notifications</div>
+      <label className="cfg-row" style={{ cursor: 'pointer' }}>
+        <div>
+          <div>Tell me when a bot is done or needs my OK</div>
+          <div className="cfg-row__sub">Only while HeyZubi isn’t the window in front. Click a notification to open that chat.</div>
+        </div>
+        <input type="checkbox" checked={on} onChange={() => void toggle()} aria-label="Desktop notifications" />
+      </label>
+      {note && <div className="cfg-field__hint">{note}</div>}
+    </section>
   );
 }
 

@@ -122,7 +122,7 @@ function SenderLabel({ from }: { from: NonNullable<MessageBody['from']> }) {
   return (
     <div className="sender-label">
       {bot ? <BotAvatarFor bot={bot} size={16} /> : from.kind === 'routine' ? <Icon name="clock" size={12} opacity={0.56} /> : from.kind === 'voice' ? <Icon name="voice_a" size={12} opacity={0.56} /> : <BotAvatar shape="blob" color="gray" size={16} />}
-      <span>{from.kind === 'routine' ? `Routine · ${from.name}` : from.kind === 'voice' ? (from.id === 'voice-message' ? 'Voice message' : 'Asked on a voice call') : `From ${from.name}`}</span>
+      <span>{from.kind === 'routine' ? `Routine · ${from.name}` : from.kind === 'voice' ? (from.id === 'voice-message' ? 'Voice message' : 'Asked on a voice call') : from.kind === 'program' ? `Outside program · ${from.name}` : `From ${from.name}`}</span>
     </div>
   );
 }

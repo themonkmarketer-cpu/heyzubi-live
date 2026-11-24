@@ -21,6 +21,20 @@ export async function instructionsFor(userId: string, botId: string): Promise<st
     .map((b) => `- ${b.name}${b.label ? ` (${b.label})` : ''}${b.is_primary ? ' [main point of contact]' : ''}`)
     .join('\n');
   const groups = (db.prepare("SELECT name FROM bots WHERE user_id=? AND kind='room' AND members LIKE ? ORDER BY created_at").all(userId, `%${botId}%`) as any[]).map((g) => g.name).join(', ');
+  // Teams (from Theo): the primary bot is the CEO; each team has a manager; work for a team goes through it.
+  const teamRows = db.prepare("SELECT id, name, team, is_manager FROM bots WHERE user_id=? AND team IS NOT NULL AND COALESCE(hidden,0)=0 AND COALESCE(kind,'agent')<>'room' ORDER BY is_manager DESC, created_at").all(userId) as any[];
+  const ceo = (db.prepare('SELECT name FROM bots WHERE user_id=? AND is_primary=1').get(userId) as any)?.name ?? 'the main agent';
+  let org = '';
+  if (bot.is_primary && teamRows.length) {
+    const names = [...new Set(teamRows.map((r) => r.team))];
+    org = `## Your organisation\nYou are the CEO: every team reports to you.\n${names.map((t) => { const m = teamRows.filter((r) => r.team === t); const mgr = m.find((r) => r.is_manager); return `- ${t}: ${mgr ? `managed by ${mgr.name}` : 'no manager yet'}${m.filter((r) => !r.is_manager).length ? `; members ${m.filter((r) => !r.is_manager).map((r) => r.name).join(', ')}` : ''}`; }).join('\n')}\nTo reach a managed team, go through its manager with send_to_bot. Ask managers for reports when you need the picture.\n`;
+  } else if (bot.team) {
+    const mates = teamRows.filter((r) => r.team === bot.team && r.id !== botId);
+    const mgr = teamRows.find((r) => r.team === bot.team && r.is_manager);
+    org = bot.is_manager
+      ? `## Your team\nYou manage the ${bot.team} team${mates.length ? `: ${mates.map((r) => r.name).join(', ')}` : ''}. Hand them work with send_to_bot, roll their reports up into one short report, and report to ${ceo}, the CEO, with send_to_bot.\n`
+      : `## Your team\nYou are on the ${bot.team} team${mgr && mgr.id !== botId ? `, managed by ${mgr.name}` : ''}. Report your work to ${mgr && mgr.id !== botId ? mgr.name : ceo} with send_to_bot.\n`;
+  }
   const skills = (db.prepare('SELECT name, body FROM skills WHERE bot_id=? ORDER BY created_at').all(botId) as any[]).map((s) => `### ${s.name}\n${s.body}`).join('\n\n');
   const routines = listRoutines(botId).map((r) => `- ${r.name} (${r.id}): ${r.enabled ? r.description : 'paused'}; ${r.prompt.slice(0, 120)}`).join('\n');
   let apps = '';
@@ -57,5 +71,5 @@ You have your own screen on a Linux computer shared by the team: a desktop with 
 - User: ${owner}${user?.email ? ` <${user.email}>` : ''}
 - Connected apps: ${apps || 'none yet'}
 ${team ? `- Other agents on the team:\n${team}` : '- You are the only agent on the team so far.'}${groups ? `\n- Group chats you are in: ${groups}` : ''}
-${routines ? `\n## Your routines in the app\n${routines}\n` : ''}${skills ? `\n## Skills ${owner} gave you\n${skills}\n` : ''}${bot.instructions ? `\n## Instructions from ${owner}\n${bot.instructions}\n` : ''}`;
+${org ? `\n${org}` : ''}${routines ? `\n## Your routines in the app\n${routines}\n` : ''}${skills ? `\n## Skills ${owner} gave you\n${skills}\n` : ''}${bot.instructions ? `\n## Instructions from ${owner}\n${bot.instructions}\n` : ''}`;
 }

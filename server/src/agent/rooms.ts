@@ -2,6 +2,7 @@ import { db, now } from '../db.js';
 import { newId } from '../lib/ids.js';
 import { hub } from '../lib/hub.js';
 import { appendRow } from '../store.js';
+import { runInBotQueue } from './loop.js';
 
 /**
  * Group chats ("rooms").
@@ -47,17 +48,52 @@ export function dispatchRoomMessage(roomId: string, text: string, enqueue: (botI
   }
   const lower = text.toLowerCase();
   const mentioned = members.filter((m) => lower.includes(`@${m.name.toLowerCase()}`));
-  const responders = (mentioned.length ? mentioned : members).slice(0, MAX_RESPONDERS);
-  const recent = (db.prepare("SELECT body FROM rows WHERE bot_id=? AND generation=? AND kind='message' ORDER BY seq DESC LIMIT 12").all(roomId, room.generation) as any[])
+  const recentNow = () => (db.prepare("SELECT body FROM rows WHERE bot_id=? AND generation=? AND kind='message' ORDER BY seq DESC LIMIT 14").all(roomId, room.generation) as any[])
     .reverse()
     .map((r) => {
       const b = JSON.parse(r.body);
       return `${b.from?.name ?? (b.role === 'user' ? 'User' : 'Bot')}: ${String(b.text).slice(0, 600)}`;
     })
     .join('\n');
+
+  // With a lead (from Theo's group head): the others give their honest view first, then the lead wraps up.
+  const lead = room.lead_bot_id ? members.find((m) => m.id === room.lead_bot_id) : undefined;
+  if (lead && !mentioned.length && members.length >= 2) {
+    const others = members.filter((m) => m.id !== lead.id).slice(0, MAX_RESPONDERS);
+    const recent = recentNow();
+    for (const m of others) {
+      enqueue(m.id, {
+        type: 'system',
+        owner: true, // the user posted in the group
+        text:
+          `[Group chat "${room.name}"] Members: ${members.map((x) => x.name).join(', ')}. ${lead.name} leads this group and will give the user the combined answer.\n` +
+          `Recent group messages:\n${recent}\n\n` +
+          'Give your view from your own role: what is missing, what is likely to go wrong, what you would do. Be specific, and disagree where you do; don\'t just agree. ' +
+          `Do not wrap up or summarise for the group: ${lead.name} does that. Reply by calling post_to_group with group_name "${room.name}" (use your tools first if the request needs real work). If you have nothing to add, call stay_silent.`,
+      });
+    }
+    // Once every member has finished (or after 15 minutes), the lead answers for the group.
+    const done = Promise.all(others.map((m) => runInBotQueue(m.id, async () => {})));
+    void Promise.race([done, new Promise((r) => setTimeout(r, 15 * 60_000))]).then(() => {
+      enqueue(lead.id, {
+        type: 'system',
+        owner: true,
+        text:
+          `[Group chat "${room.name}"] You lead this group. ${others.map((x) => x.name).join(', ')} have given their views (below).\n` +
+          `Recent group messages:\n${recentNow()}\n\n` +
+          'Give the user one combined answer: the plan or decision, where the team agreed, where they disagreed and what you would do about it. Keep it short. ' +
+          `Post it by calling post_to_group with group_name "${room.name}". Do not write a normal reply.`,
+      });
+    });
+    return;
+  }
+
+  const responders = (mentioned.length ? mentioned : members).slice(0, MAX_RESPONDERS);
+  const recent = recentNow();
   for (const m of responders) {
     enqueue(m.id, {
       type: 'system',
+      owner: true, // the user posted in the group
       text:
         `[Group chat "${room.name}"] Members: ${members.map((x) => x.name).join(', ')}. ` +
         `${mentioned.length ? 'You were @mentioned.' : 'The user addressed the whole group.'}\n` +

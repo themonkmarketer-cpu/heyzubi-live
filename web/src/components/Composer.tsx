@@ -7,7 +7,7 @@ import { Menu } from './Menu';
 import { endCall, isCallActive, startCall, useVoice } from '../voice/call';
 import { useDictation } from '../voice/dictation';
 import { speakReply, stopSpeaking, useSpeak } from '../voice/speak';
-import { Camera } from 'lucide-react';
+import { AudioLines, Camera, PhoneOff, Speech } from 'lucide-react';
 import { toggleCamera, useCamera } from './CameraBubble';
 
 const MAX_H = 200;
@@ -119,7 +119,7 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
       return before + pre + t + post + after;
     });
   };
-  const dictation = useDictation(insertText, setError, bot.voiceLanguage, 'dictation');
+  const dictation = useDictation(insertText, setError, bot.voiceLanguage, 'dictation', bot.id);
   const inCall = useVoice((s) => isCallActive(s) && s.botId === bot.id);
   const camOn = useCamera((s) => s.on);
 
@@ -134,7 +134,7 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
     try { const { row } = await api.send(bot.id, said, true); awaitSpeak.current = row.seq; }
     catch (e) { setError((e as Error).message || 'Voice message failed to send'); }
   };
-  const voiceMsg = useDictation((t) => void sendVoice(t), setError, bot.voiceLanguage, 'voice-message');
+  const voiceMsg = useDictation((t) => void sendVoice(t), setError, bot.voiceLanguage, 'voice-message', bot.id);
   const liveState = useStore((s) => s.live[bot.id]);
   const rowsBySeq = useStore((s) => s.transcripts[bot.id]?.bySeq);
   useEffect(() => {
@@ -181,7 +181,7 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
       {error && <div className="composer__error">{error} <button type="button" className="link-btn" onClick={() => setError(null)}>Dismiss</button></div>}
       {!error && vmNote && <div className="composer__note" role="status">{vmNote}</div>}
       {!error && !vmNote && voiceMsg.state !== 'idle' && <div className="composer__note" role="status">{voiceMsg.state === 'recording'
-          ? voiceMsg.tap ? 'Listening… tap the red button again to send (Esc cancels)' : 'Listening… let go to send (Esc cancels)'
+          ? 'Recording a voice message… click the red button to send (Esc cancels)'
           : 'Transcribing and sending your voice message…'}</div>}
       <div className={`composer${multiline ? ' is-multiline' : ''}`}>
         <div className="composer__left">
@@ -197,7 +197,6 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
                   { label: 'Attach a picture', onSelect: () => picRef.current?.click() },
                   { label: 'New conversation', onSelect: fresh },
                   { label: 'Connect apps', onSelect: () => setModal('apps') },
-                  { label: inCall ? 'End live call' : 'Start a live call · $0.08/min', onSelect: () => (inCall ? endCall() : startCall(bot.id)) },
                 ]}
               />
             )}
@@ -235,18 +234,34 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
             className={`composer__btn${dictation.state === 'recording' ? ' is-recording' : dictation.state === 'transcribing' ? ' is-transcribing' : ''}`}
             aria-label={dictation.state === 'recording' ? 'Stop dictation' : 'Dictate'}
             aria-pressed={dictation.state === 'recording'}
-            title={dictation.state === 'recording' ? 'Release or click to stop · Esc cancels' : dictation.state === 'transcribing' ? 'Transcribing…' : 'Hold to dictate, or click to start'}
+            title={dictation.state === 'recording' ? 'Release or click to stop · Esc cancels' : dictation.state === 'transcribing' ? 'Transcribing…' : 'Dictate: your words are typed into the box (nothing is sent). Hold to talk, or click to start and click to stop.'}
             disabled={dictation.state === 'transcribing'}
             onPointerDown={dictation.onPointerDown}
             onPointerUp={dictation.onPointerUp}
             onKeyDown={dictation.onKeyDown}
             onContextMenu={(e) => e.preventDefault()}
           >
-            <Icon name="mic" opacity={0.56} />
+            <Speech size={18} strokeWidth={1.8} style={{ opacity: dictation.state === 'idle' ? 0.56 : 1 }} aria-hidden />
+          </button>
+          {/* Voice message: click to start, click again to send (Esc cancels). Zubi's reply is read aloud. */}
+          <button
+            type="button"
+            className={`composer__btn composer__vmbtn${voiceMsg.state === 'recording' ? ' is-recording' : voiceMsg.state === 'transcribing' ? ' is-transcribing' : ''}`}
+            disabled={voiceMsg.state === 'transcribing' || inCall}
+            onClick={() => (voiceMsg.state === 'recording' ? voiceMsg.stop() : voiceMsg.startTap())}
+            aria-pressed={voiceMsg.state === 'recording'}
+            aria-label={voiceMsg.state === 'recording' ? 'Send the voice message' : `Send ${bot.name} a voice message`}
+            title={voiceMsg.state === 'recording'
+              ? 'Click to send · Esc cancels'
+              : voiceMsg.state === 'transcribing' ? 'Sending…'
+              : `Voice message${bot.voiceMsgEngine === 'sarvam' ? ' (Hindi)' : ''}: click, talk, click again to send. ${bot.name} answers and the reply is read aloud.`}
+          >
+            {voiceMsg.state === 'recording' ? <Icon name="stop" size={14} /> : <Icon name="mic" opacity={voiceMsg.state === 'idle' ? 0.56 : 1} />}
           </button>
           {inCall && !hasText ? (
-            <button type="button" className="composer__cta is-in-call" onClick={endCall} aria-label="End voice call" title="End voice call">
-              <Icon name="voice_a" size={16} />
+            // During a live call the purple button hangs up (saying "hang up" works too).
+            <button type="button" className="composer__cta is-in-call" onClick={endCall} aria-label="Hang up the live call" title="Hang up">
+              <PhoneOff size={16} strokeWidth={2} aria-hidden />
             </button>
           ) : running && !hasText ? (
             <button type="button" className="composer__cta" onClick={stop} aria-label="Stop" title="Stop">
@@ -257,19 +272,15 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
               <Icon name="arrow_up" size={16} />
             </button>
           ) : (
+            // One press starts a live call (hands-free); press again or say "hang up" to end it.
             <button
               type="button"
-              className={`composer__cta composer__vm${voiceMsg.state === 'recording' ? ' is-recording' : voiceMsg.state === 'transcribing' ? ' is-transcribing' : ''}`}
-              disabled={voiceMsg.state === 'transcribing'}
-              onPointerDown={voiceMsg.onPointerDown}
-              onPointerUp={voiceMsg.onPointerUp}
-              onKeyDown={voiceMsg.onKeyDown}
-              onContextMenu={(e) => e.preventDefault()}
-              aria-pressed={voiceMsg.state === 'recording'}
-              aria-label={voiceMsg.state === 'recording' ? 'Release to send the voice message' : `Hold to send ${bot.name} a voice message`}
-              title={voiceMsg.state === 'recording' ? 'Let go (or click) to send · Esc cancels' : voiceMsg.state === 'transcribing' ? 'Sending…' : `Voice message: hold to talk, let go to send (or tap to start, tap to stop). A live call is in the + menu.`}
+              className="composer__cta composer__call"
+              onClick={() => startCall(bot.id)}
+              aria-label={`Start a live call with ${bot.name}`}
+              title={`Live call with ${bot.name}: press to start, then just talk. Press again or say “hang up” to end. ${bot.voiceEngine === 'gemini' ? 'Gemini · billed per token.' : 'xAI · $0.08 per minute.'} A cheaper voice message is in the + menu.`}
             >
-              <Icon name={voiceMsg.state === 'recording' ? 'stop' : 'mic'} size={16} />
+              <AudioLines size={17} strokeWidth={2.2} aria-hidden />
             </button>
           )}
         </div>

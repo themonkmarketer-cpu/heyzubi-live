@@ -28,6 +28,15 @@ export interface Bot {
   voice: string;
   voiceSpeed: number;
   voiceLanguage: string;
+  /** Which engine runs live calls (picked under Voice chat), and the voice used on Gemini. */
+  voiceEngine: VoiceEngine;
+  geminiVoice: string;
+  /** Who transcribes voice messages and reads replies aloud: xAI, or Sarvam (Hindi / Hinglish), and its voice. */
+  voiceMsgEngine: 'xai' | 'sarvam';
+  sarvamVoice: string;
+  /** Team (from Theo): the team this bot is on, and whether it manages it. The primary bot is the CEO. */
+  team: string | null;
+  isManager: boolean;
   /** Hermes engine: model id and provider for this bot; null = the engine's default. */
   model: string | null;
   provider: string | null;
@@ -64,7 +73,7 @@ export interface MessageBody {
   text: string;
   streaming?: boolean;
   /** Set when a message came from another bot, a routine or a voice call rather than the user typing. */
-  from?: { kind: 'bot' | 'routine' | 'voice'; id: string; name: string };
+  from?: { kind: 'bot' | 'routine' | 'voice' | 'program'; id: string; name: string };
   citations?: { url: string; title?: string }[];
 }
 
@@ -144,6 +153,9 @@ export interface VoiceCallRecord {
 }
 
 export interface VoiceOption { id: string; name: string; gender?: string }
+
+/** Live-call engines: xAI grok-voice (billed per open minute) or Google Gemini Live (billed per token). */
+export type VoiceEngine = 'xai' | 'gemini';
 
 export interface NoticeBody { type: 'notice'; text: string; tone?: 'info' | 'warn' | 'error' }
 

@@ -92,8 +92,10 @@ export function VoiceCallBar() {
           <div className="vcall__title">
             <span className="vcall__name">{bot.name}</span>
             {v.status === 'live' && v.startedAt && (
-              <span className="vcall__time" title="A live call is billed by xAI for every minute it is open ($0.08/min), silences included. It hangs up by itself after 2 minutes of silence.">
-                {fmt(now - v.startedAt)} · ≈${(((now - v.startedAt) / 60000) * LIVE_CALL_PER_MIN).toFixed(2)}
+              <span className="vcall__time" title={v.engine === 'gemini'
+                ? 'Gemini Live: billed per token, from the counts Gemini reports (only while someone talks, plus the call so far each turn). It hangs up by itself after 2 minutes of silence or at the daily cap.'
+                : 'A live call is billed by xAI for every minute it is open ($0.08/min), silences included. It hangs up by itself after 2 minutes of silence.'}>
+                {fmt(now - v.startedAt)} · ≈${(v.engine === 'gemini' ? v.costUsd : ((now - v.startedAt) / 60000) * LIVE_CALL_PER_MIN).toFixed(2)}{v.engine === 'gemini' ? ' · Gemini' : ''}
               </span>
             )}
           </div>

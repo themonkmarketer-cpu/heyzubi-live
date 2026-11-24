@@ -1,0 +1,33 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- HeyZubi for Windows: the whole HeyZubi in its own window (Microsoft's WebView2, the one package used), plus the
+       talk keys: hold them in any app, ask, and a bot answers aloud and points at the screen. The rest is Windows
+       itself (keyboard hook, waveIn, GDI+, layered windows, MCI). -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <AssemblyName>HeyZubi</AssemblyName>
+    <RootNamespace>HeyZubiDesktop</RootNamespace>
+    <Version>0.2.4</Version>
+    <ApplicationIcon>heyzubi.ico</ApplicationIcon>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <!-- The WebView2 package also brings its WPF control, which this WinForms app never loads. -->
+    <MSBuildWarningsAsMessages>MSB3277</MSBuildWarningsAsMessages>
+    <AllowedReferenceRelatedFileExtensions>none</AllowedReferenceRelatedFileExtensions>
+    <Product>HeyZubi for Windows</Product>
+    <Company>HeyZubi</Company>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>false</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4370.26" />
+  </ItemGroup>
+
+</Project>

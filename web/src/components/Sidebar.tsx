@@ -122,8 +122,10 @@ export function Sidebar() {
           </div>
         )}
         <div className="bot-list">
-          {others.map((b) =>
-            collapsed ? (
+          {(collapsed ? others : groupedByTeam(others)).map((b) =>
+            'teamHeader' in b ? (
+              <div key={`team-${b.teamHeader}`} className="bot-list__team">{b.teamHeader}</div>
+            ) : collapsed ? (
               <button key={b.id} type="button" className={`bot-rail-item${selectedBotId === b.id ? ' is-selected' : ''}`} onClick={() => selectBot(b.id)} title={displayName(b)}>
                 <BotAvatarFor bot={b} size={36} />
               </button>
@@ -174,4 +176,18 @@ export function Sidebar() {
       </div>
     </aside>
   );
+}
+
+/** Bots grouped by team (from Theo): a heading per team, its manager first; bots without a team after. */
+function groupedByTeam(bots: Bot[]): (Bot | { teamHeader: string })[] {
+  const teams = [...new Set(bots.map((b) => b.team).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b));
+  if (!teams.length) return bots;
+  const out: (Bot | { teamHeader: string })[] = [];
+  for (const t of teams) {
+    out.push({ teamHeader: t });
+    out.push(...bots.filter((b) => b.team === t).sort((a, b) => Number(b.isManager) - Number(a.isManager)));
+  }
+  const rest = bots.filter((b) => !b.team);
+  if (rest.length) out.push({ teamHeader: 'Team members' }, ...rest);
+  return out;
 }
