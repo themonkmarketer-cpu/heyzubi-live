@@ -161,6 +161,9 @@ addColumn('bots', 'model', 'TEXT');
 addColumn('bots', 'provider', 'TEXT');
 addColumn('bots', 'engine', 'TEXT');
 addColumn('bots', 'engine_port', 'INTEGER');
+// A managed bot's engine as a Hermes profile (~/.hermes/profiles/<name>), so Hermes itself sees the agent. Bots made
+// before this have none and keep their engine in ENGINES_DIR.
+addColumn('bots', 'hermes_profile', 'TEXT');
 addColumn('bots', 'handback_at', 'INTEGER');
 addColumn('screens', 'width', 'INTEGER');
 addColumn('screens', 'height', 'INTEGER');

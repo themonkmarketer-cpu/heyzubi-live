@@ -69,7 +69,112 @@ export function engineKind(botId: string): EngineKind | null {
   return e === 'primary' || e === 'managed' ? e : null;
 }
 
-const homeFor = (botId: string) => path.join(env.enginesDir, botId);
+/**
+ * Where a managed bot's Hermes home is. A bot with a Hermes profile lives in ~/.hermes/profiles/<name>, where Hermes
+ * itself lists and can use it (`hermes profile list`, `hermes -p <name>`). Bots made before profiles keep theirs in
+ * ENGINES_DIR/<botId>.
+ */
+const profileHome = (name: string) => path.join(env.hermesHome, 'profiles', name);
+const homeFor = (botId: string) => {
+  const profile = botRow(botId)?.hermes_profile as string | null | undefined;
+  return profile ? profileHome(profile) : path.join(env.enginesDir, botId);
+};
+
+// ---------- Hermes profiles: made and run as the user who owns ~/.hermes ----------
+
+interface Owner { uid: number; gid: number; name: string; home: string }
+
+/**
+ * The user Hermes runs as (the owner of ~/.hermes). A profile's files must stay theirs, or Hermes can't use the
+ * profile any more, so its agent runs as that user too. Null when this server isn't root or Hermes's home is root's.
+ */
+function hermesOwner(): Owner | null {
+  try {
+    const st = fs.statSync(env.hermesHome);
+    if (typeof process.getuid !== 'function' || process.getuid() !== 0 || st.uid === 0) return null;
+    let name = String(st.uid);
+    try {
+      const line = fs.readFileSync('/etc/passwd', 'utf8').split('\n').find((l) => l.split(':')[2] === String(st.uid));
+      if (line) name = line.split(':')[0];
+    } catch { /* no passwd */ }
+    return { uid: st.uid, gid: st.gid, name, home: env.hermesHome };
+  } catch { return null; }
+}
+
+/** Profiles are used when there is a Hermes to list them in: its home exists here. */
+function profilesEnabled(): boolean {
+  try { return fs.statSync(env.hermesHome).isDirectory(); } catch { return false; }
+}
+
+/** The user a bot's agent runs as: the Hermes user for a profile, else this server's own (null). */
+export function engineOwner(botId: string): Owner | null {
+  return botRow(botId)?.hermes_profile ? hermesOwner() : null;
+}
+
+/** Hand a folder (and everything in it) to the Hermes user. Links are not followed. */
+function chownTree(dir: string, o: Owner) {
+  const walk = (p: string) => {
+    let st: fs.Stats;
+    try { st = fs.lstatSync(p); } catch { return; }
+    if (st.uid !== o.uid || st.gid !== o.gid) { try { fs.lchownSync(p, o.uid, o.gid); } catch { /* gone */ } }
+    if (st.isDirectory()) for (const f of fs.readdirSync(p)) walk(path.join(p, f));
+  };
+  walk(dir);
+}
+
+/** After this server wrote into a profile (as root), give the files back to the Hermes user. */
+export function fixOwnership(botId: string) {
+  const o = engineOwner(botId);
+  if (o) chownTree(homeFor(botId), o);
+}
+
+/** The folders above `dir` must be passable for the Hermes user (only the search bit is added, never listing). */
+function letThrough(dir: string, o: Owner) {
+  for (let d = path.dirname(dir); d !== path.dirname(d); d = path.dirname(d)) {
+    try {
+      const st = fs.statSync(d);
+      const passable = st.uid === o.uid ? st.mode & 0o100 : st.gid === o.gid ? st.mode & 0o010 : st.mode & 0o001;
+      if (!passable) {
+        fs.chmodSync(d, (st.mode & 0o7777) | 0o001);
+        console.log(`[engine] ${d}: others may now pass through it (not list it), so Hermes profiles reach their files`);
+      }
+    } catch { /* gone */ }
+  }
+}
+
+/** The environment a Hermes command gets: no secrets of this server. */
+function hermesEnv(extra: Record<string, string>): NodeJS.ProcessEnv {
+  return {
+    PATH: process.env.PATH ?? '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+    LANG: process.env.LANG ?? 'C.UTF-8',
+    ...Object.fromEntries(HERMES_RUNTIME_ENV.filter((k) => process.env[k]).map((k) => [k, process.env[k] as string])),
+    ...extra,
+  };
+}
+
+/** Run a `hermes profile …` command against the main Hermes home, as the Hermes user. */
+function hermesCli(args: string[], o: Owner | null): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(env.hermesBin, args, {
+      env: hermesEnv({ HOME: o?.home ?? process.env.HOME ?? '/root', USER: o?.name ?? process.env.USER ?? 'root', HERMES_HOME: env.hermesHome }),
+      timeout: 180_000,
+      maxBuffer: 4 << 20,
+      ...(o ? { uid: o.uid, gid: o.gid } : {}),
+    }, (err, stdout, stderr) => {
+      if (err) reject(new Error(`hermes ${args.slice(0, 2).join(' ')}: ${(String(stderr).trim().split('\n').pop() || err.message).slice(0, 300)}`));
+      else resolve(String(stdout));
+    });
+  });
+}
+
+/** A profile name from the bot's name: lowercase letters, digits and dashes, not taken by Hermes or another bot. */
+function profileName(botName: string): string {
+  const base = String(botName).toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24).replace(/-+$/, '') || 'agent';
+  const taken = (n: string) => n === 'default' || fs.existsSync(profileHome(n)) || !!db.prepare('SELECT 1 FROM bots WHERE hermes_profile=?').get(n);
+  let name = base;
+  for (let i = 2; taken(name); i++) name = `${base}-${i}`;
+  return name;
+}
 
 let cachedPrimaryKey: string | null = null;
 function primaryKey(): string {
@@ -112,7 +217,8 @@ export function assignEngine(botId: string): EngineKind {
     db.prepare("UPDATE bots SET engine='primary', engine_port=NULL WHERE id=?").run(botId);
     return 'primary';
   }
-  db.prepare("UPDATE bots SET engine='managed', engine_port=? WHERE id=?").run(freePort(), botId);
+  // A team member of its own is a Hermes profile, so Hermes lists it too (made in writeHome, on its first start).
+  db.prepare("UPDATE bots SET engine='managed', engine_port=?, hermes_profile=? WHERE id=?").run(freePort(), profilesEnabled() ? profileName(b.name) : null, botId);
   return 'managed';
 }
 
@@ -176,6 +282,11 @@ export function syncPersona(botId: string) {
   const home = homeFor(botId);
   if (!fs.existsSync(home)) return;
   fs.writeFileSync(path.join(home, 'SOUL.md'), soul(b));
+  if (b.hermes_profile) {
+    fixOwnership(botId);
+    // What Hermes shows for the profile (and routes Kanban work by).
+    if (b.description) hermesCli(['profile', 'describe', b.hermes_profile, '--text', String(b.description).slice(0, 500)], hermesOwner()).catch((e) => console.warn(`[engine] ${e.message}`));
+  }
 }
 
 function extraMcpServers(): Record<string, any> {
@@ -193,6 +304,17 @@ function extraMcpServers(): Record<string, any> {
 async function writeHome(botId: string): Promise<{ home: string; key: string; display: string | null }> {
   const b = botRow(botId);
   const home = homeFor(botId);
+  const profile = (b.hermes_profile as string | null) ?? null;
+  const owner = profile ? hermesOwner() : null;
+  // A new profile is made by Hermes itself (its bundled skills, template config and SOUL), then given our settings below.
+  let created = false;
+  if (profile && !fs.existsSync(home)) {
+    const desc = String(b.description || b.label || '').trim().slice(0, 500);
+    await hermesCli(['profile', 'create', profile, '--no-alias', ...(desc ? ['--description', desc] : [])], owner);
+    if (!fs.existsSync(home)) throw new Error(`Hermes did not make the profile "${profile}".`);
+    created = true;
+    console.log(`[engine] ${b.name}: Hermes profile "${profile}" created`);
+  }
   fs.mkdirSync(path.join(home, 'logs'), { recursive: true });
   fs.mkdirSync(path.join(home, 'locks'), { recursive: true });
   fs.chmodSync(home, 0o700);
@@ -212,15 +334,22 @@ async function writeHome(botId: string): Promise<{ home: string; key: string; di
 
   const cwd = env.localBox ? `${libraryRoot()}/${botId}` : path.join(home, 'workspace');
   fs.mkdirSync(cwd, { recursive: true });
+  if (owner) {
+    letThrough(cwd, owner);
+    chownTree(cwd, owner);
+  }
 
   const cfgFile = path.join(home, 'config.yaml');
-  const fresh = !fs.existsSync(cfgFile);
-  const cfg = fresh ? {} : readYaml(cfgFile);
+  const fresh = created || !fs.existsSync(cfgFile);
+  const cfg = fs.existsSync(cfgFile) ? readYaml(cfgFile) : {};
   if (fresh) {
     const primary = readYaml(path.join(env.hermesHome, 'config.yaml'));
     for (const k of SHARED_CONFIG) if (primary[k] !== undefined) cfg[k] = primary[k];
-    cfg.agent = { reasoning_effort: 'medium' };
+    cfg.agent = { ...(cfg.agent ?? {}), reasoning_effort: 'medium' };
   }
+  // Hermes serves its profiles from one host gateway, which runs beside the main agent and can't reach this bot's
+  // screen, browser or files. Hermes's own setting for that keeps a gateway of the profile's own here.
+  if (profile) cfg.gateway = { ...(cfg.gateway ?? {}), standalone: true };
   cfg.platform_toolsets = { ...(cfg.platform_toolsets ?? {}), api_server: ['hermes-api-server', ...(display ? ['computer_use'] : [])] };
   cfg.terminal = { ...(cfg.terminal ?? {}), cwd };
   if (cdp) cfg.browser = { ...(cfg.browser ?? {}), cdp_url: cdp };
@@ -239,7 +368,7 @@ async function writeHome(botId: string): Promise<{ home: string; key: string; di
   }
   writePrivate(cfgFile, YAML.stringify(cfg));
 
-  if (!fs.existsSync(path.join(home, 'SOUL.md'))) fs.writeFileSync(path.join(home, 'SOUL.md'), soul(b));
+  if (created || !fs.existsSync(path.join(home, 'SOUL.md'))) fs.writeFileSync(path.join(home, 'SOUL.md'), soul(b));
 
   // Subscription sign-ins live in auth.json and are NOT copied from the primary agent: they rotate, so a copy dies the
   // first time the primary renews its own (and could kill the primary's if this agent renewed first). Each agent signs
@@ -259,6 +388,7 @@ async function writeHome(botId: string): Promise<{ home: string; key: string; di
   if (cdp) vars.BROWSER_CDP_URL = cdp; else delete vars.BROWSER_CDP_URL;
   writePrivate(envFile, Object.entries(vars).map(([k, v]) => `${k}=${v}`).join('\n') + '\n');
 
+  if (owner) chownTree(home, owner);
   return { home, key, display };
 }
 
@@ -332,6 +462,11 @@ function managedKey(botId: string): string {
   return k;
 }
 
+/** The profile's last start was refused because Hermes's host gateway still serves it. */
+function heldByHost(home: string): boolean {
+  try { return fs.readFileSync(path.join(home, 'logs', 'errors.log'), 'utf8').slice(-3000).includes('already owns profile'); } catch { return false; }
+}
+
 async function startGateway(botId: string): Promise<void> {
   const b = botRow(botId);
   if (!b || b.engine !== 'managed') throw new Error('not a managed engine');
@@ -349,39 +484,55 @@ async function startGateway(botId: string): Promise<void> {
   keys.set(botId, key);
   if (gatewayPid(home)) await stopGateway(botId);
 
-  const log = fs.openSync(path.join(home, 'logs', 'gateway.out.log'), 'a');
-  const child = spawn(env.hermesBin, ['gateway', 'run', '--no-supervise'], {
-    cwd: home,
-    detached: true,
-    stdio: ['ignore', log, log],
-    // Only what the agent needs. None of this server's secrets, and nothing of the primary agent's messaging.
-    env: {
-      PATH: process.env.PATH ?? '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
-      HOME: process.env.HOME ?? '/root',
-      USER: process.env.USER ?? 'root',
-      LANG: process.env.LANG ?? 'C.UTF-8',
-      HERMES_HOME: home,
-      HERMES_GATEWAY_LOCK_DIR: path.join(home, 'locks'),
-      // Hermes' browser tool talks to a helper process it finds under this folder. With the default
-      // (one folder per HOME) every agent on the computer would end up driving the same browser.
-      BH_HOME: path.join(home, 'browser-harness'),
-      ...(display ? { DISPLAY: display } : {}),
-      // What a packaged Hermes (the official Docker image) needs from its environment. No secrets.
-      ...Object.fromEntries(HERMES_RUNTIME_ENV.filter((k) => process.env[k]).map((k) => [k, process.env[k] as string])),
-    },
-  });
-  fs.closeSync(log);
-  let exited: string | null = null;
-  child.once('error', (e) => { exited = `could not run ${env.hermesBin}: ${e.message}`; });
-  child.once('exit', (code) => { exited = `the agent stopped while starting (exit ${code}). See ${path.join(home, 'logs', 'gateway.out.log')}`; });
-  child.unref();
+  attempts: for (let attempt = 0; attempt < 2; attempt++) {
+    const owner = engineOwner(botId);
+    const log = fs.openSync(path.join(home, 'logs', 'gateway.out.log'), 'a');
+    if (owner) fs.fchownSync(log, owner.uid, owner.gid);
+    // A profile's agent runs as the Hermes user, with the profile's own home folder, as `hermes -p <name>` would.
+    const ownHome = path.join(home, 'home');
+    const child = spawn(env.hermesBin, ['gateway', 'run', '--no-supervise'], {
+      cwd: home,
+      detached: true,
+      stdio: ['ignore', log, log],
+      ...(owner ? { uid: owner.uid, gid: owner.gid } : {}),
+      // Only what the agent needs. None of this server's secrets, and nothing of the primary agent's messaging.
+      env: {
+        PATH: process.env.PATH ?? '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+        HOME: owner ? (fs.existsSync(ownHome) ? ownHome : home) : process.env.HOME ?? '/root',
+        USER: owner ? owner.name : process.env.USER ?? 'root',
+        LANG: process.env.LANG ?? 'C.UTF-8',
+        HERMES_HOME: home,
+        HERMES_GATEWAY_LOCK_DIR: path.join(home, 'locks'),
+        // Hermes' browser tool talks to a helper process it finds under this folder. With the default
+        // (one folder per HOME) every agent on the computer would end up driving the same browser.
+        BH_HOME: path.join(home, 'browser-harness'),
+        ...(display ? { DISPLAY: display } : {}),
+        // What a packaged Hermes (the official Docker image) needs from its environment. No secrets.
+        ...Object.fromEntries(HERMES_RUNTIME_ENV.filter((k) => process.env[k]).map((k) => [k, process.env[k] as string])),
+      },
+    });
+    fs.closeSync(log);
+    let exited: string | null = null;
+    child.once('error', (e) => { exited = `could not run ${env.hermesBin}: ${e.message}`; });
+    child.once('exit', (code) => { exited = `the agent stopped while starting (exit ${code}). See ${path.join(home, 'logs', 'gateway.out.log')}`; });
+    child.unref();
 
-  for (let i = 0; i < 90; i++) {
-    await new Promise((r) => setTimeout(r, 1000));
-    if (exited) throw new Error(exited);
-    if (await healthy(url, 1500)) {
-      console.log(`[engine] ${b.name}: gateway up on ${url}`);
-      return;
+    for (let i = 0; i < 90; i++) {
+      await new Promise((r) => setTimeout(r, 1000));
+      if (exited) {
+        // Hermes's host gateway (beside the main agent) may hold a new profile until its next rescan sees that the
+        // profile has a gateway of its own (at most 30 s). Wait for that once.
+        if (owner && attempt === 0 && heldByHost(home)) {
+          console.log(`[engine] ${b.name}: Hermes's host gateway still holds the profile; trying again after its rescan`);
+          await new Promise((r) => setTimeout(r, 35_000));
+          continue attempts;
+        }
+        throw new Error(exited);
+      }
+      if (await healthy(url, 1500)) {
+        console.log(`[engine] ${b.name}: gateway up on ${url}`);
+        return;
+      }
     }
   }
   throw new Error('The agent did not come up within 90 seconds.');
@@ -473,7 +624,11 @@ export async function restartEngine(botId: string): Promise<void> {
   provisionEngine(botId);
 }
 
-/** The bot is gone: stop its gateway and delete its home. The primary agent is left alone. */
+/**
+ * The bot is gone: stop its gateway and take its home away. A Hermes profile is first exported to
+ * ~/.hermes/backups/heyzubi-profiles (`hermes profile import <file>` brings it back), then deleted through Hermes.
+ * If the export fails the profile is kept. The primary agent is left alone.
+ */
 export async function removeEngine(botId: string): Promise<void> {
   const home = homeFor(botId);
   if (!fs.existsSync(home)) return;
@@ -482,6 +637,24 @@ export async function removeEngine(botId: string): Promise<void> {
   keys.delete(botId);
   failures.delete(botId);
   optionsCache.delete(botId);
+  const profile = botRow(botId)?.hermes_profile as string | null;
+  if (profile) {
+    const owner = hermesOwner();
+    const dir = path.join(env.hermesHome, 'backups', 'heyzubi-profiles');
+    fs.mkdirSync(dir, { recursive: true });
+    if (owner) chownTree(dir, owner);
+    const file = path.join(dir, `${profile}-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.tar.gz`);
+    await hermesCli(['profile', 'export', profile, '-o', file], owner);
+    if (!fs.existsSync(file) || fs.statSync(file).size === 0) throw new Error(`The profile "${profile}" could not be archived, so it was kept.`);
+    // Deleting also purges the profile's identity; Hermes reports that step failing once the folder is already gone,
+    // so the delete counts as done when the folder is.
+    await hermesCli(['profile', 'delete', profile, '-y'], owner).catch((e) => {
+      if (fs.existsSync(home)) throw e;
+      console.warn(`[engine] ${e.message}`);
+    });
+    console.log(`[engine] Hermes profile "${profile}" archived to ${file} and removed`);
+    return;
+  }
   if (path.resolve(home).startsWith(path.resolve(env.enginesDir) + path.sep)) fs.rmSync(home, { recursive: true, force: true });
 }
 
@@ -579,7 +752,7 @@ export async function engineInfo(botId: string): Promise<EngineInfo> {
   const b = botRow(botId);
   if (!b) throw new Error('bot not found');
   const kind = engineKind(botId);
-  const base: EngineInfo = { botId, profile: kind === 'primary' ? 'default' : botId, status: 'stopped', error: null, model: b.model ?? null, provider: b.provider ?? null, version: null, providers: [], ownScreen: kind ? ownScreenOn(botId) : false };
+  const base: EngineInfo = { botId, profile: kind === 'primary' ? 'default' : b.hermes_profile ?? botId, status: 'stopped', error: null, model: b.model ?? null, provider: b.provider ?? null, version: null, providers: [], ownScreen: kind ? ownScreenOn(botId) : false };
   if (!kind) return { ...base, status: 'error', error: 'This team member has no agent.' };
 
   let e: { url: string; key: string };

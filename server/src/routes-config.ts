@@ -14,7 +14,7 @@ import { computerState, readyScreen, resetBotScreen } from './computer.js';
 import { box } from './box.js';
 import { orgo } from './orgo.js';
 import { openTerminal } from './desk.js';
-import { engineHome, engineInfo, engineKind, forgetEngineOptions, pruneDeadPool, restartEngine, stopOwnScreen } from './engine.js';
+import { engineHome, engineInfo, engineKind, engineOwner, fixOwnership, forgetEngineOptions, pruneDeadPool, restartEngine, stopOwnScreen } from './engine.js';
 import { listMemories } from './engine-memory.js';
 import { idleConfig, viewerCount } from './idle.js';
 import type { LibraryFile, Skill } from './types.js';
@@ -233,7 +233,10 @@ configApi.post('/bots/:id/engine/login', async (c) => {
     fs.chmodSync(launcher, 0o755);
   } catch (e) { console.warn('[engine] sign-in browser launcher not written:', (e as Error).message); }
   const browser = `BROWSER=${box.quote(`${launcher} %s`)} HEYZUBI_SIGNIN_PROFILE=${box.quote(`/tmp/heyzubi-signin-${b.id}`)}`;
-  const hermes = `${browser} HERMES_HOME=${box.quote(home)} ${box.quote(env.hermesBin)}`;
+  // A Hermes profile's sign-in is saved as the Hermes user, who owns the profile's files.
+  const owner = engineOwner(b.id);
+  const asOwner = owner ? `setpriv --reuid=${owner.uid} --regid=${owner.gid} --clear-groups env HOME=${box.quote(home)} ` : '';
+  const hermes = `${browser} ${asOwner}HERMES_HOME=${box.quote(home)} ${box.quote(env.hermesBin)}`;
   // Claude subscriptions sign in with OAuth; without the flag Hermes asks for an API key.
   const cmd = !provider ? `${hermes} model` : `${hermes} auth add ${provider}${provider === 'anthropic' ? ' --type oauth' : ''}`;
   try {
@@ -273,12 +276,16 @@ configApi.post('/bots/:id/engine/signin/start', async (c) => {
   endSignIn(b.id);
   pruneDeadPool(home, 'anthropic'); // the fresh sign-in replaces refused ones (usually a dead copy of Zubi's)
   const { spawn } = await import('node:child_process');
+  fixOwnership(b.id);
+  // A Hermes profile's sign-in is saved as the Hermes user, who owns the profile's files.
+  const owner = engineOwner(b.id);
   const proc = spawn(env.hermesBin, ['auth', 'add', 'anthropic', '--type', 'oauth'], {
     env: {
-      PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin', HOME: process.env.HOME ?? '/root', LANG: process.env.LANG ?? 'C.UTF-8',
+      PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin', HOME: owner ? home : process.env.HOME ?? '/root', LANG: process.env.LANG ?? 'C.UTF-8',
       HERMES_HOME: home, PYTHONUNBUFFERED: '1', BROWSER: '/bin/true', // no screen: the owner opens the link
     },
     stdio: ['pipe', 'pipe', 'pipe'],
+    ...(owner ? { uid: owner.uid, gid: owner.gid } : {}),
   });
   const s: SignIn = { proc, out: '', url: null, timer: setTimeout(() => endSignIn(b.id), 10 * 60_000) };
   signIns.set(b.id, s);
