@@ -1,15 +1,11 @@
 /* ---------- window grid: sidebar 350 · chat · details 360 ---------- */
 .app { display: flex; height: 100%; width: 100%; background: var(--color-bg-chrome); overflow: hidden; }
 
-/* HeyZubi LIVE logo, top left (as in Zubi HQ). Collapsed sidebar: the mark only. */
-.brand-live { position: absolute; left: 14px; top: 15px; display: flex; align-items: center; gap: 8px; pointer-events: none; user-select: none; }
-.brand-live__mark { display: block; width: 30px; height: 30px; flex: 0 0 auto; }
+/* The HeyZubi wordmark, top left of the sidebar (the word only). Hidden in the narrow sidebar. */
+.brand-live { position: absolute; left: 22px; top: 20px; display: flex; align-items: center; gap: 8px; pointer-events: none; user-select: none; }
 .brand-live__text { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
 .brand-live__word { font-family: var(--font-display); font-weight: 800; font-size: 17px; line-height: 20px; letter-spacing: -0.03em; color: var(--color-text-primary); }
-.brand-live__live { font-family: var(--font-stack); font-weight: 600; font-size: 14px; line-height: 20px; letter-spacing: 0.32em; color: #DC2626; }
-:root[data-theme='dark'] .brand-live__live { color: #EF4444; }
-.sidebar.is-collapsed .brand-live { left: 29px; top: 4px; }
-.sidebar.is-collapsed .brand-live__text { display: none; }
+.sidebar.is-collapsed .brand-live { display: none; }
 
 .sidebar {
   position: relative; display: flex; flex-direction: column; flex-shrink: 0;

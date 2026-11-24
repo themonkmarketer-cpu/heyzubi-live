@@ -11,21 +11,18 @@ import { Menu } from './Menu';
 import { UpdateRow } from './UpdateRow';
 import { SidebarOrb } from './SidebarOrb';
 import { lsGet, lsSet } from '../lib/storage';
-import zubiMark from '../assets/zubi-live.svg';
 
 function initials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase() || '?';
 }
 
-/** The HeyZubi LIVE logo (as in Zubi HQ): the Zubi mark, the HeyZubi wordmark and a red LIVE. */
+/** The HeyZubi wordmark, left-aligned (the word only: no mark, no LIVE). Hidden in the narrow sidebar. */
 export function BrandLive() {
   return (
-    <div className="brand-live" role="img" aria-label="HeyZubi Live">
-      <img className="brand-live__mark" src={zubiMark} alt="" width={30} height={30} />
+    <div className="brand-live" role="img" aria-label="HeyZubi">
       <span className="brand-live__text" aria-hidden>
         <b className="brand-live__word">HeyZubi</b>
-        <span className="brand-live__live">LIVE</span>
       </span>
     </div>
   );
