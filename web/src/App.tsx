@@ -1,5 +1,4 @@
 import { BoardView } from './components/board/BoardView';
-import { CapabilitiesView } from './components/CapabilitiesView';
 import { useEffect } from 'react';
 import { startEvents } from './lib/events';
 import { startNotifications } from './lib/notify';
@@ -71,7 +70,7 @@ function Shell() {
   return (
     <div className={`app${collapsed ? ' is-sidebar-collapsed' : ''}${detailsOpen && hasBot && view === 'chat' ? ' has-details' : ''}`}>
       <Sidebar />
-      {view === 'tasks' ? <TasksView /> : view === 'generations' ? <GenerationsView /> : view === 'board' ? <BoardView /> : view === 'capabilities' ? <CapabilitiesView /> : <ChatView />}
+      {view === 'tasks' ? <TasksView /> : view === 'generations' ? <GenerationsView /> : view === 'board' ? <BoardView /> : <ChatView />}
       {detailsOpen && hasBot && view === 'chat' && <DetailsPanel />}
       {modal === 'create' && <CreateBotModal />}
       {modal === 'group' && <CreateGroupModal />}

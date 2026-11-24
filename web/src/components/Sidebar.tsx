@@ -8,6 +8,8 @@ import { api } from '../lib/api';
 import { Icon } from './Icon';
 import { Menu } from './Menu';
 import { UpdateRow } from './UpdateRow';
+import { SidebarOrb } from './SidebarOrb';
+import { lsGet, lsSet } from '../lib/storage';
 import zubiMark from '../assets/zubi-live.svg';
 
 function initials(name: string) {
@@ -84,19 +86,33 @@ function BoardIsland() {
   );
 }
 
-/** Sidebar entry for Capabilities: Zubi's orb and the ring of what it can do, opened like Tasks and Kanban. */
+/**
+ * Capabilities: Zubi's orb and the ring of what it can do, shown right under this entry. The entry opens and closes
+ * it (remembered per browser); in the narrow sidebar it widens the sidebar and opens it.
+ */
 function CapabilitiesIsland() {
-  const view = useConfigUI((s) => s.view);
-  const on = view === 'capabilities';
+  const collapsed = useStore((s) => s.sidebarCollapsed);
+  const [open, setOpen] = useState(() => lsGet('capabilitiesOpen') === '1');
+  const show = (v: boolean) => { setOpen(v); lsSet('capabilitiesOpen', v ? '1' : '0'); };
+  const click = () => {
+    if (collapsed) { useStore.getState().set({ sidebarCollapsed: false }); show(true); return; }
+    show(!open);
+  };
+  const shown = open && !collapsed;
   return (
-    <button type="button" className={`sidebar-island${on ? ' is-active' : ''}`} onClick={() => useConfigUI.getState().setView(on ? 'chat' : 'capabilities')} title="Capabilities" aria-pressed={on}>
-      <span className="sidebar-island__icon">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-          <circle cx="12" cy="12" r="3.2" /><circle cx="12" cy="12" r="8.5" strokeDasharray="2 3" /><circle cx="12" cy="3.5" r="1.4" fill="currentColor" /><circle cx="19.4" cy="16.3" r="1.4" fill="currentColor" /><circle cx="4.6" cy="16.3" r="1.4" fill="currentColor" />
-        </svg>
-      </span>
-      <span className="sidebar-island__label">Capabilities</span>
-    </button>
+    <>
+      <button type="button" className={`sidebar-island${shown ? ' is-open' : ''}`} onClick={click} title={shown ? 'Hide capabilities' : 'Show capabilities'}
+        aria-expanded={shown} aria-controls="sidebar-capabilities">
+        <span className="sidebar-island__icon">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <circle cx="12" cy="12" r="3.2" /><circle cx="12" cy="12" r="8.5" strokeDasharray="2 3" /><circle cx="12" cy="3.5" r="1.4" fill="currentColor" /><circle cx="19.4" cy="16.3" r="1.4" fill="currentColor" /><circle cx="4.6" cy="16.3" r="1.4" fill="currentColor" />
+          </svg>
+        </span>
+        <span className="sidebar-island__label">Capabilities</span>
+        <span className="sidebar-island__chev" aria-hidden><Icon name={shown ? 'chev_down' : 'chev_right'} size={12} opacity={0.6} /></span>
+      </button>
+      {shown && <div id="sidebar-capabilities" className="sidebar-caps"><SidebarOrb /></div>}
+    </>
   );
 }
 

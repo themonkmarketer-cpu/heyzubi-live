@@ -69,7 +69,6 @@
 .sorb__line.is-waiting { color: var(--color-warn-text); }
 
 .sidebar.is-collapsed .sorb { display: none; }
-@media (max-height: 700px) { .sorb { display: none; } }
 @media (prefers-reduced-motion: reduce) {
   .sorb__ring, .sorb__ball, .sorb__pipe, .sorb__core { animation: none !important; }
 }
@@ -83,15 +82,9 @@
 .sorb__node.is-on .sorb__mask, .sorb__ic .sorb__mask { background: #fff; }
 .sorb__ic .sorb__mask { width: 22px; height: 22px; }
 
-/* Capabilities view (CapabilitiesView.tsx): the same orb, larger and centred in the main area. */
-.cap-view { display: flex; flex-direction: column; min-width: 0; }
-.cap-view__title { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
-.cap-view__sub { font-size: 12px; color: var(--color-text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cap-view__stage { flex: 1; min-height: 0; display: grid; place-items: center; overflow: hidden; padding: 24px; }
-.cap-view .sorb { transform: scale(1.55); transform-origin: center; }
-.cap-view .sorb::before { display: none; }
-@media (max-width: 900px) { .cap-view .sorb { transform: scale(1.25); } }
-@media (max-width: 520px) { .cap-view .sorb { transform: scale(1); } .cap-view__sub { display: none; } }
-/* Shorter windows get a smaller orb, so the tooltip above a capability always has room under the header. */
-@media (max-height: 760px) { .cap-view .sorb { transform: scale(1.25); } }
-@media (max-height: 600px) { .cap-view .sorb { transform: scale(1); } .cap-view__stage { place-items: end center; padding-bottom: 32px; } }
+/* Under the sidebar's Capabilities entry (Sidebar.tsx CapabilitiesIsland): the same orb, in the list. */
+.sidebar-caps { display: flex; justify-content: center; margin: 2px 0 6px; animation: sorb-pipe 0.2s ease-out both; }
+.sidebar-caps .sorb { padding-top: 0; }
+.sidebar-caps .sorb::before { display: none; }
+.sidebar-island__chev { margin-left: auto; display: inline-flex; padding-right: 10px; }
+.sidebar.is-collapsed .sidebar-island__chev { display: none; }
