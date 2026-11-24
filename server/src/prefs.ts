@@ -112,6 +112,53 @@ prefsApi.get('/wallpaper/:file', (c) => {
   } catch { return c.json({ error: 'not found' }, 404); }
 });
 
+// ---------- your profile photo (the account row in the sidebar) ----------
+// Same rules as the wallpaper: the browser shrinks it first (256 px); the server checks the bytes, keeps one per person
+// under a content-hash name, and serves it only to them. users.avatar_url points at it.
+
+const PHOTO_MAX = 2 * 1024 * 1024;
+const photoDir = (userId: string) => path.join(path.dirname(env.dbPath), 'photos', userId.replace(/[^\w-]/g, '_'));
+
+/** Save a profile photo for a person; returns the URL the app shows it from. Also used to set one from the server. */
+export function savePhoto(userId: string, buf: Buffer): string {
+  const kind = imageKind(buf);
+  if (!kind) throw new Error('That file isn’t a JPEG, PNG or WebP picture.');
+  const dir = photoDir(userId);
+  fs.mkdirSync(dir, { recursive: true });
+  const name = `${crypto.createHash('sha256').update(buf).digest('hex').slice(0, 20)}.${kind}`;
+  fs.writeFileSync(path.join(dir, name), buf, { mode: 0o600 });
+  for (const f of fs.readdirSync(dir)) if (f !== name) { try { fs.unlinkSync(path.join(dir, f)); } catch { /* gone */ } }
+  const url = `/api/prefs/photo/${name}`;
+  db.prepare('UPDATE users SET avatar_url=? WHERE id=?').run(url, userId);
+  return url;
+}
+
+prefsApi.put('/photo', async (c) => {
+  const user = c.get('user');
+  if (Number(c.req.header('content-length') ?? 0) > PHOTO_MAX) return c.json({ error: 'That picture is too big (2 MB at most).' }, 413);
+  const buf = Buffer.from(await c.req.arrayBuffer());
+  if (!buf.length) return c.json({ error: 'No picture came through.' }, 400);
+  if (buf.length > PHOTO_MAX) return c.json({ error: 'That picture is too big (2 MB at most).' }, 413);
+  try { return c.json({ avatarUrl: savePhoto(user.id, buf) }); }
+  catch (e) { return c.json({ error: (e as Error).message }, 415); }
+});
+
+prefsApi.get('/photo/:file', (c) => {
+  const file = c.req.param('file');
+  if (!WALL_FILE.test(file)) return c.json({ error: 'not found' }, 404);
+  try {
+    const buf = fs.readFileSync(path.join(photoDir(c.get('user').id), file));
+    return c.body(buf, 200, { 'Content-Type': MIME[file.split('.').pop()!], 'Cache-Control': 'private, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' });
+  } catch { return c.json({ error: 'not found' }, 404); }
+});
+
+prefsApi.delete('/photo', (c) => {
+  const user = c.get('user');
+  try { fs.rmSync(photoDir(user.id), { recursive: true, force: true }); } catch { /* nothing there */ }
+  db.prepare('UPDATE users SET avatar_url=NULL WHERE id=?').run(user.id);
+  return c.json({ avatarUrl: null });
+});
+
 prefsApi.delete('/wallpaper', (c) => {
   const user = c.get('user');
   try { fs.rmSync(wallDir(user.id), { recursive: true, force: true }); } catch { /* nothing there */ }
