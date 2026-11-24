@@ -22,12 +22,6 @@
 .chat__pill:hover { background: var(--color-bg-elevated-hover); }
 .chat__pill-name { font-size: 14px; font-weight: 500; line-height: 20px; letter-spacing: 0.14px; color: var(--color-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chat__header-right { position: absolute; right: 12px; top: 12px; display: flex; gap: 8px; }
-.share-btn {
-  height: 36px; padding: 8px 16px; border-radius: var(--radius-full);
-  background: var(--color-bg-pane); border: 1px solid var(--color-border-tertiary);
-  font-size: 14px; line-height: 18px; letter-spacing: 0.14px; color: var(--color-ink);
-}
-.share-btn:hover { background: var(--color-bg-elevated-hover); }
 
 /* ---------- transcript ---------- */
 .transcript-wrap { position: relative; flex: 1 1 0; min-height: 0; }

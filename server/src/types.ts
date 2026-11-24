@@ -8,7 +8,7 @@ export type AvatarShape =
 export type AvatarColor =
   | 'black' | 'brown' | 'red' | 'orange' | 'yellow' | 'green' | 'lime' | 'cyan' | 'blue' | 'violet' | 'magenta' | 'gray';
 
-export interface User { id: string; email: string; name: string; avatarUrl: string | null }
+export interface User { id: string; email: string; name: string; avatarUrl: string | null; /** Shown in the account row instead of name (prefs). */ displayName?: string | null }
 
 export interface Bot {
   id: string;

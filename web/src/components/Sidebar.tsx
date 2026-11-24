@@ -131,6 +131,28 @@ function previewFor(bot: Bot, running: boolean, awaiting: string | null) {
   return bot.lastPreview ?? 'No messages yet';
 }
 
+/** How many tiles per row the team list uses: rows with the last message for a small team, then 2, then 3 per row. */
+const teamColumns = (n: number) => (n <= 4 ? 1 : n <= 9 ? 2 : 3);
+
+/** A team member as a compact tile (when the team is bigger): mascot, name and role; the last message on hover. */
+const BotTile = memo(function BotTile({ bot, selected, running, awaiting, onSelect }: { bot: Bot; selected: boolean; running: boolean; awaiting: string | null; onSelect: (id: string) => void }) {
+  return (
+    <button type="button" className={`bot-tile${selected ? ' is-selected' : ''}`} onClick={() => onSelect(bot.id)} aria-current={selected || undefined}
+      title={`${displayName(bot)}\n${previewFor(bot, running, awaiting)}`}>
+      <span className="bot-row__avatar">
+        <BotAvatarFor bot={bot} size={32} />
+        {(running || awaiting || bot.unread > 0) && (
+          <span className={`status-dot ${awaiting ? 'is-attention' : running ? 'is-working' : 'is-unread'}`} aria-label={awaiting ? 'Needs attention' : running ? 'Working' : 'Unread activity'} />
+        )}
+      </span>
+      <span className="bot-tile__text">
+        <span className="bot-tile__name">{bot.name}</span>
+        <span className="bot-tile__role">{bot.kind === 'room' ? 'Group' : bot.label || ''}</span>
+      </span>
+    </button>
+  );
+});
+
 const BotRow = memo(function BotRow({ bot, selected, running, awaiting, onSelect }: { bot: Bot; selected: boolean; running: boolean; awaiting: string | null; onSelect: (id: string) => void }) {
   return (
     <button type="button" className={`bot-row${selected ? ' is-selected' : ''}`} onClick={() => onSelect(bot.id)} aria-current={selected || undefined}>
@@ -177,6 +199,15 @@ export function Sidebar() {
       setPhoto(j.avatarUrl);
     } catch (e) { setPhotoError((e as Error).message); setTimeout(() => setPhotoError(null), 5000); }
   };
+  // The name shown in the account row: a label only (your account's name, which the bots use, stays as it is).
+  const renameLabel = async () => {
+    const u = useStore.getState().user;
+    const next = window.prompt('Name shown in the sidebar', u?.displayName || u?.name || '');
+    if (next === null || !u) return;
+    const res = await fetch('/api/prefs', { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ displayName: next }) }).catch(() => null);
+    const j = res?.ok ? await res.json().catch(() => null) : null;
+    if (j) set({ user: { ...u, displayName: j.displayName ?? null } });
+  };
   const removePhoto = async () => {
     const res = await fetch('/api/prefs/photo', { method: 'DELETE', credentials: 'include' }).catch(() => null);
     if (res?.ok) setPhoto(null);
@@ -219,7 +250,7 @@ export function Sidebar() {
             </button>
           </div>
         )}
-        <div className="bot-list">
+        <div className={`bot-list${!collapsed && teamColumns(others.length) > 1 ? ` is-grid cols-${teamColumns(others.length)}` : ''}`}>
           {(collapsed ? others : groupedByTeam(others)).map((b) =>
             'teamHeader' in b ? (
               <div key={`team-${b.teamHeader}`} className="bot-list__team">{b.teamHeader}</div>
@@ -227,6 +258,8 @@ export function Sidebar() {
               <button key={b.id} type="button" className={`bot-rail-item${selectedBotId === b.id ? ' is-selected' : ''}`} onClick={() => selectBot(b.id)} title={displayName(b)}>
                 <BotAvatarFor bot={b} size={36} />
               </button>
+            ) : teamColumns(others.length) > 1 ? (
+              <BotTile key={b.id} bot={b} selected={selectedBotId === b.id} running={!!live[b.id]?.isRunning} awaiting={live[b.id]?.awaiting?.reason ?? null} onSelect={selectBot} />
             ) : (
               <BotRow key={b.id} bot={b} selected={selectedBotId === b.id} running={!!live[b.id]?.isRunning} awaiting={live[b.id]?.awaiting?.reason ?? null} onSelect={selectBot} />
             ),
@@ -267,7 +300,7 @@ export function Sidebar() {
               {user?.avatarUrl
                 ? <img className="account__photo" src={user.avatarUrl} alt="" width={36} height={36} />
                 : <span className="account__initials">{initials(user?.name ?? user?.email ?? '')}</span>}
-              <span className="account__name">{user?.name ?? user?.email}</span>
+              <span className="account__name">{user?.displayName || user?.name || user?.email}</span>
             </button>
             {accountMenu && (
               <Menu
@@ -276,6 +309,7 @@ export function Sidebar() {
                 items={[
                   { label: 'Settings', hint: '⌘,', onSelect: () => useConfigUI.getState().openAppSettings() },
                   { label: user?.avatarUrl ? 'Change photo…' : 'Add a photo…', onSelect: () => photoInput.current?.click() },
+                  { label: 'Change display name…', onSelect: () => void renameLabel() },
                   ...(user?.avatarUrl ? [{ label: 'Remove photo', onSelect: () => void removePhoto() }] : []),
                   { label: 'Connect apps', onSelect: () => setModal('apps') },
                   { label: 'Log out', danger: true, onSelect: logout },

@@ -31,7 +31,7 @@ import { openPanelsFor } from './panels.js';
 import type { AvatarColor, AvatarShape, Toolkit } from './types.js';
 import { isGeminiVoice } from './voice-gemini.js';
 import { isSarvamVoice } from './sarvam.js';
-import { prefsApi } from './prefs.js';
+import { prefsApi, getPrefs } from './prefs.js';
 import { apiKeysApi, inboundApi } from './inbound.js';
 import { codingApi } from './coding.js';
 import { desktopApi, desktopDevicesApi } from './desktop.js';
@@ -71,7 +71,7 @@ function findOrCreateUser(email: string, name?: string, opts: { owner?: boolean 
 
 api.get('/auth/me', (c) => {
   const user = userFromCookieHeader(c.req.header('cookie'));
-  return c.json({ user, devLogin: env.devLogin });
+  return c.json({ user: user ? { ...user, displayName: getPrefs(user.id).displayName } : null, devLogin: env.devLogin });
 });
 
 /** How long a Google sign-in may take from start to callback. */

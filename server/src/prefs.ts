@@ -17,8 +17,10 @@ db.exec('CREATE TABLE IF NOT EXISTS user_prefs (user_id TEXT PRIMARY KEY, data T
 export interface Prefs {
   dictionary: string[]; tidyDictation: boolean;
   wallpaper: string | null; wallpaperDim: number; wallpaperFile: string | null;
+  /** The name shown in the sidebar's account row (a label only; the account's own name stays what the bots use). */
+  displayName: string | null;
 }
-const DEFAULTS: Prefs = { dictionary: [], tidyDictation: true, wallpaper: null, wallpaperDim: 0.2, wallpaperFile: null };
+const DEFAULTS: Prefs = { dictionary: [], tidyDictation: true, wallpaper: null, wallpaperDim: 0.2, wallpaperFile: null, displayName: null };
 /** The built-in wallpapers (drawn by the web app; web/src/lib/wallpapers.ts has the same ids). */
 export const WALLPAPERS = ['aurora', 'sunset', 'ocean', 'mesh', 'midnight', 'graphite', 'zubi', 'dots', 'waves', 'paper'];
 
@@ -66,6 +68,7 @@ prefsApi.patch('/', async (c) => {
     tidyDictation: p.tidyDictation !== undefined ? p.tidyDictation === true : cur.tidyDictation,
     wallpaper,
     wallpaperDim: p.wallpaperDim !== undefined ? clampDim(p.wallpaperDim, cur.wallpaperDim) : cur.wallpaperDim,
+    displayName: p.displayName !== undefined ? (String(p.displayName ?? '').replace(/\s+/g, ' ').trim().slice(0, 40) || null) : cur.displayName,
   }));
 });
 

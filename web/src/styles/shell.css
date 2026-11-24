@@ -50,6 +50,21 @@
 .bot-row__name, .bot-row__preview { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bot-row__name { font-size: 14px; font-weight: 500; line-height: 20px; letter-spacing: 0.14px; color: var(--color-ink); }
 .bot-row__preview { font-size: 13px; line-height: 18px; letter-spacing: 0.195px; color: var(--color-text-secondary); }
+/* A bigger team as tiles (Sidebar.tsx teamColumns): 2 per row from 5 members, 3 per row from 10. */
+.bot-list.is-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+.bot-list.is-grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.bot-list.is-grid .bot-list__team { grid-column: 1 / -1; }
+.bot-tile { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px; border-radius: 12px; text-align: left; transition: background-color 120ms var(--ease-out); }
+.bot-tile:hover { background: var(--color-bg-hover); }
+.bot-tile.is-selected { background: var(--color-bg-active); }
+.bot-tile.is-selected .status-dot, .bot-tile:hover .status-dot { box-shadow: 0 0 0 2.5px var(--color-bg-active-solid); }
+.bot-tile__text { display: flex; flex-direction: column; min-width: 0; }
+.bot-tile__name, .bot-tile__role { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bot-tile__name { font-size: 13.5px; font-weight: 500; line-height: 18px; color: var(--color-ink); }
+.bot-tile__role { font-size: 12px; line-height: 16px; color: var(--color-text-tertiary); }
+.bot-tile__role:empty { display: none; }
+.bot-list.cols-3 .bot-tile { flex-direction: column; justify-content: center; gap: 4px; padding: 8px 4px; text-align: center; }
+.bot-list.cols-3 .bot-tile__text { align-items: center; max-width: 100%; }
 .bot-rail-item { display: flex; align-items: center; justify-content: center; height: 54px; border-radius: 12px; }
 .bot-rail-item:hover { background: var(--color-bg-hover); }
 .bot-rail-item.is-selected { background: var(--color-bg-active); }
