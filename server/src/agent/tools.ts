@@ -437,7 +437,7 @@ ${r.brief}
     activity: 'drafting_file',
     label: 'Creating an image',
     impl: async (a, ctx) => {
-      const r = await createImage(ctx.userId, String(a.prompt ?? ''), a.aspect ? String(a.aspect) : undefined);
+      const r = await createImage(ctx.userId, String(a.prompt ?? ''), a.aspect ? String(a.aspect) : undefined, ctx.botId);
       if ('error' in r) return { output: `No picture was made: ${r.error}`, summary: 'Image not made' };
       return { output: `Created "${r.rel}" in Generations (~/.hermes/generations/${r.rel}). To send it on WhatsApp, call whatsapp_draft with image="${r.rel}".`, summary: `Created ${r.name}` };
     },

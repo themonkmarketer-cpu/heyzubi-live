@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useConfigUI } from '../configStore';
+import { useStore } from '../store';
+import { BotAvatarFor } from '../avatar/BotAvatar';
 import '../styles/generations.css';
 
 /**
@@ -8,7 +10,7 @@ import '../styles/generations.css';
  * download, copy the path, open large; add reference images by button or drag and drop.
  */
 
-export interface GenItem { name: string; rel: string; type: 'gen' | 'ref' | 'inbox'; media: 'image' | 'video'; modified: number; size: number; starred: boolean }
+export interface GenItem { name: string; rel: string; type: 'gen' | 'ref' | 'inbox'; media: 'image' | 'video'; modified: number; size: number; starred: boolean; botId?: string | null }
 
 export const genUrl = (rel: string, download = false) => `/api/generations/file/${rel.split('/').map(encodeURIComponent).join('/')}${download ? '?download=1' : ''}`;
 
@@ -30,7 +32,10 @@ export function GenerationsView() {
   const [media, setMedia] = useState<'' | 'image' | 'video'>('');
   const [type, setType] = useState<'' | 'gen' | 'ref' | 'inbox'>('');
   const [starred, setStarred] = useState(false);
-  const [sort, setSort] = useState<'newest' | 'oldest'>('newest');
+  const [sort, setSort] = useState<'newest' | 'oldest' | 'bot'>(() => { try { const s = localStorage.getItem('hz-gen-sort'); return s === 'oldest' || s === 'bot' ? s : 'newest'; } catch { return 'newest'; } });
+  const [bot, setBot] = useState(() => { try { return localStorage.getItem('hz-gen-bot') ?? ''; } catch { return ''; } });
+  const team = useStore((s) => s.bots).filter((b) => b.kind !== 'room');
+  const botOf = (id?: string | null) => (id ? team.find((b) => b.id === id) : undefined);
   const [cols, setCols] = useState(() => { try { return Math.max(2, Math.min(6, Number(localStorage.getItem('hz-gen-cols')) || 4)); } catch { return 4; } });
   const [open, setOpen] = useState<GenItem | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -38,12 +43,13 @@ export function GenerationsView() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(() => {
-    listGen({ q, media, type, sort, starred: starred ? '1' : '', limit: '300' })
+    listGen({ q, media, type, sort, bot, starred: starred ? '1' : '', limit: '300' })
       .then((r) => { setItems(r.items); setTotal(r.total); setErr(null); })
       .catch(() => setErr('Couldn’t read the gallery.'));
-  }, [q, media, type, sort, starred]);
+  }, [q, media, type, sort, starred, bot]);
   useEffect(() => { const t = setTimeout(load, q ? 250 : 0); return () => clearTimeout(t); }, [load, q]);
   useEffect(() => { try { localStorage.setItem('hz-gen-cols', String(cols)); } catch { /* private window */ } }, [cols]);
+  useEffect(() => { try { localStorage.setItem('hz-gen-sort', sort); localStorage.setItem('hz-gen-bot', bot); } catch { /* private window */ } }, [sort, bot]);
   useEffect(() => { if (!note) return; const t = setTimeout(() => setNote(null), 3500); return () => clearTimeout(t); }, [note]);
 
   const star = async (it: GenItem) => {
@@ -91,15 +97,21 @@ export function GenerationsView() {
           {([['', 'Everything'], ['gen', 'Generated'], ['ref', 'References'], ['inbox', 'Inbox']] as const).map(([v, l]) => <button key={v} type="button" aria-pressed={type === v} onClick={() => setType(v)}>{l}</button>)}
         </div>
         <button type="button" className={`gen__chip${starred ? ' is-on' : ''}`} aria-pressed={starred} onClick={() => setStarred(!starred)}>★ Starred</button>
-        <select className="gen__select" value={sort} onChange={(e) => setSort(e.target.value as 'newest' | 'oldest')} aria-label="Sort">
+        <select className="gen__select" value={bot} onChange={(e) => setBot(e.target.value)} aria-label="Filter by bot">
+          <option value="">All bots</option>
+          {team.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+          <option value="you">Added by you</option>
+        </select>
+        <select className="gen__select" value={sort} onChange={(e) => setSort(e.target.value as 'newest' | 'oldest' | 'bot')} aria-label="Sort">
           <option value="newest">Newest first</option>
           <option value="oldest">Oldest first</option>
+          <option value="bot">By bot</option>
         </select>
         <label className="gen__cols">Columns <input type="range" min={2} max={6} value={cols} onChange={(e) => setCols(Number(e.target.value))} aria-label="Columns" /> {cols}</label>
       </div>
 
       {err && <div className="gen__empty">{err}</div>}
-      {items && items.length === 0 && !err && <div className="gen__empty">{q || media || type || starred ? 'Nothing matches that.' : 'No generations yet. Images and videos Zubi makes land here.'}</div>}
+      {items && items.length === 0 && !err && <div className="gen__empty">{q || media || type || starred || bot ? 'Nothing matches that.' : 'No generations yet. Images and videos Zubi makes land here.'}</div>}
       {!items && !err && <div className="gen__empty">Loading…</div>}
 
       {items && items.length > 0 && (
@@ -116,6 +128,7 @@ export function GenerationsView() {
               </button>
               <figcaption className="gen__cap">
                 <span className="gen__name" title={it.name}>{it.name}</span>
+                {botOf(it.botId) && <span className="gen__who" title={`Made by ${botOf(it.botId)!.name}`}><BotAvatarFor bot={botOf(it.botId)!} size={16} /></span>}
                 <span className="gen__acts">
                   <button type="button" className={`gen__icon${it.starred ? ' is-star' : ''}`} onClick={() => void star(it)} aria-pressed={it.starred} aria-label={it.starred ? 'Unstar' : 'Star'} title={it.starred ? 'Unstar' : 'Star'}>★</button>
                   <a className="gen__icon" href={genUrl(it.rel, true)} aria-label={`Download ${it.name}`} title="Download">↓</a>
@@ -131,7 +144,7 @@ export function GenerationsView() {
           <div className="gen__lb-body">
             {open.media === 'video' ? <video src={genUrl(open.rel)} controls autoPlay playsInline /> : <img src={genUrl(open.rel)} alt={open.name} />}
             <div className="gen__lb-bar">
-              <span className="gen__lb-name" title={open.name}>{open.name}<small>{size(open.size)} · {ago(open.modified)}{open.type === 'ref' ? ' · reference' : ''}</small></span>
+              <span className="gen__lb-name" title={open.name}>{open.name}<small>{size(open.size)} · {ago(open.modified)}{open.type === 'ref' ? ' · reference' : ''}{botOf(open.botId) ? ` · by ${botOf(open.botId)!.name}` : open.type !== 'gen' ? ' · added by you' : ''}</small></span>
               <button type="button" className={`gen__btn${open.starred ? ' is-pri' : ''}`} onClick={() => void star(open)}>{open.starred ? '★ Starred' : '☆ Star'}</button>
               <a className="gen__btn" href={genUrl(open.rel, true)}>Download</a>
               <button type="button" className="gen__btn" onClick={() => copy(open)}>Copy path</button>

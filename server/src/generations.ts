@@ -5,6 +5,8 @@ import { Hono } from 'hono';
 import { env } from './env.js';
 import type { AuthVars } from './lib/auth.js';
 import { usage } from './usage.js';
+import { db } from './db.js';
+import { engineHome, primaryBotId } from './engine.js';
 
 /**
  * Generations: the gallery of AI-made images and videos in the main agent's Hermes home (~/.hermes/generations,
@@ -16,6 +18,10 @@ const GEN = path.join(env.hermesHome, 'generations');
 /** The "Zubi inbox" folder on the network drive Murtaza maps on his PC (L:\Zubi inbox = ~/.hermes/content/Zubi inbox). */
 const INBOX = path.join(env.hermesHome, 'content', 'Zubi inbox');
 const STARS = path.join(GEN, 'data', 'generation-starred.json');
+/** Which bot made a picture HeyZubi saved here (create_image): { "<file name>": "<bot id>" }. */
+const MAKERS = path.join(GEN, 'data', 'generation-bots.json');
+/** Team members' own Hermes galleries (their profile's generations folder), listed as bots/<profile>/<file>. */
+const BOT_PREFIX = 'bots/';
 const MEDIA = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.mp4', '.webm', '.mov']);
 const VIDEO = new Set(['.mp4', '.webm', '.mov']);
 const UPLOAD = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']);
@@ -24,7 +30,36 @@ const TYPES: Record<string, string> = {
   '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime',
 };
 
-export interface GenItem { name: string; rel: string; type: 'gen' | 'ref' | 'inbox'; media: 'image' | 'video'; modified: number; size: number; starred: boolean }
+export interface GenItem {
+  name: string; rel: string; type: 'gen' | 'ref' | 'inbox'; media: 'image' | 'video'; modified: number; size: number; starred: boolean;
+  /** The bot that made it: recorded when HeyZubi made it, a member's own gallery, else the main agent for its folder;
+   *  null for references and inbox pictures (added by the owner). */
+  botId: string | null;
+}
+
+/** Team members whose Hermes profile has a gallery folder of its own: profile → { botId, folder }. */
+function memberGalleries(): Map<string, { botId: string; folder: string }> {
+  const out = new Map<string, { botId: string; folder: string }>();
+  const rows = db.prepare("SELECT id, hermes_profile FROM bots WHERE engine='managed' AND hermes_profile IS NOT NULL").all() as any[];
+  for (const r of rows) {
+    const home = engineHome(r.id);
+    if (home && /^[a-z0-9][a-z0-9_-]{0,63}$/.test(r.hermes_profile)) out.set(r.hermes_profile, { botId: r.id, folder: path.join(home, 'generations') });
+  }
+  return out;
+}
+
+const readMakers = (): Record<string, string> => { try { const m = JSON.parse(fs.readFileSync(MAKERS, 'utf8')); return m && typeof m === 'object' ? m : {}; } catch { return {}; } };
+function noteMaker(name: string, botId: string) {
+  try {
+    const m = readMakers();
+    m[name] = botId;
+    fs.mkdirSync(path.dirname(MAKERS), { recursive: true });
+    const tmp = `${MAKERS}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(m, null, 2));
+    try { const o = fs.statSync(GEN); fs.chownSync(tmp, o.uid, o.gid); } catch { /* not root */ }
+    fs.renameSync(tmp, MAKERS);
+  } catch (e) { console.warn('[generations] maker not noted:', (e as Error).message); }
+}
 
 /**
  * A gallery file from its relative path: top level, refs/ or styles/ of Generations, or inbox/ (the Zubi inbox on the
@@ -36,6 +71,14 @@ export function genFile(rel: string): string | null {
     const f = path.resolve(INBOX, r.slice(6));
     return path.dirname(f) === INBOX && MEDIA.has(path.extname(f).toLowerCase()) ? f : null;
   }
+  if (r.startsWith(BOT_PREFIX)) {
+    // bots/<profile>/<file>: only a team member's own gallery folder, top level, media files.
+    const [profile, ...rest] = r.slice(BOT_PREFIX.length).split('/');
+    const g = memberGalleries().get(profile);
+    if (!g || rest.length !== 1) return null;
+    const f = path.resolve(g.folder, rest[0]);
+    return path.dirname(f) === path.resolve(g.folder) && MEDIA.has(path.extname(f).toLowerCase()) ? f : null;
+  }
   const f = path.resolve(GEN, r);
   const parts = path.relative(GEN, f).split(path.sep);
   if (parts[0] === '..' || path.isAbsolute(parts[0]) || !MEDIA.has(path.extname(f).toLowerCase())) return null;
@@ -43,8 +86,8 @@ export function genFile(rel: string): string | null {
   return f;
 }
 
-function items(folder: string, type: GenItem['type'], prefix: string): Omit<GenItem, 'starred'>[] {
-  const out: Omit<GenItem, 'starred'>[] = [];
+function items(folder: string, type: GenItem['type'], prefix: string): Omit<GenItem, 'starred' | 'botId'>[] {
+  const out: Omit<GenItem, 'starred' | 'botId'>[] = [];
   let names: string[] = [];
   try { names = fs.readdirSync(folder); } catch { return out; }
   for (const n of names) {
@@ -68,13 +111,29 @@ function writeStars(list: string[]) {
   fs.renameSync(tmp, STARS);
 }
 
-export function listGenerations(o: { media?: string; type?: string; q?: string; starred?: boolean; sort?: string } = {}): GenItem[] {
+export function listGenerations(o: { media?: string; type?: string; q?: string; starred?: boolean; sort?: string; bot?: string } = {}): GenItem[] {
   const star = new Set(readStars());
-  let all: GenItem[] = [...items(GEN, 'gen', ''), ...items(path.join(GEN, 'refs'), 'ref', 'refs/'), ...items(INBOX, 'inbox', 'inbox/')].map((i) => ({ ...i, starred: star.has(i.rel) || star.has(i.name) }));
+  const makers = readMakers();
+  const main = primaryBotId();
+  const maker = (i: Omit<GenItem, 'starred' | 'botId'>) => (i.type !== 'gen' ? null : makers[i.name] ?? main);
+  let all: GenItem[] = [...items(GEN, 'gen', ''), ...items(path.join(GEN, 'refs'), 'ref', 'refs/'), ...items(INBOX, 'inbox', 'inbox/')]
+    .map((i) => ({ ...i, botId: maker(i), starred: star.has(i.rel) || star.has(i.name) }));
+  for (const [profile, g] of memberGalleries()) {
+    all.push(...items(g.folder, 'gen', `${BOT_PREFIX}${profile}/`).map((i) => ({ ...i, botId: g.botId, starred: star.has(i.rel) })));
+  }
+  // A bot filter: one bot's pictures, or "you" for references and inbox pictures.
+  if (o.bot === 'you') all = all.filter((i) => i.botId === null);
+  else if (o.bot) all = all.filter((i) => i.botId === o.bot);
   if (o.type === 'gen' || o.type === 'ref' || o.type === 'inbox') all = all.filter((i) => i.type === o.type);
   if (o.media === 'image' || o.media === 'video') all = all.filter((i) => i.media === o.media);
   if (o.q) { const q = o.q.toLowerCase(); all = all.filter((i) => i.name.toLowerCase().includes(q)); }
   if (o.starred) all = all.filter((i) => i.starred);
+  if (o.sort === 'bot') {
+    // By bot name (pictures you added last), newest first within each.
+    const names = new Map((db.prepare('SELECT id, name FROM bots').all() as any[]).map((b) => [b.id, String(b.name).toLowerCase()]));
+    const key = (i: GenItem) => (i.botId ? names.get(i.botId) ?? '~' : '\uffff');
+    return all.sort((a, b) => key(a).localeCompare(key(b)) || b.modified - a.modified);
+  }
   const sign = o.sort === 'oldest' ? 1 : -1;
   // Starred first, then newest (or oldest), like Zubi HQ.
   return all.sort((a, b) => Number(b.starred) - Number(a.starred) || sign * (a.modified - b.modified));
@@ -86,7 +145,7 @@ const IMG_MODEL = process.env.HQ_IMAGE_MODEL ?? 'grok-imagine-image-2.0';
 const ASPECTS = new Set(['1:1', '4:5', '3:4', '9:16', '16:9', '4:3', '3:2', '2:3']);
 
 /** Make one picture from a prompt and save it at the top of Generations. ~$0.04, logged under "image". */
-export async function createImage(userId: string, prompt: string, aspect?: string): Promise<{ rel: string; name: string } | { error: string }> {
+export async function createImage(userId: string, prompt: string, aspect?: string, botId?: string): Promise<{ rel: string; name: string } | { error: string }> {
   const p = String(prompt ?? '').trim().slice(0, 1500);
   if (!p) return { error: 'Describe the picture first.' };
   if (!env.xaiKey) return { error: 'Image creation needs the xAI key.' };
@@ -124,6 +183,7 @@ export async function createImage(userId: string, prompt: string, aspect?: strin
   const file = path.join(GEN, name);
   fs.writeFileSync(file, blob);
   try { const o = fs.statSync(GEN); fs.chownSync(file, o.uid, o.gid); } catch { /* not root */ }
+  if (botId) noteMaker(name, botId);
   usage.image(userId, 1);
   return { rel: name, name };
 }
@@ -139,7 +199,7 @@ generationsApi.post('/create', async (c) => {
 
 generationsApi.get('/list', (c) => {
   const q = c.req.query();
-  const all = listGenerations({ media: q.media, type: q.type, q: q.q, starred: q.starred === '1', sort: q.sort });
+  const all = listGenerations({ media: q.media, type: q.type, q: q.q, starred: q.starred === '1', sort: q.sort, bot: q.bot });
   const limit = Math.max(1, Math.min(300, Number(q.limit) || 120));
   const page = Math.max(1, Number(q.page) || 1);
   const start = (page - 1) * limit;
