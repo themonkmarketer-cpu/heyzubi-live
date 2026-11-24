@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { BotAvatarFor } from '../avatar/BotAvatar';
+import { keys } from '../lib/keys';
 import { api } from '../lib/api';
 import { botVars } from '../lib/colors';
 import { displayName, sortedRows, useSelectedBot, useStore } from '../store';
@@ -55,7 +56,7 @@ export function ChatView() {
               align="center"
               onClose={() => setMenu(false)}
               items={[
-                { label: detailsOpen ? 'Hide details' : 'Show details', hint: '⇧⌘,', onSelect: () => set({ detailsOpen: !detailsOpen }) },
+                { label: detailsOpen ? 'Hide details' : 'Show details', hint: keys(',', true), onSelect: () => set({ detailsOpen: !detailsOpen }) },
                 { label: 'Open computer', onSelect: () => set({ viewerOpen: true, viewerMode: 'watch', viewerHint: null }) },
                 { label: 'New conversation', onSelect: () => api.fresh(bot.id).then(() => flash('Started a new conversation')).catch((e) => flash(e.message)) },
                 { label: 'Chat wallpaper…', onSelect: () => useWallpaper.getState().openPicker() },

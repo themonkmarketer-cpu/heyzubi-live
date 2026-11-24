@@ -124,6 +124,7 @@ a { color: inherit; }
 .menu__item.is-danger { color: var(--color-danger); }
 .menu__label { display: inline-flex; align-items: center; gap: 10px; }
 .menu__icon { display: inline-flex; color: var(--color-text-secondary); }
+.menu__item.is-danger .menu__icon { color: inherit; }
 .menu__hint { color: var(--color-text-tertiary); font-size: 12px; }
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 

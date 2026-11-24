@@ -11,6 +11,8 @@ import { Menu } from './Menu';
 import { UpdateRow } from './UpdateRow';
 import { SidebarOrb } from './SidebarOrb';
 import { lsGet, lsSet } from '../lib/storage';
+import { keys } from '../lib/keys';
+import { LogOut, Settings } from 'lucide-react';
 
 function initials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -183,13 +185,13 @@ export function Sidebar() {
       <div className="sidebar__titlebar">
         <BrandLive />
         <div className="sidebar__controls">
-          <button type="button" className="icon-btn icon-btn--plain" onClick={() => set({ sidebarCollapsed: !collapsed })} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} title="Toggle sidebar (⌘B)">
+          <button type="button" className="icon-btn icon-btn--plain" onClick={() => set({ sidebarCollapsed: !collapsed })} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} title={`Toggle sidebar (${keys('B')})`}>
             <Icon name="sidebar" opacity={0.66} />
           </button>
           <ThemeButton />
           {!collapsed && (
             <>
-              <button type="button" className="icon-btn" onClick={() => setModal('search')} aria-label="Search" title="Search (⌘K)">
+              <button type="button" className="icon-btn" onClick={() => setModal('search')} aria-label="Search" title={`Search (${keys('K')})`}>
                 <Icon name="search" opacity={0.66} />
               </button>
               <button type="button" className="icon-btn" onClick={() => setModal('create')} aria-label="Add a team member" title="Add a team member">
@@ -269,8 +271,8 @@ export function Sidebar() {
                 placement="above"
                 onClose={() => setAccountMenu(false)}
                 items={[
-                  { label: 'Settings', hint: '⌘,', onSelect: () => useConfigUI.getState().openAppSettings() },
-                  { label: 'Log out', danger: true, onSelect: logout },
+                  { label: 'Settings', icon: <Settings size={16} strokeWidth={1.8} />, onSelect: () => useConfigUI.getState().openAppSettings() },
+                  { label: 'Log out', icon: <LogOut size={16} strokeWidth={1.8} />, danger: true, onSelect: logout },
                 ]}
               >
                 <div className="menu__header">{user?.email}</div>
