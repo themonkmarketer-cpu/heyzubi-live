@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
+import { streamSSE } from 'hono/streaming';
 import { getConnInfo } from '@hono/node-server/conninfo';
 import { isLocalRequest } from './lib/auth.js';
 import { getBotRow } from './store.js';
@@ -15,7 +16,12 @@ import { policyFor, runComposioTool, toolMap, TOOLS, type ToolCtx } from './agen
  *   POST /mcp/primary     the primary engine, whichever bot it is bound to (so that agent's config
  *                         can be written before the bot exists)
  *
- * Every call is stateless: the URL says which bot is calling. Besides the app's own tools the list
+ *   GET  /mcp/<bot>       a stream for messages the app sends on its own: today only "the tool list changed",
+ *                         so an engine picks up the app's new tools after an update without a restart
+ *
+ * Calls are stateless: the URL says which bot is calling. initialize hands out a session id only so the engine
+ * opens that stream (MCP clients open it only with a session); any id is accepted afterwards, so an app restart
+ * never logs an engine out. Besides the app's own tools the list
  * carries the user's Composio tools, so connected apps (and the approvals around them) work the
  * same for every engine.
  *
@@ -110,7 +116,7 @@ async function handle(msg: any, botId: string | null): Promise<object | null> {
         jsonrpc: '2.0', id,
         result: {
           protocolVersion: SUPPORTED.includes(asked) ? asked : SUPPORTED[0],
-          capabilities: { tools: { listChanged: false } },
+          capabilities: { tools: { listChanged: true } },
           serverInfo: { name: 'hq', title: 'Team app', version: '1.0.0' },
           instructions: 'Tools of the team app: connected apps, files for the user, tasks, routines, other agents on the team.',
         },
@@ -152,6 +158,19 @@ mcpApi.post('/:bot', async (c) => {
   if (!who) return c.json(rpcError(null, -32001, 'Unauthorized'), 401);
   let body: any;
   try { body = await c.req.json(); } catch { return c.json(rpcError(null, -32700, 'Parse error'), 400); }
+  // A keep-alive ping from a session an earlier run of the app handed out, whose stream did not come back (its client
+  // gives up after two tries): "session not found" (MCP's 404) makes the engine start a new session, re-list the
+  // tools and open the stream again. Its tool calls keep working meanwhile; a ping without a session is answered.
+  const sid = c.req.header('mcp-session-id');
+  if (!Array.isArray(body) && body?.method === 'ping' && sid && !sessions.has(sid)) {
+    return c.json(rpcError(body?.id, -32001, 'Session not found: initialize again'), 404);
+  }
+  // A session id with initialize, so the engine opens the GET stream (see above).
+  if ((Array.isArray(body) ? body : [body]).some((m: any) => m?.method === 'initialize')) {
+    const sid = crypto.randomUUID();
+    sessions.add(sid);
+    c.header('Mcp-Session-Id', sid);
+  }
   if (Array.isArray(body)) {
     const answers = (await Promise.all(body.map((m) => handle(m, who.botId)))).filter(Boolean);
     return answers.length ? c.json(answers) : c.body(null, 202);
@@ -160,5 +179,55 @@ mcpApi.post('/:bot', async (c) => {
   return answer ? c.json(answer) : c.body(null, 202);
 });
 
-// No server-to-client stream and no sessions to end.
-mcpApi.all('/:bot', (c) => c.body(null, 405, { Allow: 'POST' }));
+// ---------- the engines' stream: "the tool list changed" ----------
+
+/** Session ids handed out by this run of the app. An engine coming back with any other id had its tools listed by an
+ *  earlier run (before an update), so it is told to list them again. */
+const sessions = new Set<string>();
+const streams = new Set<(msg: object) => void>();
+const LIST_CHANGED = { jsonrpc: '2.0', method: 'notifications/tools/list_changed' };
+
+/** Tell every connected engine to list the tools again (after the tools on offer changed). */
+export function notifyToolsChanged() {
+  for (const send of streams) send(LIST_CHANGED);
+}
+
+function gate(c: Context) {
+  if (!isLocalRequest(c)) return c.json(rpcError(null, -32001, 'Forbidden: /mcp only answers calls made on the machine the app runs on'), 403);
+  if (!caller(c.req.param('bot') ?? '', c.req.header('authorization'))) return c.json(rpcError(null, -32001, 'Unauthorized'), 401);
+  return null;
+}
+
+mcpApi.get('/:bot', (c) => {
+  const refused = gate(c);
+  if (refused) return refused;
+  if (!(c.req.header('accept') ?? '').includes('text/event-stream')) return c.body(null, 405, { Allow: 'GET, POST, DELETE' });
+  const sid = c.req.header('mcp-session-id') ?? '';
+  const stale = !!sid && !sessions.has(sid);
+  if (sid) sessions.add(sid);
+  return streamSSE(c, async (stream) => {
+    let open = true;
+    const send = (msg: object) => { if (open) void stream.writeSSE({ event: 'message', data: JSON.stringify(msg) }).catch(() => { open = false; }); };
+    streams.add(send);
+    stream.onAbort(() => { open = false; streams.delete(send); });
+    // A long reconnect wait, so an engine rides out the app's restart (its client gives up after two tries).
+    await stream.write('retry: 15000\n\n');
+    console.log(`[mcp] ${c.req.param('bot') === 'primary' ? 'main agent' : 'engine'} listening for tool changes${stale ? ' (told to list them again)' : ''}`);
+    if (stale) send(LIST_CHANGED);
+    while (open) {
+      await stream.sleep(25_000);
+      if (open) await stream.write(': keep-alive\n\n').catch(() => { open = false; });
+    }
+    streams.delete(send);
+  });
+});
+
+// Ending a session: nothing is kept per session beyond its id.
+mcpApi.delete('/:bot', (c) => {
+  const refused = gate(c);
+  if (refused) return refused;
+  sessions.delete(c.req.header('mcp-session-id') ?? '');
+  return c.body(null, 200);
+});
+
+mcpApi.all('/:bot', (c) => c.body(null, 405, { Allow: 'GET, POST, DELETE' }));
