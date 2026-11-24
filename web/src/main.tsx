@@ -18,6 +18,8 @@ import './styles/details.css';
 import './styles/modals.css';
 import './styles/viewer.css';
 import './styles/voice.css';
+// Last: the Pearl, Sand and Obsidian palettes build on tokens.css (configStore.ts THEMES).
+import './styles/themes.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

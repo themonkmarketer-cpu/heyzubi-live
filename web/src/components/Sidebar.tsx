@@ -1,5 +1,5 @@
 import { memo, useCallback, useState } from 'react';
-import { useConfigUI } from '../configStore';
+import { THEMES, useConfigUI, type Theme } from '../configStore';
 import { TasksIsland } from './config/TasksView';
 import type { Bot } from '@shared/types';
 import { BotAvatarFor } from '../avatar/BotAvatar';
@@ -26,6 +26,30 @@ export function BrandLive() {
         <span className="brand-live__live">LIVE</span>
       </span>
     </div>
+  );
+}
+
+/** The theme button beside the sidebar toggle: a menu of the themes, with a tick on the one in use. */
+function ThemeButton() {
+  const theme = useConfigUI((s) => s.theme);
+  const setTheme = useConfigUI((s) => s.setTheme);
+  const [open, setOpen] = useState(false);
+  const order: Theme[] = ['system', 'pearl', 'sand', 'obsidian', 'light', 'dark', 'navy'];
+  const label = (t: Theme) => (t === 'system' ? 'System (Pearl or Obsidian)' : THEMES[t].label);
+  return (
+    <span className="theme-btn">
+      <button type="button" className="icon-btn icon-btn--plain" onClick={() => setOpen(!open)} aria-haspopup="menu" aria-expanded={open}
+        aria-label={`Theme: ${label(theme)}`} title="Theme">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden style={{ opacity: 0.66 }}>
+          <circle cx="12" cy="12" r="8.5" /><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor" stroke="none" />
+        </svg>
+      </button>
+      {open && (
+        <Menu onClose={() => setOpen(false)} items={order.map((t) => ({ label: label(t), hint: t === theme ? '✓' : undefined, onSelect: () => setTheme(t) }))}>
+          <div className="menu__header">Theme</div>
+        </Menu>
+      )}
+    </span>
   );
 }
 
@@ -111,6 +135,7 @@ export function Sidebar() {
           <button type="button" className="icon-btn icon-btn--plain" onClick={() => set({ sidebarCollapsed: !collapsed })} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} title="Toggle sidebar (⌘B)">
             <Icon name="sidebar" opacity={0.66} />
           </button>
+          <ThemeButton />
           {!collapsed && (
             <>
               <button type="button" className="icon-btn" onClick={() => setModal('search')} aria-label="Search" title="Search (⌘K)">

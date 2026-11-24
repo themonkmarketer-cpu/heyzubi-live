@@ -99,3 +99,6 @@
 .update-line__when { color: var(--color-text-quaternary); white-space: nowrap; }
 .update-line.is-checking svg { animation: update-spin 1s linear infinite; }
 @media (prefers-reduced-motion: reduce) { .update-line.is-checking svg { animation: none; } }
+/* The theme button beside the sidebar toggle (Sidebar.tsx ThemeButton): its menu opens under it. */
+.theme-btn { position: relative; display: inline-flex; }
+.theme-btn .menu { min-width: 220px; }

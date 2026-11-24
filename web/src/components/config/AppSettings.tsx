@@ -102,11 +102,17 @@ function GeneralSection() {
         <div className="cfg-section__label">Theme</div>
         <div className="theme-tiles" role="radiogroup" aria-label="Theme">
           <ThemeTile value="system" label="System" current={theme} onPick={setTheme} />
-          <ThemeTile value="light" label="White" current={theme} onPick={setTheme} />
-          <ThemeTile value="dark" label="Dark (HeyZubi)" current={theme} onPick={setTheme} />
+          <ThemeTile value="pearl" label="Pearl" current={theme} onPick={setTheme} />
+          <ThemeTile value="sand" label="Sand" current={theme} onPick={setTheme} />
+          <ThemeTile value="obsidian" label="Obsidian" current={theme} onPick={setTheme} />
+        </div>
+        <div className="cfg-field__hint">Pearl is clean and neutral, Sand warm and quiet, Obsidian a calm dark. System follows your device: Pearl by day, Obsidian at night.</div>
+        <div className="cfg-section__label theme-group__label">Legacy</div>
+        <div className="theme-tiles theme-tiles--legacy" role="radiogroup" aria-label="Legacy theme">
+          <ThemeTile value="light" label="Legacy light" current={theme} onPick={setTheme} />
+          <ThemeTile value="dark" label="Legacy dark" current={theme} onPick={setTheme} />
           <ThemeTile value="navy" label="Navy" current={theme} onPick={setTheme} />
         </div>
-        <div className="cfg-field__hint">System follows your device’s light or dark setting. White, Dark and Navy match Zubi HQ’s themes.</div>
       </section>
       <ChatWallpaperSetting />
       <NotificationsSetting />

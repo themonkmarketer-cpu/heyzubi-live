@@ -5,6 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>HeyZubi</title>
+    <!-- The saved theme, applied before the app loads so the first paint is already right (configStore.ts THEMES). -->
+    <script>
+      (function () {
+        var t = null;
+        try { t = localStorage.getItem('heyzubi.theme') || localStorage.getItem('bothq.theme') || localStorage.getItem('grokbot.theme'); } catch (e) {}
+        var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        var map = { pearl: ['light', 'pearl', 1], sand: ['light', 'sand', 1], obsidian: ['dark', 'obsidian', 1], light: ['light'], dark: ['dark'], navy: ['dark', 'navy'] };
+        var d = map[t] || (dark ? map.obsidian : map.pearl);
+        var r = document.documentElement;
+        r.setAttribute('data-theme', d[0]);
+        if (d[1]) r.setAttribute('data-palette', d[1]);
+        if (d[2]) r.setAttribute('data-look', 'refresh');
+        r.style.colorScheme = d[0];
+      })();
+    </script>
+    <style>
+      html { background: #FAF9FC; } html[data-theme='dark'] { background: #0F0D14; }
+      html[data-palette='pearl'] { background: #F7F8FA; } html[data-palette='sand'] { background: #F7F3EC; }
+      html[data-palette='obsidian'] { background: #131419; } html[data-palette='navy'] { background: #0E1630; }
+    </style>
   </head>
   <body>
     <div id="root"></div>
