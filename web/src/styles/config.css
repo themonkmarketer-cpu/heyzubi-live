@@ -248,3 +248,24 @@
 .cfg-item--button:hover { background: var(--color-bg-hover); }
 .cfg-skill-view { margin: 4px 0 10px 34px; padding: 10px 12px; max-height: 320px; overflow: auto; white-space: pre-wrap; font-size: 12px; line-height: 1.5; background: var(--color-bg-subtle); border-radius: 8px; }
 .cfg-agent-skills > .cfg-input { padding: 7px 10px; border-radius: 8px; border: 0.5px solid var(--color-border-secondary); background: var(--color-bg-pane); color: var(--color-text-primary); font: inherit; font-size: 13px; }
+
+/* Bot settings › Hermes profile (ProfileTab.tsx): the profile Hermes's own Edit Profile shows. */
+.hp .cfg-page__head { align-items: flex-start; gap: 16px; }
+.hp__id { margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 500; vertical-align: 2px; color: var(--color-text-tertiary); background: var(--color-bg-hover); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.hp__actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+.cfg-note { font-size: 12px; color: var(--color-success); }
+.cfg-note--error { color: var(--color-danger); }
+.hp__soul { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.5; min-height: 280px; resize: vertical; }
+.hp__confirm { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-radius: 12px; font-size: 13px; line-height: 1.45;
+  border: 1px solid color-mix(in srgb, var(--color-warn) 45%, transparent); background: color-mix(in srgb, var(--color-warn) 10%, transparent); }
+.hp__confirm-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.hp__list-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.hp__filter { margin-left: auto; max-width: 200px; height: 30px; font-size: 12.5px; }
+.hp__list { display: flex; flex-direction: column; border: 0.5px solid var(--color-border-secondary); border-radius: 12px; overflow: hidden; }
+.hp__list--skills { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); max-height: 340px; overflow-y: auto; }
+.hp__row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-bottom: 0.5px solid var(--color-border-tertiary); }
+.hp__row:last-child { border-bottom: 0; }
+.hp__row--compact { padding: 7px 12px; justify-content: space-between; border-right: 0.5px solid var(--color-border-tertiary); }
+.hp__row-text { flex: 1; min-width: 0; }
+.hp__row-title { font-size: 13px; font-weight: 500; color: var(--color-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hp__row-sub { font-size: 11.5px; color: var(--color-text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

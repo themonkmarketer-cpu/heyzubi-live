@@ -11,6 +11,7 @@ import { Icon } from '../Icon';
 import { Modal } from '../modals/Modal';
 import { backgroundOf, byId, customUrl, useWallpaper } from '../../lib/wallpapers';
 import { Glyph } from './glyphs';
+import { ProfileTab } from './ProfileTab';
 import { ConfirmButton, Field, Segmented, Switch, nextRunLabel, shortDate } from './ui';
 
 const EFFORTS: { value: Bot['effort']; label: string }[] = [
@@ -52,6 +53,7 @@ export function BotSettingsModal() {
 
   const tabs: { id: BotSettingsTab; label: string; count?: number }[] = [
     { id: 'general', label: 'General' },
+    { id: 'profile', label: 'Hermes profile' },
     { id: 'skills', label: 'Skills', count: data?.skills.length },
     { id: 'memories', label: 'Memories', count: data?.memories.length },
     { id: 'routines', label: 'Routines', count: (routines ?? data?.routines)?.length },
@@ -78,6 +80,7 @@ export function BotSettingsModal() {
         <div className="cfg-content">
           {loadError && <div className="cfg-error">Couldn’t load settings: {loadError}</div>}
           {target.tab === 'general' && <GeneralTab bot={bot} onClose={onClose} />}
+          {target.tab === 'profile' && <ProfileTab bot={bot} />}
           {target.tab === 'skills' && <SkillsTab bot={bot} skills={data?.skills} onChange={reload} />}
           {target.tab === 'memories' && <MemoriesTab bot={bot} data={data} onChange={reload} />}
           {target.tab === 'routines' && <RoutinesTab bot={bot} routines={routines ?? data?.routines} />}

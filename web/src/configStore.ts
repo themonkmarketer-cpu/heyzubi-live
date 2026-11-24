@@ -6,7 +6,7 @@ import { lsGet, lsSet } from './lib/storage';
 /** UI state for bot settings, app settings, the Tasks view and the theme. Kept apart from store.ts on purpose. */
 
 export type Theme = 'system' | 'light' | 'dark' | 'navy';
-export type BotSettingsTab = 'general' | 'skills' | 'memories' | 'routines';
+export type BotSettingsTab = 'general' | 'profile' | 'skills' | 'memories' | 'routines';
 export type AppSection = 'status' | 'general' | 'teams' | 'computer' | 'permissions' | 'apps' | 'api' | 'desktop' | 'account';
 export type MainView = 'chat' | 'tasks' | 'generations';
 

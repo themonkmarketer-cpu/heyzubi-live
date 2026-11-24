@@ -15,6 +15,8 @@ import { box } from './box.js';
 import { orgo } from './orgo.js';
 import { openTerminal } from './desk.js';
 import { engineHome, engineInfo, engineKind, engineOwner, fixOwnership, forgetEngineOptions, pruneDeadPool, restartEngine, stopOwnScreen } from './engine.js';
+import { cleanChanges, configureProfile, describeProfile, profileNameFor } from './hermes-profile.js';
+import { syncIdentity } from './hermes-identity.js';
 import { listMemories } from './engine-memory.js';
 import { idleConfig, viewerCount } from './idle.js';
 import type { LibraryFile, Skill } from './types.js';
@@ -182,6 +184,57 @@ configApi.post('/bots/:id/compact', (c) => {
 });
 
 // ---------- the agent behind a bot: model, sign-in, restart ----------
+
+// ---------- the bot's Hermes profile (what Hermes's own Edit Profile shows) ----------
+// Read and saved through Hermes's own profiles.describe / profiles.configure (hermes-profile.ts), so HeyZubi and the
+// Hermes app edit one profile: description, soul (SOUL.md), model, skills, toolsets and MCP servers.
+
+configApi.get('/bots/:id/profile', async (c) => {
+  const b = ownBot(c.get('user').id, c.req.param('id'));
+  if (!b) return c.json({ error: 'not found' }, 404);
+  if (!profileNameFor(b.id)) return c.json({ profile: null });
+  try {
+    const profile = await describeProfile(b.id);
+    // The profile's description is the bot's description here too (a change made in Hermes comes across).
+    const desc = String(profile.description ?? '').trim();
+    if (desc && desc !== b.description) {
+      db.prepare('UPDATE bots SET description=?, updated_at=? WHERE id=?').run(desc, now(), b.id);
+      emitBot(b.id);
+    }
+    return c.json({ profile });
+  } catch (e: any) {
+    return c.json({ error: String(e?.message ?? e).slice(0, 300) }, 502);
+  }
+});
+
+configApi.put('/bots/:id/profile', async (c) => {
+  const b = ownBot(c.get('user').id, c.req.param('id'));
+  if (!b) return c.json({ error: 'not found' }, 404);
+  if (!profileNameFor(b.id)) return c.json({ error: `${b.name} is not a Hermes profile.` }, 409);
+  const changes = cleanChanges(await c.req.json().catch(() => null));
+  if (typeof changes === 'string') return c.json({ error: changes }, 400);
+  try {
+    const result = await configureProfile(b.id, changes);
+    // Hermes asks first before some models (cost or data policy): pass its question on; nothing was switched.
+    if (result.confirm_required) return c.json({ confirmRequired: true, message: result.confirm_message ?? 'Hermes asks you to confirm this model.', applied: result.applied ?? {} });
+    if (changes.description !== undefined) {
+      db.prepare('UPDATE bots SET description=?, updated_at=? WHERE id=?').run(changes.description.trim(), now(), b.id);
+      emitBot(b.id);
+      void syncIdentity(b.id); // its character can follow the description
+    }
+    // What the agent runs with changed: a team member's agent starts again with it. The main agent belongs to the
+    // computer's Hermes, which picks up its own profile changes.
+    const runs = ['soul', 'model', 'disabled_skills', 'enabled_toolsets', 'enabled_mcp_servers'].some((k) => k in changes);
+    if (runs && engineKind(b.id) === 'managed') {
+      forgetEngineOptions(b.id);
+      restartEngine(b.id).catch((e) => console.warn('[profile] restart after save:', e?.message ?? e));
+    }
+    const failed = Object.entries(result.applied ?? {}).filter(([k, v]) => v === false && !k.endsWith('_conflicts')).map(([k]) => k);
+    return c.json({ ok: failed.length === 0, failed, profile: await describeProfile(b.id) });
+  } catch (e: any) {
+    return c.json({ error: String(e?.message ?? e).slice(0, 300) }, 502);
+  }
+});
 
 configApi.get('/bots/:id/engine', async (c) => {
   const b = ownBot(c.get('user').id, c.req.param('id'));

@@ -32,6 +32,22 @@ export interface ComputerDetails {
   hibernation: { idleMinutes: number; viewers: number; dryRun: boolean };
 }
 
+/** What Hermes's own Edit Profile shows for a profile (server/src/hermes-profile.ts ProfileSnapshot). */
+export interface HermesProfile {
+  name: string;
+  description: string;
+  soul: string;
+  model: { provider: string; default: string };
+  skills: { name: string; enabled: boolean }[];
+  toolsets: { name: string; label: string; description: string; tool_count: number; enabled: boolean }[];
+  toolsets_pinned: boolean;
+  mcp_servers: { name: string; enabled: boolean; transport: string }[];
+}
+export interface HermesProfileChanges {
+  description?: string; soul?: string; model?: string; provider?: string;
+  disabled_skills?: string[]; enabled_toolsets?: string[]; enabled_mcp_servers?: string[]; confirm_expensive_model?: boolean;
+}
+
 export type BotPatch = Partial<Pick<Bot, 'name' | 'label' | 'description' | 'instructions' | 'avatarShape' | 'avatarColor' | 'avatarProp' | 'effort' | 'mode'>>;
 
 export interface AgentSkill { path: string; name: string; description: string; category: string; updated: number; size: number; secretLike: boolean }
@@ -39,6 +55,10 @@ export interface AgentSkill { path: string; name: string; description: string; c
 export const configApi = {
   settings: (botId: string) => req<BotSettingsBundle>('GET', `/bots/${botId}/settings`),
   updateBot: (botId: string, p: BotPatch) => req<{ bot: Bot }>('PATCH', `/bots/${botId}`, p),
+  /** The bot's Hermes profile, read and saved through Hermes itself (null: not a Hermes profile). */
+  profile: (botId: string) => req<{ profile: HermesProfile | null }>('GET', `/bots/${botId}/profile`),
+  saveProfile: (botId: string, p: HermesProfileChanges) =>
+    req<{ ok: boolean; failed: string[]; profile: HermesProfile } | { confirmRequired: true; message: string }>('PUT', `/bots/${botId}/profile`, p),
   deleteBot: (botId: string) => req<{ ok: true }>('DELETE', `/bots/${botId}`),
   makePrimary: (botId: string) => req<{ ok: true }>('POST', `/bots/${botId}/primary`),
   fresh: (botId: string) => req<{ ok: true }>('POST', `/bots/${botId}/fresh`),

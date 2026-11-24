@@ -164,6 +164,12 @@ function hermesEnv(extra: Record<string, string>): NodeJS.ProcessEnv {
   };
 }
 
+/** The environment and user for running Hermes's own code against the main Hermes home (hermes-profile.ts). */
+export function hermesEnvFor(): { env: NodeJS.ProcessEnv; owner: Owner | null } {
+  const o = hermesOwner();
+  return { env: hermesEnv({ HOME: o?.home ?? process.env.HOME ?? '/root', USER: o?.name ?? process.env.USER ?? 'root', HERMES_HOME: env.hermesHome }), owner: o };
+}
+
 /** Run a `hermes profile …` command against the main Hermes home, as the Hermes user. */
 function hermesCli(args: string[], o: Owner | null): Promise<string> {
   return new Promise((resolve, reject) => {
