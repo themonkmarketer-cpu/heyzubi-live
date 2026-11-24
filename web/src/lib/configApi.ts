@@ -72,6 +72,8 @@ export const configApi = {
   updateSkill: (id: string, s: Partial<Pick<Skill, 'name' | 'description' | 'body'>>) => req<{ skill: Skill }>('PATCH', `/skills/${id}`, s),
   deleteSkill: (id: string) => req<{ ok: true }>('DELETE', `/skills/${id}`),
 
+  /** Every routine on the team (Routines view). */
+  allRoutines: () => req<{ routines: Routine[] }>('GET', '/routines'),
   setRoutine: (id: string, enabled: boolean) => req<{ routine: Routine }>('PATCH', `/routines/${id}`, { enabled }),
   runRoutine: (id: string) => req<{ ok: true }>('POST', `/routines/${id}/run`),
   deleteRoutine: (id: string) => req<{ ok: true }>('DELETE', `/routines/${id}`),

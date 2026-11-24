@@ -22,7 +22,7 @@ export const THEMES: Record<Exclude<Theme, 'system'>, { base: 'light' | 'dark'; 
 };
 export type BotSettingsTab = 'general' | 'profile' | 'skills' | 'memories' | 'routines';
 export type AppSection = 'status' | 'general' | 'teams' | 'computer' | 'permissions' | 'apps' | 'api' | 'desktop' | 'account';
-export type MainView = 'chat' | 'tasks' | 'generations' | 'board';
+export type MainView = 'chat' | 'tasks' | 'generations' | 'board' | 'routines';
 
 interface ConfigUI {
   botSettings: { botId: string; tab: BotSettingsTab } | null;
@@ -94,6 +94,7 @@ window.addEventListener('heyzubi:event', (e) => {
   const { bump } = useConfigUI.getState();
   if (ev.type === 'tasks') { bump('tasks'); bump(`tasks:${ev.botId}`); }
   if (ev.type === 'memories') bump(`memories:${ev.botId}`);
+  if (ev.type === 'routines') bump('routines');
 });
 
 // Picking a bot anywhere (sidebar, search) goes back to its chat.

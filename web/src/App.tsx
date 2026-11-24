@@ -15,6 +15,7 @@ import { CreateGroupModal } from './components/modals/CreateGroupModal';
 import { SearchModal } from './components/modals/SearchModal';
 import { ConfigLayer } from './components/config/ConfigLayer';
 import { TasksView } from './components/config/TasksView';
+import { RoutinesView } from './components/config/RoutinesView';
 import { useConfigUI } from './configStore';
 import { WhatsAppWindow } from './components/WhatsAppWindow';
 import { CameraBubble } from './components/CameraBubble';
@@ -70,7 +71,7 @@ function Shell() {
   return (
     <div className={`app${collapsed ? ' is-sidebar-collapsed' : ''}${detailsOpen && hasBot && view === 'chat' ? ' has-details' : ''}`}>
       <Sidebar />
-      {view === 'tasks' ? <TasksView /> : view === 'generations' ? <GenerationsView /> : view === 'board' ? <BoardView /> : <ChatView />}
+      {view === 'tasks' ? <TasksView /> : view === 'routines' ? <RoutinesView /> : view === 'generations' ? <GenerationsView /> : view === 'board' ? <BoardView /> : <ChatView />}
       {detailsOpen && hasBot && view === 'chat' && <DetailsPanel />}
       {modal === 'create' && <CreateBotModal />}
       {modal === 'group' && <CreateGroupModal />}

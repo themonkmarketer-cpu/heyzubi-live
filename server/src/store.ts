@@ -192,7 +192,7 @@ export function toRoutine(r: any): Routine {
   } catch { /* invalid cron */ }
   return {
     id: r.id, botId: r.bot_id, name: r.name, prompt: r.prompt, schedule: r.schedule, timezone: r.timezone,
-    enabled: !!r.enabled, nextRunAt, lastRunAt: r.last_run_at, description: r.schedule.startsWith('event:') ? describeEventSlug(r.schedule) : describeCron(r.schedule),
+    enabled: !!r.enabled, nextRunAt, lastRunAt: r.last_run_at, createdAt: r.created_at ?? null, description: r.schedule.startsWith('event:') ? describeEventSlug(r.schedule) : describeCron(r.schedule),
   };
 }
 

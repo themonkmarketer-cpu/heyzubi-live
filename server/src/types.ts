@@ -192,6 +192,8 @@ export interface LiveState {
 export interface Routine {
   id: string; botId: string; name: string; prompt: string; schedule: string; timezone: string;
   enabled: boolean; nextRunAt: number | null; lastRunAt: number | null; description: string;
+  /** When it was made (ms). */
+  createdAt?: number | null;
 }
 
 export interface Task { id: string; botId: string; title: string; state: 'working' | 'needs_input' | 'done'; note: string; updatedAt: number }

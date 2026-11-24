@@ -171,6 +171,7 @@ export const useStore = create<State>((set, get) => ({
         return;
       case 'routines':
         if (s.routines[ev.botId] || ev.botId === s.selectedBotId) s.loadRoutines(ev.botId).catch(console.error);
+        window.dispatchEvent(new CustomEvent('heyzubi:event', { detail: ev })); // the Routines view (configStore.ts)
         return;
       case 'tasks':
       case 'memories':

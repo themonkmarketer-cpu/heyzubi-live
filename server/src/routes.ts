@@ -436,6 +436,12 @@ api.get('/bots/:id/routines', (c) => {
   return b ? c.json({ routines: listRoutines(b.id) }) : c.json({ error: 'not found' }, 404);
 });
 
+/** Every routine on the user's team, for the Routines view (each names its bot). */
+api.get('/routines', (c) => {
+  const rows = db.prepare("SELECT r.* FROM routines r JOIN bots b ON b.id=r.bot_id WHERE b.user_id=? AND COALESCE(b.kind,'agent')<>'room' ORDER BY r.created_at").all(c.get('user').id) as any[];
+  return c.json({ routines: rows.map(toRoutine) });
+});
+
 api.patch('/routines/:id', async (c) => {
   const r = db.prepare('SELECT r.* FROM routines r JOIN bots b ON b.id=r.bot_id WHERE r.id=? AND b.user_id=?').get(c.req.param('id'), c.get('user').id) as any;
   if (!r) return c.json({ error: 'not found' }, 404);

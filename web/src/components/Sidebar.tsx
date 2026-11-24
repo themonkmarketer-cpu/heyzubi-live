@@ -1,6 +1,7 @@
 import { memo, useCallback, useState } from 'react';
 import { THEMES, useConfigUI, type Theme } from '../configStore';
 import { TasksIsland } from './config/TasksView';
+import { RoutinesIsland } from './config/RoutinesView';
 import type { Bot } from '@shared/types';
 import { BotAvatarFor } from '../avatar/BotAvatar';
 import { displayName, useStore } from '../store';
@@ -182,6 +183,7 @@ export function Sidebar() {
 
       <div className="sidebar__scroll">
         <TasksIsland />
+        <RoutinesIsland />
         <BoardIsland />
         <CapabilitiesIsland />
         <GenerationsIsland />
