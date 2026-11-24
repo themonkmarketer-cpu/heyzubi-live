@@ -62,6 +62,13 @@ app.route('/api', configApi);
 // Serve the built web app in production.
 const webDist = path.resolve(new URL('.', import.meta.url).pathname, '../../web/dist');
 if (fs.existsSync(webDist)) {
+  // The page itself is never cached, so a reload (the sidebar's "Update") always gets the new release; the bundles
+  // it points at have content hashes in their names and are kept for good.
+  app.use('/*', async (c, next) => {
+    await next();
+    if (c.req.path.startsWith('/api/') || c.req.path.startsWith('/mcp')) return;
+    c.res.headers.set('Cache-Control', c.req.path.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache');
+  });
   app.use('/*', serveStatic({ root: path.relative(process.cwd(), webDist) }));
   app.get('*', (c) => c.html(fs.readFileSync(path.join(webDist, 'index.html'), 'utf8')));
 }

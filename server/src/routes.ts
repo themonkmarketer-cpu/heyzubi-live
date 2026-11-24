@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import { Hono, type Context } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { db, now } from './db.js';
@@ -240,6 +242,26 @@ api.use('/*', async (c, next) => {
   // /api/inbound/ checks its own API key (outside programs; see inbound.ts).
   const open = c.req.path.startsWith('/api/auth/') || (c.req.method === 'GET' && c.req.path === '/api/apps/callback') || c.req.path === '/api/health' || c.req.path.startsWith('/api/inbound/') || c.req.path.startsWith('/api/desktop/');
   return open ? next() : requireUser(c, next);
+});
+
+// ---------- the release the server has ----------
+
+// The web build the server serves (web/dist/build.json, written by the build). The app compares it with its own to
+// offer "Update ready" in the sidebar.
+const WEB_BUILD_FILE = path.resolve(new URL('.', import.meta.url).pathname, '../../web/dist/build.json');
+let webBuild: { at: number; data: { build: string; builtAt: string | null } } | null = null;
+api.get('/version', (c) => {
+  try {
+    const at = fs.statSync(WEB_BUILD_FILE).mtimeMs;
+    if (!webBuild || webBuild.at !== at) {
+      const j = JSON.parse(fs.readFileSync(WEB_BUILD_FILE, 'utf8'));
+      webBuild = { at, data: { build: String(j.build ?? ''), builtAt: j.builtAt ?? null } };
+    }
+    c.header('Cache-Control', 'no-store');
+    return c.json(webBuild.data);
+  } catch {
+    return c.json({ build: '', builtAt: null });
+  }
 });
 
 // ---------- events (SSE) ----------

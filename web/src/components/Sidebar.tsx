@@ -8,6 +8,7 @@ import { api } from '../lib/api';
 import { Icon } from './Icon';
 import { Menu } from './Menu';
 import { SidebarOrb } from './SidebarOrb';
+import { UpdateRow } from './UpdateRow';
 import zubiMark from '../assets/zubi-live.svg';
 
 function initials(name: string) {
@@ -146,6 +147,7 @@ export function Sidebar() {
       </div>
 
       {!collapsed && <SidebarOrb />}
+      <UpdateRow collapsed={collapsed} />
 
       <div className="sidebar__footer">
         <div className="sidebar__fade" />
