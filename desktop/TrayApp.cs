@@ -16,6 +16,7 @@ internal sealed class TrayApp : ApplicationContext
     private KeyboardHook? _dictHook;
     private readonly System.Windows.Forms.Timer _sync = new() { Interval = 60_000 };
     private bool _syncing, _dictating;
+    private CancellationTokenSource? _typing;
     private List<string>? _voices;
     private readonly Recorder _rec = new();
     private readonly Player _player = new();
@@ -301,33 +302,19 @@ internal sealed class TrayApp : ApplicationContext
             if (!_spark.Active) return; // stopped with Esc meanwhile
             if (error != null) _spark.Note(error);
             else if (string.IsNullOrWhiteSpace(text)) _spark.Note("Didn't catch that. Hold the keys while you talk.");
-            else { _spark.Dismiss(); TypeText(text); }
+            else
+            {
+                // The spark stays (Esc stops the typing) until the last word is in.
+                _spark.Think(null, "Typing…");
+                var stop = _typing = new CancellationTokenSource();
+                var note = await Typing.TypeAsync(text, stop.Token);
+                Log.Write($"typed: {text.Length} chars{(stop.IsCancellationRequested ? ", stopped with Esc" : note != null ? $", {note}" : "")}");
+                if (stop.IsCancellationRequested) return;
+                if (note != null) _spark.Note(note); else _spark.Dismiss();
+            }
         }
         catch (Exception e) { Log.Write($"dictation failed: {e}"); _spark.Note($"Something went wrong: {e.Message}"); }
         finally { _busy = false; _shownAt = DateTime.Now; _after.Start(); }
-    }
-
-    /// <summary>Types text into whatever has the keyboard focus, as Unicode key presses (any language, any script).</summary>
-    private static void TypeText(string text)
-    {
-        text = text.Replace("\r\n", "\n").Replace('\n', ' ');
-        var inputs = new List<Native.INPUT>(text.Length * 2);
-        foreach (char ch in text)
-        {
-            var down = new Native.INPUT { type = Native.INPUT_KEYBOARD };
-            down.u.ki.wScan = ch;
-            down.u.ki.dwFlags = Native.KEYEVENTF_UNICODE;
-            var up = down;
-            up.u.ki.dwFlags = Native.KEYEVENTF_UNICODE | Native.KEYEVENTF_KEYUP;
-            inputs.Add(down);
-            inputs.Add(up);
-        }
-        int size = System.Runtime.InteropServices.Marshal.SizeOf<Native.INPUT>();
-        for (int i = 0; i < inputs.Count; i += 200)
-        {
-            var part = inputs.Skip(i).Take(200).ToArray();
-            Native.SendInput((uint)part.Length, part, size);
-        }
     }
 
     // ---- asking ----
@@ -411,6 +398,7 @@ internal sealed class TrayApp : ApplicationContext
     private void StopAll()
     {
         _cts?.Cancel();
+        _typing?.Cancel();
         _dictating = false;
         if (_rec.Recording) _rec.Stop();
         StopAnswer();

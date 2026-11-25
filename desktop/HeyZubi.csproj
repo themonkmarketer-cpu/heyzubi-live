@@ -12,7 +12,7 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AssemblyName>HeyZubi</AssemblyName>
     <RootNamespace>HeyZubiDesktop</RootNamespace>
-    <Version>0.3.0</Version>
+    <Version>0.3.1</Version>
     <ApplicationIcon>heyzubi.ico</ApplicationIcon>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <!-- The WebView2 package also brings its WPF control, which this WinForms app never loads. -->

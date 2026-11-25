@@ -18,6 +18,9 @@ internal static class Native
     [DllImport("user32.dll")] public static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr GetModuleHandle(string? name);
     [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int vKey);
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("winmm.dll")] public static extern uint timeBeginPeriod(uint ms);
+    [DllImport("winmm.dll")] public static extern uint timeEndPeriod(uint ms);
 
     // ---- SendInput (the "mask" key that stops Win opening Start and Alt opening menus) ----
     [StructLayout(LayoutKind.Sequential)] public struct INPUT { public uint type; public InputUnion u; }
