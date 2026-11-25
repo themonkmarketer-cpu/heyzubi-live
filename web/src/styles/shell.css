@@ -127,3 +127,12 @@
 /* The theme button beside the sidebar toggle (Sidebar.tsx ThemeButton): its menu opens under it. */
 .theme-btn { position: relative; display: inline-flex; }
 .theme-btn .menu { min-width: 220px; }
+
+/* The views as one row of icon tiles at the bottom of the sidebar; the name shows on hover. Capabilities' orb opens above the row. */
+.sidebar-nav.is-tiles { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.sidebar-nav.is-tiles::before { grid-column: 1 / -1; } /* the divider line spans the row instead of taking a tile's place */
+.sidebar-nav.is-tiles .sidebar-island { position: relative; height: 40px; margin: 0; padding: 0; gap: 0; justify-content: center; border-radius: 10px; }
+.sidebar-nav.is-tiles .sidebar-island__icon { width: auto; }
+.sidebar-nav.is-tiles .sidebar-island__label, .sidebar-nav.is-tiles .sidebar-island__chev { display: none; }
+.sidebar-nav.is-tiles .sidebar-island__count { position: absolute; top: 2px; right: 2px; min-width: 16px; height: 16px; margin: 0; padding: 0 4px; font-size: 10px; line-height: 16px; }
+.sidebar.is-collapsed .sidebar-nav.is-tiles { grid-template-columns: 1fr; }

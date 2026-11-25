@@ -22,7 +22,7 @@ const WINDOW_OF: Record<string, PanelName | undefined> = { email: 'gmail', calen
  * and terms are listed in that folder's SOURCES.md). Phone and Profit are generic Lucide line icons, drawn through
  * a mask so they take the ring's colour; brand logos are shown as images in their own colours.
  */
-type CapKey = 'email' | 'calendar' | 'whatsapp' | 'linkedin' | 'youtube' | 'instagram' | 'facebook' | 'profit' | 'sheets' | 'phone';
+type CapKey = 'email' | 'calendar' | 'whatsapp' | 'linkedin' | 'youtube' | 'instagram' | 'facebook' | 'profit' | 'sheets' | 'notion' | 'phone';
 const ICONS: Record<CapKey, { src: string; mask?: boolean; size?: number }> = {
   email: { src: '/icons/integrations/gmail.svg' },
   calendar: { src: '/icons/integrations/google-calendar.svg' },
@@ -33,6 +33,7 @@ const ICONS: Record<CapKey, { src: string; mask?: boolean; size?: number }> = {
   facebook: { src: 'https://logos.composio.dev/api/facebook' }, // the same logo service Connect apps uses (see SOURCES.md)
   profit: { src: '/icons/integrations/analytics.svg', mask: true },
   sheets: { src: '/icons/integrations/google-sheets.svg' },
+  notion: { src: 'https://logos.composio.dev/api/notion' }, // the same logo service Connect apps uses
   phone: { src: '/icons/integrations/phone.svg', mask: true },
 };
 
@@ -61,6 +62,7 @@ const CAPS: Cap[] = [
   { k: 'instagram', n: 'Instagram', c: '#f06aa8', re: /instagram|\breel/i, h: 'Checking Instagram', can: 'Make a GIF/reel and publish it after your yes.', ready: 'part', ask: 'Make an Instagram GIF about ' },
   { k: 'profit', n: 'Profit', c: '#c9a6ff', re: /profit|p&l|expense|revenue|ledger|gst/i, h: 'Checking your numbers', can: 'Answer “what is my profit?” from a money log.', ready: 'no', ask: 'What is my profit this month?' },
   { k: 'sheets', n: 'Sheets', c: '#34a853', re: /googlesheets|google ?sheets?|spreadsheet|xlsx|excel|openpyxl|\.csv\b/i, h: 'Working on your sheet', can: 'Show your latest Google Sheets, and build a sheet with totals from numbers you give.', ready: 'yes', ask: 'Build a Google Sheet: ' },
+  { k: 'notion', n: 'Notion', c: '#e9e9e7', re: /notion/i, h: 'Reading Notion', can: 'Find and read your Notion pages and databases. Read only: only you and Claude Desktop write to Notion.', ready: 'part', ask: 'Find in my Notion: ' },
   { k: 'phone', n: 'Phone', c: '#ffb35a', re: /\bphone|twilio|vapi|\bsms\b/i, h: 'Placing your call', can: 'Call someone at a set time and ask your questions.', ready: 'no', ask: 'Call ' },
 ];
 

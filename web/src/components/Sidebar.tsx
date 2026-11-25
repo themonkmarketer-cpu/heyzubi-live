@@ -96,11 +96,11 @@ function BoardIsland() {
   );
 }
 
-/** Sidebar entry for Usage: the page in Settings with each team member's turns, tokens and cost. */
+/** Sidebar entry for Usage: each team member's turns, tokens and cost, as a workspace of its own (like Routines). */
 function UsageIsland() {
-  const on = useConfigUI((s) => s.appSettings === 'usage');
+  const on = useConfigUI((s) => s.view === 'usage');
   return (
-    <button type="button" className={`sidebar-island${on ? ' is-active' : ''}`} onClick={() => useConfigUI.getState().openAppSettings('usage')} title="Usage" aria-haspopup="dialog">
+    <button type="button" className={`sidebar-island${on ? ' is-active' : ''}`} onClick={() => useConfigUI.getState().setView(on ? 'chat' : 'usage')} title="Usage" aria-pressed={on}>
       <span className="sidebar-island__icon"><ChartNoAxesColumn size={18} strokeWidth={1.7} aria-hidden /></span>
       <span className="sidebar-island__label">Usage</span>
     </button>
@@ -115,8 +115,11 @@ function UsageIsland() {
 function CapabilitiesIsland() {
   const collapsed = useStore((s) => s.sidebarCollapsed);
   const [open, setOpen] = useState(true);
+  // Opening it also opens the main team member's chat: the capabilities are theirs.
+  const toZubi = () => { const z = useStore.getState().bots.find((b) => b.isPrimary); useConfigUI.getState().setView('chat'); if (z) useStore.getState().selectBot(z.id); };
   const click = () => {
-    if (collapsed) { useStore.getState().set({ sidebarCollapsed: false }); setOpen(true); return; }
+    if (collapsed) { useStore.getState().set({ sidebarCollapsed: false }); setOpen(true); toZubi(); return; }
+    if (!open) toZubi();
     setOpen(!open);
   };
   const shown = open && !collapsed;
@@ -262,22 +265,14 @@ export function Sidebar() {
 
       {/* The views, at the bottom just above Updates: Usage and Capabilities (its orb opens upwards), then Kanban and Gallery,
           then Routines and Tasks, then Reels Factory. Two to a row; one per row in the narrow sidebar. */}
-      <nav className="sidebar-nav" aria-label="Views">
-        <div className="sidebar-nav__row">
-          <UsageIsland />
-          <CapabilitiesIsland />
-        </div>
-        <div className="sidebar-nav__row">
-          <BoardIsland />
-          <GenerationsIsland />
-        </div>
-        <div className="sidebar-nav__row">
-          <RoutinesIsland />
-          <TasksIsland />
-        </div>
-        <div className="sidebar-nav__row is-one">
-          <SocialIsland />
-        </div>
+      <nav className="sidebar-nav is-tiles" aria-label="Views">
+        <CapabilitiesIsland />
+        <UsageIsland />
+        <BoardIsland />
+        <GenerationsIsland />
+        <RoutinesIsland />
+        <TasksIsland />
+        <SocialIsland />
       </nav>
 
       <UpdateRow collapsed={collapsed} />

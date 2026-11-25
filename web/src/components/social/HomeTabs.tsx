@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ArrowDownUp, CalendarClock, ChevronLeft, ChevronRight, GalleryHorizontalEnd, List, Pause, Play, Search, X } from 'lucide-react';
+import { ArrowDownUp, CalendarClock, LayoutGrid, List, Pause, Play, Search, X } from 'lucide-react';
 import { epFileUrl, seriesFileUrl, socialApi, usd, type Home } from '../../lib/socialApi';
 import { lsGet, lsSet } from '../../lib/storage';
 import '../../styles/social-home.css';
 
 /**
  * The home page's three tabs: what is scheduled (with the free slots), what has been published, and the cast. Each can be
- * looked at as a carousel or a list, searched, filtered and sorted; what was chosen is remembered in this browser.
+ * looked at as cards (a featured one, then a band of cards) or a list, searched, filtered and sorted; what was chosen is remembered in this browser.
  */
 type TabId = 'scheduled' | 'published' | 'cast';
-type View = 'carousel' | 'list';
+type View = 'cards' | 'list';
 interface Item {
   key: string; title: string; sub: string; line?: string; badge: string; tone: 'done' | 'need' | 'free' | 'off' | 'plain';
   img: string | null; wide?: boolean; num: number; at: string | null; usd: number | null; text: string;
@@ -99,7 +99,7 @@ export function HomeTabs({ home, onOpen, reload }: { home: Home; onOpen: (id: st
   const [picked, setPicked] = useState<Record<TabId, Record<string, string>>>({ scheduled: {}, published: {}, cast: {} });
   const [err, setErr] = useState<string | null>(null);
   const tabs = useMemo(() => build(home, onOpen), [home, onOpen]);
-  const tab = saved.tab, def = tabs[tab], view: View = saved.view[tab] ?? 'carousel';
+  const tab = saved.tab, def = tabs[tab], view: View = saved.view[tab] === 'list' ? 'list' : 'cards';
   const sort = def.sorts.some(([k]) => k === saved.sort[tab]) ? saved.sort[tab]! : def.sorts[0][0];
   const down = saved.down[tab] ?? DOWN_FIRST[tab].includes(sort);
   const on = picked[tab];
@@ -126,7 +126,7 @@ export function HomeTabs({ home, onOpen, reload }: { home: Home; onOpen: (id: st
         </div>
         <label className="stab__search"><Search size={14} aria-hidden /><input className="text-input" type="search" value={q} placeholder={tab === 'cast' ? 'Search name, trade, look…' : 'Search title, trade, character, keyword…'} aria-label="Search" onChange={(e) => setQ(e.target.value)} /></label>
         <div className="stab__view" role="group" aria-label="View">
-          <button type="button" aria-pressed={view === 'carousel'} title="Carousel" aria-label="Carousel view" onClick={() => keep({ view: { ...saved.view, [tab]: 'carousel' } })}><GalleryHorizontalEnd size={15} aria-hidden /></button>
+          <button type="button" aria-pressed={view === 'cards'} title="Cards" aria-label="Cards view" onClick={() => keep({ view: { ...saved.view, [tab]: 'cards' } })}><LayoutGrid size={15} aria-hidden /></button>
           <button type="button" aria-pressed={view === 'list'} title="List" aria-label="List view" onClick={() => keep({ view: { ...saved.view, [tab]: 'list' } })}><List size={15} aria-hidden /></button>
         </div>
       </div>
@@ -137,7 +137,7 @@ export function HomeTabs({ home, onOpen, reload }: { home: Home; onOpen: (id: st
       </div>
       {err && <div className="card__error">{err}</div>}
       {shown.length === 0 ? <div className="social__empty"><span>{active ? 'Nothing matches those filters.' : def.empty}</span></div>
-        : view === 'carousel' ? <Carousel key={tab} items={shown} onSlot={toggle} /> : <Rows items={shown} heads={def.heads} wide={tab === 'cast'} onSlot={toggle} />}
+        : view === 'cards' ? <Showcase key={tab} tab={tab} label={def.label} items={shown} onSlot={toggle} /> : <Rows items={shown} heads={def.heads} wide={tab === 'cast'} onSlot={toggle} />}
       {tab === 'scheduled' && <p className="social__fine">Times are IST. Slots fill in order. Block a free one to keep it for something posted elsewhere.</p>}
       {tab === 'cast' && home.series && <p className="social__fine">{home.series.voices} more voices to cast from. The cast’s files at TopView last until {home.series.assetsExpire}.</p>}
     </section>
@@ -187,51 +187,54 @@ function Rows({ items, heads, wide, onSlot }: { items: Item[]; heads: string[]; 
   );
 }
 
-function Carousel({ items, onSlot }: { items: Item[]; onSlot: (s: { at: string; blocked: boolean }) => void }) {
-  const [at, setAt] = useState(0);
-  const drag = useRef<{ x: number; moved: boolean } | null>(null);
-  const n = items.length, i = Math.min(at, n - 1), it = items[i];
-  const first = items[0].key;
-  useEffect(() => { setAt(0); }, [first, n]);
-  const go = (d: number) => setAt(Math.max(0, Math.min(n - 1, i + d)));
+/** What a card offers: the episode, its posts, a voice, a slot to block or free. */
+function Acts({ it, onSlot, big }: { it: Item; onSlot: (s: { at: string; blocked: boolean }) => void; big?: boolean }) {
   const [on, play] = useVoice(it.voice);
-  const main = () => { if (it.voice) play(); else if (it.open) it.open(); else if (it.links[0]) window.open(it.links[0][1], '_blank', 'noopener'); };
-  const can = !!(it.voice || it.open || it.links[0]);
-  const what = it.voice ? `${on ? 'Stop' : 'Play'} ${it.title}’s voice` : it.open ? `Open ${it.title}` : it.links[0] ? `Watch ${it.title} on ${PLACE[it.links[0][0]]}` : it.title;
   return (
-    <div className={`sflow${it.wide ? ' is-wide' : ''}`} role="group" aria-roledescription="carousel" aria-label={`${i + 1} of ${n}`} tabIndex={0}
-      onKeyDown={(e) => { if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); } else if (e.key === 'ArrowRight') { e.preventDefault(); go(1); } else if (e.key === 'Home') { e.preventDefault(); setAt(0); } else if (e.key === 'End') { e.preventDefault(); setAt(n - 1); } }}
-      onPointerDown={(e) => { drag.current = { x: e.clientX, moved: false }; }}
-      onPointerMove={(e) => { const d = drag.current; if (d && Math.abs(e.clientX - d.x) > 46) { go(e.clientX < d.x ? 1 : -1); d.x = e.clientX; d.moved = true; } }}
-      onPointerUp={() => { const d = drag.current; setTimeout(() => { if (drag.current === d) drag.current = null; }, 0); }} onPointerLeave={() => { drag.current = null; }}>
-      <button type="button" className="sflow__nav is-prev" aria-label="Previous" disabled={i === 0} onClick={() => go(-1)}><ChevronLeft size={20} aria-hidden /></button>
-      <div className="sflow__stage">
-        {items.map((x, k) => {
-          const d = k - i, a = Math.abs(d);
-          if (a > 6) return null;
-          const s = Math.sign(d);
-          return (
-            <button key={x.key} type="button" className={`sflow__card${d === 0 ? ' is-mid' : ''} is-${x.tone}`} tabIndex={d === 0 ? 0 : -1} aria-hidden={d !== 0} aria-label={d === 0 ? what : undefined} title={d === 0 ? what : x.title}
-              style={{ transform: d === 0 ? 'translate(-50%, 0)' : `translate(-50%, 0) translateX(calc(${s} * (var(--w) * 0.62 + ${a - 1} * var(--w) * 0.17))) translateZ(${-90 - a * 45}px) rotateY(${s * -38}deg)`, zIndex: 20 - a, opacity: a > 5 ? 0 : 1 - Math.max(0, a - 2) * 0.16 }}
-              onClick={() => { if (drag.current?.moved) return; if (d !== 0) setAt(k); else if (can) main(); else if (x.slot) onSlot(x.slot); }}>
-              {x.img ? <img src={x.img} alt="" loading="lazy" draggable={false} /> : <span className="sflow__blank"><CalendarClock size={34} aria-hidden /><b>{x.slot ? (x.slot.blocked ? 'Blocked' : 'Free') : `Ep ${x.num}`}</b><small>{x.at ? ist(x.at) : 'No cover yet'}</small></span>}
-              <span className="sflow__badge">{x.badge}</span>
-              {d === 0 && can && <span className="sflow__play" aria-hidden>{x.voice && on ? <Pause size={22} /> : <Play size={22} />}</span>}
-            </button>
-          );
-        })}
-      </div>
-      <button type="button" className="sflow__nav is-next" aria-label="Next" disabled={i === n - 1} onClick={() => go(1)}><ChevronRight size={20} aria-hidden /></button>
-      <div className="sflow__cap" aria-live="polite">
-        <b>{it.title}</b><span>{it.sub}</span>{it.line && <small>{it.line}</small>}
-        <div className="sflow__acts">
-          {it.links.length > 0 && <Links item={it.links} later={it.later} />}
-          {it.open && <button type="button" className="btn btn--secondary btn--sm" onClick={it.open}>Open the episode</button>}
-          {it.slot && <button type="button" className="btn btn--secondary btn--sm" onClick={() => onSlot(it.slot!)}>{it.slot.blocked ? 'Free this slot' : 'Block this slot'}</button>}
-          {it.usd !== null && it.usd > 0 && <small>{usd(it.usd)}</small>}
+    <div className={big ? 'sshow__btns' : 'sshow__cta'}>
+      {it.open && <button type="button" className={big ? 'btn btn--primary btn--sm' : ''} onClick={it.open}>Open the episode</button>}
+      {it.links.map(([k, u]) => <a key={k} href={u} target="_blank" rel="noreferrer" className={big ? 'btn btn--secondary btn--sm' : ''}>Watch on {PLACE[k]}{k === 'youtube' && it.later ? ` (${fmt(ms(it.later), 'Asia/Kolkata', { day: 'numeric', month: 'short' })})` : ''}</a>)}
+      {it.voice && <button type="button" className={big ? 'btn btn--secondary btn--sm' : ''} onClick={play}>{on ? <Pause size={12} aria-hidden /> : <Play size={12} aria-hidden />} {on ? 'Stop the voice' : 'Hear the voice'}</button>}
+      {it.slot && <button type="button" className={big ? 'btn btn--secondary btn--sm' : ''} onClick={() => onSlot(it.slot!)}>{it.slot.blocked ? 'Free this slot' : 'Block this slot'}</button>}
+    </div>
+  );
+}
+const Pic = ({ it }: { it: Item }) => (it.img
+  ? <img src={it.img} alt="" loading="lazy" draggable={false} />
+  : <span className="sshow__blank"><CalendarClock size={30} aria-hidden /><b>{it.slot ? (it.slot.blocked ? 'Blocked' : 'Free') : `Ep ${it.num}`}</b><small>{it.at ? ist(it.at) : 'No cover yet'}</small></span>);
+/** The first item large, like a page's banner; the rest as cards in a coloured band, four to a row. */
+function Showcase({ tab, label, items, onSlot }: { tab: TabId; label: string; items: Item[]; onSlot: (s: { at: string; blocked: boolean }) => void }) {
+  const [hero, ...rest] = items;
+  return (
+    <div className={`sshow is-${tab}`}>
+      <article className={`sshow__hero${hero.wide ? ' is-wide' : ''}`}>
+        {hero.img && <span className="sshow__glow" style={{ backgroundImage: `url("${hero.img}")` }} aria-hidden />}
+        <div className="sshow__say">
+          <span className={`sshow__badge is-${hero.tone}`}>{hero.badge}</span>
+          <h3>{hero.title}</h3>
+          <p>{hero.sub}</p>
+          {hero.line && <small>{hero.line}</small>}
+          <Acts it={hero} onSlot={onSlot} big />
+          {hero.usd !== null && hero.usd > 0 && <small className="sshow__usd">{usd(hero.usd)}</small>}
         </div>
-      </div>
-      <span className="sflow__count">{i + 1} / {n}</span>
+        <span className="sshow__poster"><Pic it={hero} /></span>
+      </article>
+      {rest.length > 0 && (
+        <section className="sshow__band" aria-label={label}>
+          <h3>{label}</h3>
+          <div className={`sshow__grid${rest[0].wide ? ' is-wide' : ''}`}>
+            {rest.map((it) => (
+              <article key={it.key} className={`sshow__card is-${it.tone}`}>
+                <button type="button" className="sshow__pic" onClick={() => (it.open ? it.open() : it.links[0] ? window.open(it.links[0][1], '_blank', 'noopener') : it.slot ? onSlot(it.slot) : undefined)} aria-label={it.title} tabIndex={it.open || it.links[0] ? 0 : -1}>
+                  <Pic it={it} /><span className="sshow__badge">{it.badge}</span>
+                </button>
+                <div className="sshow__txt"><b>{it.title}</b><span>{it.sub}</span>{it.line && <small>{it.line}</small>}</div>
+                <Acts it={it} onSlot={onSlot} />
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

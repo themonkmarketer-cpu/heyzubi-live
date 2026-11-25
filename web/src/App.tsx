@@ -1,3 +1,4 @@
+import { UsageSection } from './components/config/AppSettings';
 import { BoardView } from './components/board/BoardView';
 import { lazy, Suspense, useEffect } from 'react';
 import { startEvents } from './lib/events';
@@ -74,7 +75,7 @@ function Shell() {
   return (
     <div className={`app${collapsed ? ' is-sidebar-collapsed' : ''}${detailsOpen && hasBot && view === 'chat' ? ' has-details' : ''}`}>
       <Sidebar />
-      {view === 'tasks' ? <TasksView /> : view === 'routines' ? <RoutinesView /> : view === 'generations' ? <GenerationsView /> : view === 'social' ? <Suspense fallback={<main className="chat" />}><SocialView /></Suspense> : view === 'board' ? <BoardView /> : <ChatView />}
+      {view === 'tasks' ? <TasksView /> : view === 'routines' ? <RoutinesView /> : view === 'generations' ? <GenerationsView /> : view === 'social' ? <Suspense fallback={<main className="chat" />}><SocialView /></Suspense> : view === 'board' ? <BoardView /> : view === 'usage' ? <main className="gen usage-view"><UsageSection /></main> : <ChatView />}
       {detailsOpen && hasBot && view === 'chat' && <DetailsPanel />}
       {modal === 'create' && <CreateBotModal />}
       {modal === 'group' && <CreateGroupModal />}

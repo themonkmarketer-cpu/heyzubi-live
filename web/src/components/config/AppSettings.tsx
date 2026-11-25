@@ -566,7 +566,7 @@ const WINDOWS = [{ d: 1, label: 'Today' }, { d: 7, label: 'Last 7 days' }, { d: 
 const tokensShort = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(Math.round(n)));
 
 /** Usage, after Theo's: each team member's turns, tokens and Claude cost over a window, then the other services. */
-function UsageSection() {
+export function UsageSection() {
   const [days, setDays] = useState(() => { try { return Number(localStorage.getItem('usageDays')) || 7; } catch { return 7; } });
   const [data, setData] = useState<UsageData | null>(null);
   const [failed, setFailed] = useState(false);
