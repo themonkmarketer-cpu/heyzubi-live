@@ -424,9 +424,9 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'open_window',
-    description: 'Open (or close) the Calendar, Gmail, YouTube, Instagram, LinkedIn or Google Sheets window in the HeyZubi app, so the owner sees it. Call it every time the owner asks about their calendar, schedule, meetings or day (window="calendar"), their inbox or emails (window="gmail"), their YouTube channel or videos (window="youtube"), their Instagram posts or reels (window="instagram"), their LinkedIn (window="linkedin") or their Google Sheets / spreadsheets (window="sheets"), as well as answering in words. Set close=true only when they ask to close it.',
+    description: 'Open (or close) the Calendar, Gmail, YouTube, Instagram, Facebook, LinkedIn or Google Sheets window in the HeyZubi app, so the owner sees it. Call it every time the owner asks about their calendar, schedule, meetings or day (window="calendar"), their inbox or emails (window="gmail"), their YouTube channel or videos (window="youtube"), their Instagram posts or reels (window="instagram"), their Facebook Page, posts or reels (window="facebook"), their LinkedIn (window="linkedin") or their Google Sheets / spreadsheets (window="sheets"), as well as answering in words. Set close=true only when they ask to close it.',
     parameters: obj({
-      window: { type: 'string', enum: ['calendar', 'gmail', 'youtube', 'instagram', 'linkedin', 'sheets'], description: 'Which window' },
+      window: { type: 'string', enum: ['calendar', 'gmail', 'youtube', 'instagram', 'facebook', 'linkedin', 'sheets'], description: 'Which window' },
       close: { type: 'boolean', description: 'Close it instead of opening it' },
     }, ['window']),
     activity: 'working',

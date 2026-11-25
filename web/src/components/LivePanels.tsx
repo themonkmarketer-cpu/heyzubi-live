@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Copy, Eye, Forward, Heart, Image as ImageIcon, MessageCircle, Play, Type } from 'lucide-react';
 import { useOpeningFrame } from '../lib/floatFrame';
 import { create } from 'zustand';
 import { useStore } from '../store';
@@ -6,6 +7,7 @@ import type { PanelName } from '@shared/types';
 import { capFor, useOrbState } from './SidebarOrb';
 import { prefillComposer } from './Composer';
 import { useConfigUI } from '../configStore';
+import { lsGet, lsSet } from '../lib/storage';
 import '../styles/livepanels.css';
 
 /**
@@ -16,8 +18,8 @@ import '../styles/livepanels.css';
  */
 
 type PanelKey = PanelName;
-export const usePanels = create<Record<PanelKey, number | null>>(() => ({ gmail: null, calendar: null, youtube: null, instagram: null, linkedin: null, sheets: null }));
-const KEYS: PanelKey[] = ['calendar', 'gmail', 'youtube', 'instagram', 'linkedin', 'sheets'];
+export const usePanels = create<Record<PanelKey, number | null>>(() => ({ gmail: null, calendar: null, youtube: null, instagram: null, facebook: null, linkedin: null, sheets: null }));
+const KEYS: PanelKey[] = ['calendar', 'gmail', 'youtube', 'instagram', 'facebook', 'linkedin', 'sheets'];
 /** Open a window now (an icon click, a request, or the capability being used). */
 export const openPanel = (k: PanelKey) => usePanels.setState({ [k]: Date.now() });
 const HIDE_AFTER = 10 * 60_000;
@@ -30,7 +32,7 @@ export function CapabilityWatcher() {
   const bot = useStore((s) => s.bots.find((b) => b.isPrimary));
   const { cap } = useOrbState(bot);
   useEffect(() => {
-    const key: PanelKey | null = cap?.k === 'email' ? 'gmail' : cap?.k === 'calendar' ? 'calendar' : cap?.k === 'instagram' ? 'instagram' : cap?.k === 'linkedin' ? 'linkedin' : cap?.k === 'sheets' ? 'sheets' : null;
+    const key: PanelKey | null = cap?.k === 'email' ? 'gmail' : cap?.k === 'calendar' ? 'calendar' : cap?.k === 'instagram' ? 'instagram' : cap?.k === 'facebook' ? 'facebook' : cap?.k === 'linkedin' ? 'linkedin' : cap?.k === 'sheets' ? 'sheets' : null;
     if (key) openPanel(key);
   }, [cap?.k]);
   // A fast app call can finish before the orb sees it running: any new calendar or email tool call opens its window too.
@@ -45,7 +47,7 @@ export function CapabilityWatcher() {
       if (r.createdAt < since.current) continue; // an earlier conversation's call
       const k = capFor(r.body, undefined)?.k;
       if (k === 'email') openPanel('gmail');
-      else if (k === 'calendar' || k === 'instagram' || k === 'linkedin' || k === 'sheets') openPanel(k);
+      else if (k === 'calendar' || k === 'instagram' || k === 'facebook' || k === 'linkedin' || k === 'sheets') openPanel(k);
       // The YouTube icon also lights for video making (Higgsfield, yt-dlp); only a real YouTube call opens its window.
       else if (k === 'youtube' && /youtube/i.test(`${r.body.name} ${r.body.label} ${JSON.stringify(r.body.args ?? '')}`)) openPanel('youtube');
     }
@@ -63,7 +65,7 @@ export function CapabilityWatcher() {
 
 /** The Calendar and Gmail windows: floating in the chat area at the shared size (lib/floatFrame.ts), drag by a title bar. */
 export function LivePanels() {
-  const { gmail, calendar, youtube, instagram, linkedin, sheets } = usePanels();
+  const { gmail, calendar, youtube, instagram, facebook, linkedin, sheets } = usePanels();
   const waOpen = useStore((s) => s.waOpen);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   // One step down and left of the WhatsApp window when both are open, so neither hides the other.
@@ -93,7 +95,7 @@ export function LivePanels() {
     }, 30_000);
     return () => clearInterval(t);
   }, []);
-  if (!gmail && !calendar && !youtube && !instagram && !linkedin && !sheets) return null;
+  if (!gmail && !calendar && !youtube && !instagram && !facebook && !linkedin && !sheets) return null;
   return (
     <div
       ref={boxRef} className="lpanels is-floating" role="region" aria-label="Zubi’s windows"
@@ -104,6 +106,7 @@ export function LivePanels() {
       {gmail && <GmailPanel key={`g${gmail}`} />}
       {youtube && <YouTubePanel key={`y${youtube}`} />}
       {instagram && <InstagramPanel key={`i${instagram}`} />}
+      {facebook && <FacebookPanel key={`f${facebook}`} />}
       {linkedin && <LinkedInPanel key={`l${linkedin}`} />}
       {sheets && <SheetsPanel key={`s${sheets}`} />}
     </div>
@@ -220,8 +223,6 @@ function CalendarPanel() {
   );
 }
 
-const num = (n: number) => (n >= 10_000 ? `${Math.round(n / 1000)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
-
 /** "Ask Zubi" at the foot of a window: puts a starter request in the main team member's composer. */
 function AskZubi({ ask, label }: { ask: string; label: string }) {
   const bot = useStore((s) => s.bots.find((b) => b.isPrimary));
@@ -236,14 +237,84 @@ function AskZubi({ ask, label }: { ask: string; label: string }) {
   );
 }
 
-interface Video { id: string; title: string; at: number; views: number; thumb: string; link: string }
-function YouTubePanel() {
-  const [data, setData] = useState<{ configured: boolean; videos: Video[]; channel?: string; studio?: string; error?: string } | null>(null);
+export interface SocialPost { id: string; title: string; kind: 'video' | 'picture' | 'album' | 'text'; link: string; thumb: string; at: number; views: number | null; likes: number | null; comments: number | null; shares: number | null }
+
+/** The counts on every post, in the order they're shown; a dash where the app gives no number. */
+const COUNTS = [
+  { k: 'views', word: 'views', label: 'Views', Icon: Eye },
+  { k: 'likes', word: 'likes', label: 'Likes', Icon: Heart },
+  { k: 'comments', word: 'comments', label: 'Comments', Icon: MessageCircle },
+  { k: 'shares', word: 'shares', label: 'Shares', Icon: Forward },
+] as const;
+type CountKey = (typeof COUNTS)[number]['k'];
+
+const KIND_ICON = { video: Play, picture: ImageIcon, album: Copy, text: Type };
+const big = (n: number) => n.toLocaleString(undefined, n >= 10_000 ? { notation: 'compact', maximumFractionDigits: 1 } : undefined);
+
+/** One tile: the picture, what kind of post it is and its counts; the caption and age on hover. */
+function SocialTile({ post }: { post: SocialPost }) {
+  const [src, setSrc] = useState(post.thumb);
+  useEffect(() => setSrc(post.thumb), [post.thumb]);
+  const Kind = KIND_ICON[post.kind];
+  const when = post.at ? `${ago(post.at)} ago` : '';
+  const label = [post.title || (post.kind === 'video' ? 'Video' : 'Post'), ...COUNTS.filter((c) => post[c.k] !== null).map((c) => `${big(post[c.k]!)} ${c.word}`), when].filter(Boolean).join(', ');
+  return (
+    <a className="sgrid__tile" href={post.link || undefined} target="_blank" rel="noreferrer noopener" aria-label={label}>
+      {src
+        // YouTube has no large picture for some videos: fall back to the one every video has.
+        ? <img src={src} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setSrc(src.includes('/hq720.jpg') ? src.replace('/hq720.jpg', '/mqdefault.jpg') : '')} />
+        : <span className="sgrid__text">{post.title || 'No picture'}</span>}
+      <span className="sgrid__kind" aria-hidden><Kind size={12} strokeWidth={2.4} fill={post.kind === 'video' ? 'currentColor' : 'none'} /></span>
+      <span className="sgrid__hover" aria-hidden><b>{post.title}</b><small>{when}</small></span>
+      <span className="sgrid__n" aria-hidden>
+        {post.views !== null && <span className="sgrid__views"><Eye size={13} strokeWidth={2.2} />{big(post.views)}</span>}
+        <span className="sgrid__row">{COUNTS.slice(1).map((c) => <span key={c.k}><c.Icon size={11} strokeWidth={2.4} />{post[c.k] === null ? '–' : big(post[c.k]!)}</span>)}</span>
+      </span>
+    </a>
+  );
+}
+
+/** The posts as a grid (Instagram, YouTube, Facebook), newest first or by any count, with the totals above. */
+function SocialGrid({ posts, empty }: { posts: SocialPost[]; empty: string }) {
+  const [sort, setSort] = useState<'new' | CountKey>('new');
+  const shown = useMemo(() => (sort === 'new' ? posts : [...posts].sort((a, b) => (b[sort] ?? -1) - (a[sort] ?? -1))), [posts, sort]);
+  if (!posts.length) return <p className="lpanel__mut">{empty}</p>;
+  return (
+    <>
+      <div className="sgrid__bar">
+        <div className="sgrid__sort" role="radiogroup" aria-label="Order">
+          {[['new', 'Newest'] as const, ...COUNTS.map((c) => [c.k, c.label] as const)].map(([k, l]) => (
+            <button key={k} type="button" role="radio" aria-checked={sort === k} className={sort === k ? 'is-active' : ''} onClick={() => setSort(k)}>{l}</button>
+          ))}
+        </div>
+      </div>
+      <dl className="sgrid__sum" aria-label={`Totals for these ${posts.length} posts`}>
+        {COUNTS.map((c) => {
+          const known = posts.filter((p) => p[c.k] !== null);
+          return <div key={c.k} title={known.length && known.length < posts.length ? `${known.length} of these ${posts.length} posts have a ${c.word} count` : undefined}><dd><c.Icon size={13} strokeWidth={2.2} aria-hidden />{known.length ? big(known.reduce((a, p) => a + p[c.k]!, 0)) : '–'}</dd><dt>{c.label}</dt></div>;
+        })}
+      </dl>
+      <div className="sgrid">{shown.map((p) => <SocialTile key={p.id} post={p} />)}</div>
+    </>
+  );
+}
+
+/** Loads a window's data; `load(true)` asks again now. */
+function usePanelData<T>(path: string, name: string, fallback: T): [T | null, (fresh: boolean) => void] {
+  const [data, setData] = useState<T | null>(null);
+  const asked = useRef(0);
   const load = (fresh: boolean) => {
-    fetch(`/api/panels/youtube${fresh ? '?fresh=1' : ''}`, { credentials: 'include' })
-      .then((r) => r.json()).then(setData).catch(() => setData({ configured: true, videos: [], error: 'Couldn’t read YouTube just now.' }));
+    const mine = ++asked.current; // a slower answer for another Page must not replace a newer one
+    fetch(`/api/panels/${path}${fresh ? `${path.includes('?') ? '&' : '?'}fresh=1` : ''}`, { credentials: 'include' })
+      .then((r) => r.json()).then((j) => { if (mine === asked.current) setData(j); })
+      .catch(() => { if (mine === asked.current) setData({ ...fallback, error: `Couldn’t read ${name} just now.` }); });
   };
-  useEffect(() => { load(true); }, []);
+  useEffect(() => { setData(null); load(true); }, [path]); // eslint-disable-line react-hooks/exhaustive-deps
+  return [data, load];
+}
+
+function YouTubePanel() {
+  const [data, load] = usePanelData<{ configured: boolean; posts: SocialPost[]; channel?: string; studio?: string; error?: string }>('youtube', 'YouTube', { configured: true, posts: [] });
   return (
     <section className="lpanel" aria-label="YouTube">
       <PanelHead title="YOUTUBE" open="Studio" href={data?.studio ?? 'https://studio.youtube.com/'} onRefresh={() => load(true)} onClose={() => usePanels.setState({ youtube: null })} />
@@ -252,20 +323,8 @@ function YouTubePanel() {
         : data.error ? <p className="lpanel__mut">{data.error}</p>
         : (
           <>
-            {data.channel && <div className="lpanel__acct">{data.channel} · latest public videos</div>}
-            {data.videos.length === 0 ? <p className="lpanel__mut">No public videos yet. Private uploads don’t show here.</p> : (
-              <ul className="lpanel__list">
-                {data.videos.map((v) => (
-                  <li key={v.id} className="lmedia">
-                    <a href={v.link} target="_blank" rel="noreferrer noopener" className="lmedia__thumb is-wide">{v.thumb && <img src={v.thumb} alt="" loading="lazy" referrerPolicy="no-referrer" />}</a>
-                    <div className="lmedia__body">
-                      <a href={v.link} target="_blank" rel="noreferrer noopener" className="lmedia__title">{v.title}</a>
-                      <span className="lmedia__meta">{num(v.views)} views · {ago(v.at)} ago</span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
+            {data.channel && <div className="lig__prof"><img src="/icons/integrations/youtube.png" alt="" className="is-mark" /><div><b>{data.channel}</b><small>Latest public videos</small></div></div>}
+            <SocialGrid posts={data.posts} empty="No public videos yet. Private uploads don’t show here." />
           </>
         )}
       <AskZubi ask="Make a 15-second YouTube video about " label="Make a video with Zubi" />
@@ -273,15 +332,9 @@ function YouTubePanel() {
   );
 }
 
-interface Post { id: string; caption: string; type: string; link: string; thumb: string; at: number; likes: number; comments: number }
 interface IgProfile { username: string; name: string; followers: number; posts: number; picture: string }
 function InstagramPanel() {
-  const [data, setData] = useState<{ connected: boolean; posts: Post[]; profile?: IgProfile; error?: string } | null>(null);
-  const load = (fresh: boolean) => {
-    fetch(`/api/panels/instagram${fresh ? '?fresh=1' : ''}`, { credentials: 'include' })
-      .then((r) => r.json()).then(setData).catch(() => setData({ connected: true, posts: [], error: 'Couldn’t read Instagram just now.' }));
-  };
-  useEffect(() => { load(true); }, []);
+  const [data, load] = usePanelData<{ connected: boolean; posts: SocialPost[]; profile?: IgProfile; error?: string }>('instagram', 'Instagram', { connected: true, posts: [] });
   const p = data?.profile;
   return (
     <section className="lpanel" aria-label="Instagram">
@@ -295,26 +348,54 @@ function InstagramPanel() {
               <div className="lig__prof">
                 {p.picture ? <img src={p.picture} alt="" referrerPolicy="no-referrer" /> : <span className="lig__pic" />}
                 <div><b>@{p.username}</b>{p.name && <small>{p.name}</small>}</div>
-                <span className="lig__stat"><b>{num(p.followers)}</b><small>followers</small></span>
-                <span className="lig__stat"><b>{num(p.posts)}</b><small>posts</small></span>
+                <span className="lig__stat"><b>{big(p.followers)}</b><small>followers</small></span>
+                <span className="lig__stat"><b>{big(p.posts)}</b><small>posts</small></span>
               </div>
             )}
-            {data.posts.length === 0 ? <p className="lpanel__mut">No posts yet.</p> : (
-              <ul className="lpanel__list">
-                {data.posts.map((x) => (
-                  <li key={x.id} className="lmedia">
-                    <a href={x.link || undefined} target="_blank" rel="noreferrer noopener" className="lmedia__thumb">{x.thumb && <img src={x.thumb} alt="" loading="lazy" referrerPolicy="no-referrer" />}</a>
-                    <div className="lmedia__body">
-                      <span className="lmedia__title">{x.caption || (x.type === 'VIDEO' ? 'Reel' : 'Post')}</span>
-                      <span className="lmedia__meta">♥ {num(x.likes)} · 💬 {num(x.comments)} · {ago(x.at)} ago</span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <SocialGrid posts={data.posts} empty="No posts yet." />
           </>
         )}
       <AskZubi ask="Make an Instagram GIF about " label="Make a post with Zubi" />
+    </section>
+  );
+}
+
+interface FbProfile { name: string; followers: number | null; link: string }
+function FacebookPanel() {
+  // Which Page to show: the one picked before, else the server's choice (the handle that matches Instagram).
+  const [page, setPage] = useState(() => lsGet('fbPage') ?? '');
+  const [data, load] = usePanelData<{ connected: boolean; posts: SocialPost[]; page?: string; pages?: { id: string; name: string; username: string }[]; profile?: FbProfile; note?: string; error?: string }>(`facebook${page ? `?page=${encodeURIComponent(page)}` : ''}`, 'Facebook', { connected: true, posts: [] });
+  const p = data?.profile;
+  const pick = (id: string) => { lsSet('fbPage', id); setPage(id); };
+  return (
+    <section className="lpanel" aria-label="Facebook">
+      <PanelHead title="FACEBOOK" open="Open" href={p?.link || 'https://www.facebook.com/'} onRefresh={() => load(true)} onClose={() => usePanels.setState({ facebook: null })} />
+      {!data ? <p className="lpanel__mut">Loading your Facebook Page…</p>
+        : !data.connected ? <p className="lpanel__mut">Facebook isn’t connected yet. Ask Zubi to connect it: she sends you a link, you sign in to Facebook and pick your Page. Then press ↻ here.</p>
+        : data.error ? <p className="lpanel__mut">{data.error}</p>
+        : (
+          <>
+            {p && (
+              <div className="lig__prof">
+                <img src="https://logos.composio.dev/api/facebook" alt="" className="is-mark" />
+                <div>
+                  {(data.pages?.length ?? 0) > 1 ? (
+                    <select className="lfb__pick" aria-label="Facebook Page" value={data.page} onChange={(e) => pick(e.target.value)}>
+                      {data.pages!.map((x) => <option key={x.id} value={x.id}>{x.name}{x.username ? ` (@${x.username})` : ''}</option>)}
+                    </select>
+                  ) : <b>{p.name}</b>}
+                  <small>Facebook Page</small>
+                </div>
+                {p.followers !== null && <span className="lig__stat"><b>{big(p.followers)}</b><small>followers</small></span>}
+              </div>
+            )}
+            {data.note && <div className="lpanel__acct">{data.note}</div>}
+            {p && <SocialGrid posts={data.posts} empty="No posts on this Page yet." />}
+          </>
+        )}
+      {data && !data.connected
+        ? <AskZubi ask="Connect my Facebook Page to your Composio and send me the sign-in link." label="Connect Facebook with Zubi" />
+        : <AskZubi ask="Make a Facebook post about " label="Make a post with Zubi" />}
     </section>
   );
 }

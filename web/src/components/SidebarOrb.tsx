@@ -7,7 +7,7 @@ import { openPanel } from './LivePanels';
 import '../styles/orb.css';
 
 /** The icons that open a floating window when clicked (WhatsApp has its own). */
-const WINDOW_OF: Record<string, PanelName | undefined> = { email: 'gmail', calendar: 'calendar', youtube: 'youtube', instagram: 'instagram', linkedin: 'linkedin', sheets: 'sheets' };
+const WINDOW_OF: Record<string, PanelName | undefined> = { email: 'gmail', calendar: 'calendar', youtube: 'youtube', instagram: 'instagram', facebook: 'facebook', linkedin: 'linkedin', sheets: 'sheets' };
 
 /**
  * Zubi HQ's orb and capability ring, at the bottom of the sidebar. The orb shows what the main team member
@@ -22,7 +22,7 @@ const WINDOW_OF: Record<string, PanelName | undefined> = { email: 'gmail', calen
  * and terms are listed in that folder's SOURCES.md). Phone and Profit are generic Lucide line icons, drawn through
  * a mask so they take the ring's colour; brand logos are shown as images in their own colours.
  */
-type CapKey = 'email' | 'calendar' | 'whatsapp' | 'linkedin' | 'youtube' | 'instagram' | 'profit' | 'sheets' | 'phone';
+type CapKey = 'email' | 'calendar' | 'whatsapp' | 'linkedin' | 'youtube' | 'instagram' | 'facebook' | 'profit' | 'sheets' | 'phone';
 const ICONS: Record<CapKey, { src: string; mask?: boolean; size?: number }> = {
   email: { src: '/icons/integrations/gmail.svg' },
   calendar: { src: '/icons/integrations/google-calendar.svg' },
@@ -30,6 +30,7 @@ const ICONS: Record<CapKey, { src: string; mask?: boolean; size?: number }> = {
   linkedin: { src: '/icons/integrations/linkedin.png' },
   youtube: { src: '/icons/integrations/youtube.png', size: 1.35 }, // the official file includes its clear space
   instagram: { src: '/icons/integrations/instagram.png' },
+  facebook: { src: 'https://logos.composio.dev/api/facebook' }, // the same logo service Connect apps uses (see SOURCES.md)
   profit: { src: '/icons/integrations/analytics.svg', mask: true },
   sheets: { src: '/icons/integrations/google-sheets.svg' },
   phone: { src: '/icons/integrations/phone.svg', mask: true },
@@ -55,6 +56,8 @@ const CAPS: Cap[] = [
   { k: 'whatsapp', n: 'WhatsApp', c: '#25d366', re: /whatsapp/i, h: 'Preparing a WhatsApp message', can: 'Draft a WhatsApp message, pick the group or number, preview it, and send only after you press Confirm.', ready: 'part', ask: '' },
   { k: 'linkedin', n: 'LinkedIn', c: '#4a8cff', re: /linkedin/i, h: 'Checking LinkedIn', can: 'Write a post (with an image) and publish it after your yes.', ready: 'part', ask: 'Write a LinkedIn post about ' },
   { k: 'youtube', n: 'YouTube', c: '#ff5a4f', re: /youtube|yt-dlp|higgsfield/i, h: 'Working on your video', can: 'Draft a short video and its SEO package (title, description, tags).', ready: 'part', ask: 'Make a 15-second YouTube video about ' },
+  // Before Instagram: a Facebook reel is Facebook's, whatever words the tool uses.
+  { k: 'facebook', n: 'Facebook', c: '#4a90ff', re: /facebook|\bfb\b/i, h: 'Checking Facebook', can: 'Show your Page’s reels and posts, once Facebook is connected.', ready: 'part', ask: 'Connect my Facebook Page' },
   { k: 'instagram', n: 'Instagram', c: '#f06aa8', re: /instagram|\breel/i, h: 'Checking Instagram', can: 'Make a GIF/reel and publish it after your yes.', ready: 'part', ask: 'Make an Instagram GIF about ' },
   { k: 'profit', n: 'Profit', c: '#c9a6ff', re: /profit|p&l|expense|revenue|ledger|gst/i, h: 'Checking your numbers', can: 'Answer “what is my profit?” from a money log.', ready: 'no', ask: 'What is my profit this month?' },
   { k: 'sheets', n: 'Sheets', c: '#34a853', re: /googlesheets|google ?sheets?|spreadsheet|xlsx|excel|openpyxl|\.csv\b/i, h: 'Working on your sheet', can: 'Show your latest Google Sheets, and build a sheet with totals from numbers you give.', ready: 'yes', ask: 'Build a Google Sheet: ' },
@@ -147,7 +150,7 @@ export function SidebarOrb() {
   if (!bot) return null;
 
   const pick = (c: Cap) => {
-    // WhatsApp, Email, Calendar, LinkedIn, YouTube, Instagram and Sheets open their windows; the rest start a request to Zubi.
+    // WhatsApp, Email, Calendar, LinkedIn, YouTube, Instagram, Facebook and Sheets open their windows; the rest start a request to Zubi.
     if (c.k === 'whatsapp') { useStore.getState().set({ waOpen: true }); return; }
     const win = WINDOW_OF[c.k];
     if (win) { openPanel(win); return; }
