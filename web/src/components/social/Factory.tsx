@@ -2,6 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { AlertTriangle, Archive, ArrowLeft, CalendarClock, Check as CheckIcon, Clapperboard, Copy, Download, Ellipsis, Film, ImageIcon, LayoutTemplate, Lightbulb, Loader2, MonitorSmartphone, PanelRightClose, PanelRightOpen, PenLine, RefreshCw, Trash2, Users, Volume2, X } from 'lucide-react';
 import { epFileUrl, saidDone, seriesFileUrl, socialApi, usd, voiceDrift, waitingSaid, type ChatState, type Check, type Episode, type Shot, type Slot, type StageId, type Version } from '../../lib/socialApi';
 import { lsGet, lsSet } from '../../lib/storage';
+import { useStore } from '../../store';
+import { Composer } from '../Composer';
+import { genUrl } from '../GenerationsView';
+import { VoiceCallBar } from '../VoiceCallBar';
 import { Markdown } from '../Markdown';
 import '../../styles/factory.css';
 
@@ -279,13 +283,14 @@ function ScheduleTab({ ep, slots }: VP) {
 const VIEWS: Record<TabId, (p: VP) => ReactNode> = { story: StoryTab, script: ScriptTab, cast: CastTab, screens: ScreensTab, storyboard: BoardTab, render: RenderTab, cover: CoverTab, schedule: ScheduleTab };
 
 // ---------- the Zubi window ----------
+const PIC = /\[Attached picture: ([^\s\]]+) — [^\]]*\]/g;
 function ZubiPanel({ id, ep, onChange, onShut }: { id: string; ep: Episode; onChange: () => void; onShut: () => void }) {
   const [chat, setChat] = useState<ChatState | null>(null);
-  const [text, setText] = useState(() => lsGet(`socialDraft-${id}`) ?? '');
+  const bot = useStore((s) => s.bots.find((b) => b.isPrimary));
   const [err, setErr] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [w, setW] = useState(() => Math.min(620, Math.max(300, Number(lsGet('zubiWidth')) || 400)));
-  const stick = useRef(true), end = useRef<HTMLDivElement>(null), box = useRef<HTMLTextAreaElement>(null);
+  const stick = useRef(true), end = useRef<HTMLDivElement>(null);
   const load = useCallback(() => { socialApi.chat(id, null).then(setChat).catch((e) => setErr((e as Error).message)); }, [id]);
   useEffect(() => {
     load();
@@ -294,23 +299,20 @@ function ZubiPanel({ id, ep, onChange, onShut }: { id: string; ep: Episode; onCh
     const t = setInterval(load, 8000);
     return () => { window.removeEventListener('heyzubi:event', on); clearInterval(t); };
   }, [id, load]);
-  useEffect(() => { lsSet(`socialDraft-${id}`, text); }, [id, text]);
-  useEffect(() => { const on = (e: Event) => { const t = (e as CustomEvent<string>).detail; setText((x) => (/^(\d{1,2}|Cover \d{1,2})$/.test(t) || !x.trim() ? t : `${x.trim()}\n${t}`)); setTimeout(() => { const b = box.current; if (b) { b.focus(); b.setSelectionRange(b.value.length, b.value.length); } }, 30); }; window.addEventListener('zubi:mention', on); return () => window.removeEventListener('zubi:mention', on); }, []);
   const last = chat?.messages[chat.messages.length - 1]?.id, working = chat?.busy ?? null, step = chat?.step ?? null;
   useEffect(() => { if (stick.current) end.current?.scrollIntoView({ block: 'nearest' }); }, [last, working, step?.text, chat?.did.length]);
   useEffect(() => { stick.current = true; end.current?.scrollIntoView({ block: 'nearest' }); }, [last]);
   const send = useCallback(async (t: string) => {
     setErr(null); setSending(true);
-    try { setChat(await socialApi.say(id, t, null)); setText(''); onChange(); } catch (e) { setErr((e as Error).message); }
-    setSending(false);
+    try { setChat(await socialApi.say(id, t, null)); onChange(); } finally { setSending(false); }
   }, [id, onChange]);
   // Corrections kept from before are sent once Zubi is free.
   const ready = !!chat && !working && !sending;
-  useEffect(() => { const q = waitingSaid(id); if (ready && q.length) { saidDone(id, q.length); void send(q.join('\n')); } }, [ready, id, send]);
-  const go = () => { const t = text.trim(); if (t && !working && !sending) void send(t); };
+  useEffect(() => { const q = waitingSaid(id); if (ready && q.length) { saidDone(id, q.length); void send(q.join('\n')).catch((e) => { setErr((e as Error).message); window.dispatchEvent(new CustomEvent('zubi:mention', { detail: q.join('\n') })); }); } }, [ready, id, send]);
   const drag = (e: React.PointerEvent) => { const el = e.currentTarget as HTMLElement, x0 = e.clientX, w0 = w; let v = w0; el.setPointerCapture(e.pointerId); const mv = (m: PointerEvent) => { v = Math.min(620, Math.max(300, w0 + x0 - m.clientX)); setW(v); }; const up = () => { el.removeEventListener('pointermove', mv); el.removeEventListener('pointerup', up); lsSet('zubiWidth', String(Math.round(v))); }; el.addEventListener('pointermove', mv); el.addEventListener('pointerup', up); };
   const name = chat?.agent ?? 'Zubi', ask = chat?.messages.slice().reverse().find((m) => m.data.proposals?.some((p) => p.state === 'open'))?.data.proposals?.filter((p) => p.state === 'open') ?? [];
-  const hint = useMemo(() => { const k = ask[0]?.kind; if (working) return `${name} is working…`; if (k === 'story') return 'A number, or your own story'; if (k === 'cover') return 'A number, or a time in the cut'; if (k === 'schedule') return '“schedule”, or “I’ll do it”'; if (ask.length > 1) return 'Numbers, “all”, or what to change'; if (ask.length) return '“approve”, or what to change'; return 'Tell me what you want'; }, [ask, working, name]);
+  const hint = useMemo(() => { const k = ask[0]?.kind; if (working) return ''; if (k === 'story') return 'with a number, or your own story'; if (k === 'cover') return 'with a number, or a time in the cut'; if (k === 'schedule') return '“schedule”, or “I’ll do it”'; if (ask.length > 1) return 'with numbers, “all”, or what to change'; if (ask.length) return '“approve”, or what to change'; return ''; }, [ask, working]);
+  const reply = chat?.messages.slice().reverse().find((m) => m.role === 'agent' && !m.data.step);
   const quiet = (m: ChatState['messages'][0]) => m.data.step && m.role === 'agent';
   return (
     <aside className="zp" style={{ width: w }} aria-label={`${name} window`}>
@@ -320,7 +322,7 @@ function ZubiPanel({ id, ep, onChange, onShut }: { id: string; ep: Episode; onCh
         {chat?.messages.map((m) => quiet(m) ? <p key={m.id} className="zp__step"><CheckIcon size={12} aria-hidden /> {m.text}<time>{when(m.at)}</time></p> : (
           <article key={m.id} className={`zp__m is-${m.role}${m.data.error ? ' is-bad' : ''}`}>
             <small>{m.role === 'you' ? 'You' : name} · {when(m.at)}</small>
-            {m.role === 'you' ? <p>{m.text}</p> : <Markdown text={m.text} />}
+            {m.role === 'you' ? <><p>{m.text.replace(PIC, '').trim()}</p>{[...m.text.matchAll(PIC)].map((x) => <div key={x[1]} className="zp__pics"><img src={genUrl(x[1])} alt="Attached" loading="lazy" /></div>)}</> : <Markdown text={m.text} />}
             {(!!m.data.did?.length || !!m.data.no?.length) && <ul className="zp__did">{m.data.did?.map((d, i) => <li key={`d${i}`}><CheckIcon size={12} aria-hidden /> {d}</li>)}{m.data.no?.map((d, i) => <li key={`n${i}`} className="is-no"><X size={12} aria-hidden /> {d}</li>)}</ul>}
             {!!m.data.images?.length && <div className="zp__pics">{m.data.images.map((p) => <a key={p} href={epFileUrl(id, p)}><img src={epFileUrl(id, p)} alt="What was looked at" loading="lazy" /></a>)}</div>}
             {!!m.data.proposals?.length && <ol className="zp__asks">{m.data.proposals.map((p, i) => <li key={i} className={`is-${p.state}`}><span>{m.data.proposals!.length > 1 ? `${i + 1}. ` : ''}{p.label}</span><em>{p.state === 'done' ? 'Yes' : p.state === 'no' ? 'No' : p.state === 'old' ? 'Asked again later' : 'Waiting for your answer'}</em>{p.why && <small>{p.why}</small>}</li>)}</ol>}
@@ -331,10 +333,13 @@ function ZubiPanel({ id, ep, onChange, onShut }: { id: string; ep: Episode; onCh
         <div ref={end} />
       </div>
       {err && <div className="card__error zp__err">{err}</div>}
-      <form onSubmit={(e) => { e.preventDefault(); go(); }}>
-        <textarea ref={box} className="text-input" rows={2} value={text} maxLength={4000} placeholder={hint} aria-label={`Write to ${name} about Episode ${ep.num}`} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); go(); } }} />
-        <button type="submit" className="btn btn--primary btn--sm" disabled={!text.trim() || !!working || sending}>{sending ? '…' : 'Send'}</button>
-      </form>
+      <VoiceCallBar />
+      {bot && <Composer bot={bot} running={!!working} target={{
+        key: `socialDraft-${id}`, label: `Write to ${name} about Episode ${ep.num}`, hint: hint ? `Reply ${hint}` : '', checkVoice: ask.length > 0 || !!working, reply: reply ? { id: reply.id, text: reply.text } : null,
+        // Kept in the box while Zubi works: sent later by itself, it could answer a question that wasn't there yet.
+        send: async (t) => { if (working || sending) throw new Error(`${name} is still working. Your message stays in the box; press Enter when it is done.`); await send(t); },
+        stop: () => socialApi.chatStop(id),
+      }} />}
     </aside>
   );
 }

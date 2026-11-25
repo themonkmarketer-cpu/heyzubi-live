@@ -11,6 +11,7 @@ import { speakReply, stopSpeaking, useSpeak } from '../voice/speak';
 import { AudioLines, Camera, ImagePlus, LayoutGrid, PhoneOff, Speech, SquarePen } from 'lucide-react';
 import { toggleCamera, useCamera } from './CameraBubble';
 import { PromptChips, usePrompts } from './PromptChips';
+import { lsGet, lsSet } from '../lib/storage';
 
 const MAX_H = 200;
 /** Replies up to this long are read aloud after a voice message; longer ones get a Listen button instead. */
@@ -23,8 +24,24 @@ export function prefillComposer(botId: string, text: string) {
   window.dispatchEvent(new CustomEvent('heyzubi:compose', { detail: { botId, text } }));
 }
 
-export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
-  const [text, setText] = useState(() => drafts.get(bot.id) ?? '');
+/** Another window where the owner talks with a team member (Reels Factory's Zubi window): the same box, its own thread. */
+export interface ComposerTarget {
+  /** Names the draft (kept in this browser). */
+  key: string;
+  label: string;
+  /** A line above the box: what can be answered now. */
+  hint?: string;
+  send: (text: string) => Promise<void>;
+  stop?: () => Promise<unknown>;
+  /** The team member's latest message, read aloud after a voice message. */
+  reply: { id: number; text: string } | null;
+  /** A spoken message goes into the box to be checked first (it would answer an approval or a price). */
+  checkVoice?: boolean;
+}
+export function Composer({ bot, running, target }: { bot: Bot; running: boolean; target?: ComposerTarget }) {
+  const key = target?.key ?? bot.id, own = !target;
+  const draft = () => drafts.get(key) ?? (own ? '' : lsGet(key) ?? '');
+  const [text, setText] = useState(draft);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
@@ -44,18 +61,26 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
   };
 
   // Per-bot drafts.
-  useEffect(() => { setText(drafts.get(bot.id) ?? ''); setError(null); ref.current?.focus(); }, [bot.id]);
-  useEffect(() => { drafts.set(bot.id, text); }, [bot.id, text]);
+  useEffect(() => { setText(draft()); setError(null); if (own) ref.current?.focus(); }, [key]);
+  useEffect(() => { drafts.set(key, text); if (!own) lsSet(key, text); }, [key, text]);
   useEffect(() => {
     const on = (e: Event) => {
       const d = (e as CustomEvent<{ botId: string; text: string }>).detail;
-      if (d?.botId !== bot.id) return;
+      if (!own || d?.botId !== bot.id) return;
       setText(d.text);
       setTimeout(() => { const el = ref.current; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 0);
     };
+    // Reels Factory: what is clicked on the page is named in the box.
+    const mention = (e: Event) => {
+      const t = (e as CustomEvent<string>).detail;
+      if (own) return;
+      setText((x) => (/^(\d{1,2}|Cover \d{1,2})$/.test(t) || !x.trim() ? t : `${x.trim()}\n${t}`));
+      setTimeout(() => { const el = ref.current; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 30);
+    };
     window.addEventListener('heyzubi:compose', on);
-    return () => window.removeEventListener('heyzubi:compose', on);
-  }, [bot.id]);
+    window.addEventListener('zubi:mention', mention);
+    return () => { window.removeEventListener('heyzubi:compose', on); window.removeEventListener('zubi:mention', mention); };
+  }, [bot.id, own]);
 
   // Auto-grow.
   useLayoutEffect(() => {
@@ -101,14 +126,14 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
   const send = async () => {
     const typed = text.trim();
     if ((!typed && !pics.length) || sending || picBusy) return;
-    const note = pics.map((p) => `[Attached picture: ${p.rel} — in Generations, ~/.hermes/generations/${p.rel}. To send it on WhatsApp use whatsapp_draft image="${p.rel}".]`).join('\n');
+    const note = pics.map((p) => !own ? `[Attached picture: ${p.rel} — in Generations]` : `[Attached picture: ${p.rel} — in Generations, ~/.hermes/generations/${p.rel}. To send it on WhatsApp use whatsapp_draft image="${p.rel}".]`).join('\n');
     const t = [typed || (pics.length ? 'Here is a picture.' : ''), note].filter(Boolean).join('\n\n');
     setSending(true); setError(null);
     try {
-      await api.send(bot.id, t);
-      if (picked.current) { void api.usedPrompt(bot.id, picked.current).catch(() => { /* only a count */ }); picked.current = null; }
+      if (target) await target.send(t); else await api.send(bot.id, t);
+      if (own && picked.current) { void api.usedPrompt(bot.id, picked.current).catch(() => { /* only a count */ }); picked.current = null; }
       setText(''); setPics([]);
-      drafts.delete(bot.id);
+      drafts.delete(key); if (!own) lsSet(key, '');
     } catch (e) {
       setError((e as Error).message || 'Message failed to send');
     } finally {
@@ -117,7 +142,7 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
     }
   };
 
-  const stop = () => api.interrupt(bot.id).catch((e) => setError(e.message));
+  const stop = () => (target ? target.stop?.() ?? Promise.resolve() : api.interrupt(bot.id)).catch((e: Error) => setError(e.message));
   const fresh = () => api.fresh(bot.id).catch((e) => setError(e.message));
 
   // Dictation: insert the transcript at the cursor.
@@ -147,6 +172,8 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
     const said = t.trim();
     if (!said) return;
     setError(null); setVmNote(null); stopSpeaking();
+    if (target?.checkVoice) { insertText(said); setVmNote('Check what was heard, then press Enter to send it.'); return; }
+    if (target) { try { const was = target.reply?.id ?? 0; await target.send(said); awaitSpeak.current = was; } catch (e) { insertText(said); setError((e as Error).message || 'Voice message failed to send'); } return; }
     try { const { row } = await api.send(bot.id, said, true); awaitSpeak.current = row.seq; }
     catch (e) { setError((e as Error).message || 'Voice message failed to send'); }
   };
@@ -155,6 +182,13 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
   const rowsBySeq = useStore((s) => s.transcripts[bot.id]?.bySeq);
   useEffect(() => {
     const after = awaitSpeak.current;
+    if (target) {
+      if (after === null || running || !target.reply || target.reply.id <= after) return;
+      awaitSpeak.current = null;
+      if (target.reply.text.length <= AUTO_SPEAK_MAX) void speakReply(bot.id, target.reply.text, `${key}:${target.reply.id}`);
+      else setVmNote(`${displayName(bot)}’s reply is long, so it wasn’t read aloud.`);
+      return;
+    }
     if (after === null || !rowsBySeq || liveState?.isRunning) return;
     const replies = Object.values(rowsBySeq)
       .filter((r) => r.seq > after && r.body.type === 'message' && r.body.role === 'assistant' && !r.body.streaming && !!r.body.text?.trim())
@@ -165,8 +199,8 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
     const last = replies[replies.length - 1];
     if (said.length <= AUTO_SPEAK_MAX) void speakReply(bot.id, said, `${bot.id}:${last.seq}`);
     else setVmNote(`${displayName(bot)}’s reply is long, so it wasn’t read aloud. Press the speaker next to it to listen.`);
-  }, [rowsBySeq, liveState?.isRunning, bot]);
-  useEffect(() => { awaitSpeak.current = null; setVmNote(null); }, [bot.id]);
+  }, [rowsBySeq, liveState?.isRunning, bot, running, target?.reply?.id]);
+  useEffect(() => { awaitSpeak.current = null; setVmNote(null); }, [key]);
   const speakError = useSpeak((s) => s.error);
   useEffect(() => { if (speakError) { setError(speakError); useSpeak.setState({ error: null }); } }, [speakError]);
   useEffect(() => { if (!vmNote) return; const t = setTimeout(() => setVmNote(null), 9000); return () => clearTimeout(t); }, [vmNote]);
@@ -199,7 +233,8 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
       {!error && !vmNote && voiceMsg.state !== 'idle' && <div className="composer__note" role="status">{voiceMsg.state === 'recording'
           ? 'Recording a voice message… click the red button to send (Esc cancels)'
           : 'Transcribing and sending your voice message…'}</div>}
-      <PromptChips bot={bot} prompts={prompts} text={text} onPick={pickPrompt} />
+      {own && <PromptChips bot={bot} prompts={prompts} text={text} onPick={pickPrompt} />}
+      {target?.hint && <div className="composer__hint">{target.hint}</div>}
       <div className={`composer${multiline ? ' is-multiline' : ''}`}>
         <div className="composer__left">
           <span className="composer__plus-anchor">
@@ -212,7 +247,7 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
                 onClose={() => setMenu(false)}
                 items={[
                   { label: 'Attach a picture', icon: <ImagePlus size={16} strokeWidth={1.8} />, onSelect: () => picRef.current?.click() },
-                  { label: 'New conversation', icon: <SquarePen size={16} strokeWidth={1.8} />, onSelect: fresh },
+                  ...(own ? [{ label: 'New conversation', icon: <SquarePen size={16} strokeWidth={1.8} />, onSelect: fresh }] : []),
                   { label: 'Connect apps', icon: <LayoutGrid size={16} strokeWidth={1.8} />, onSelect: () => setModal('apps') },
                 ]}
               />
@@ -223,7 +258,8 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
             className="composer__input"
             rows={1}
             value={text}
-            placeholder={`Message ${displayName(bot)}`}
+            maxLength={own ? undefined : 4000}
+            placeholder={`Message ${own ? displayName(bot) : bot.name}`}
             onChange={(e) => setText(e.target.value)}
             onPaste={(e) => {
               const files = Array.from(e.clipboardData.files ?? []).filter((f) => f.type.startsWith('image/'));
@@ -232,7 +268,7 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); }
             }}
-            aria-label={`Message ${bot.name}`}
+            aria-label={target?.label ?? `Message ${bot.name}`}
           />
         </div>
         <div className="composer__right">

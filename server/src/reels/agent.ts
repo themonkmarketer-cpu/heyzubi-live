@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { db, now } from '../db.js';
 import { engineFor, primaryBotId } from '../engine.js';
+import { genFile } from '../generations.js';
 import { hub } from '../lib/hub.js';
 import { getBotRow } from '../store.js';
 import { packChecks } from './checks.js';
@@ -424,7 +425,9 @@ function mainChat(): string {
 }
 async function converse(id: string, talk: number, signal: AbortSignal, again_: boolean) {
   const did = working.get(id)!.did, no: string[] = [], shown: string[] = [], proposals: Proposal[] = [], steps: string[] = again_ ? ['- HeyZubi restarted while you were answering this message. Some of it may be done already: read LATEST EVENTS and the state before you act, and repeat nothing that is done.'] : [];
-  let images: { label: string; file: string }[] = [], reply = '', tokens = 0;
+  // Pictures the owner attached to the message being answered.
+  const last = rows(id, talk, 18).filter((r) => r.role === 'you').pop()?.text ?? '';
+  let images: { label: string; file: string }[] = [...last.matchAll(/\[Attached picture: ([^\s\]]+)[^\]]*\]/g)].map((m) => genFile(m[1])).filter((f): f is string => !!f && /\.(png|jpe?g)$/i.test(f) && fs.existsSync(f)).slice(0, 6).map((file) => ({ label: 'The owner attached this picture.', file })), reply = '', tokens = 0;
   for (let n = 1; n <= 7; n++) {
     const e = getEpisode(id);
     if (!e) return;
