@@ -137,6 +137,18 @@ export type CardBody =
       status: 'pending' | 'ready' | 'skipped';
     }
   | {
+      /** A file a team member saved in its Library: Open (when it can be shown) and Download. */
+      type: 'card';
+      card: 'file';
+      /** Whose Library, and the path in it. */
+      ownerId: string;
+      name: string;
+      path: string;
+      size: number;
+      canOpen: boolean;
+      status: 'saved';
+    }
+  | {
       type: 'card';
       card: 'draft';
       channel: 'email' | 'slack' | 'message';

@@ -5,6 +5,8 @@ import { useStore } from '../../store';
 import { Icon } from '../Icon';
 import { ToolkitLogo } from '../ToolkitLogo';
 import { TeammateCard } from './TeammateCard';
+import { downloadFile, openFile } from '../../lib/openFile';
+import { formatBytes } from '../config/ui';
 
 type Card<K extends CardBody['card']> = Extract<CardBody, { card: K }>;
 
@@ -201,6 +203,24 @@ export function DraftCard({ body }: { body: Card<'draft'> }) {
   );
 }
 
+/** A file saved to the Library: Open (sealed, see lib/openFile) and Download. */
+function FileCard({ body }: { body: Card<'file'> }) {
+  const { busy, error, run } = useBusy();
+  return (
+    <div className="card file-card">
+      <div className="file-card__main">
+        <span className="file-card__icon" aria-hidden><Icon name="file" size={18} opacity={0.75} /></span>
+        <span className="file-card__text"><span className="file-card__name" title={body.name}>{body.name}</span><span className="file-card__meta">Saved to the Library · {formatBytes(body.size)}</span></span>
+      </div>
+      <div className="card__actions">
+        <button type="button" className="btn btn--secondary" disabled={!!busy} onClick={() => run('download', () => downloadFile(body.ownerId, body.path))}>{busy ? 'Getting it…' : 'Download'}</button>
+        {body.canOpen && <button type="button" className="btn btn--primary" onClick={() => openFile(body.ownerId, body.path)}>Open</button>}
+      </div>
+      {error && <div className="card__error">{error}</div>}
+    </div>
+  );
+}
+
 export function CardRow({ row }: { row: Row }) {
   const b = row.body;
   if (b.type !== 'card') return null;
@@ -209,6 +229,7 @@ export function CardRow({ row }: { row: Row }) {
     case 'question': return <QuestionCard row={row} body={b} />;
     case 'connect': return <ConnectCard row={row} body={b} />;
     case 'draft': return <DraftCard body={b} />;
+    case 'file': return <FileCard body={b} />;
     case 'teammate': return <TeammateCard row={row} body={b} />;
     default: return null;
   }

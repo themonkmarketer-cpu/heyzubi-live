@@ -22,6 +22,7 @@ import { CameraBubble } from './components/CameraBubble';
 import { GenerationsView } from './components/GenerationsView';
 import { CapabilityWatcher, LivePanels } from './components/LivePanels';
 import { WallpaperPicker } from './components/WallpaperPicker';
+import { FileViewer } from './lib/openFile';
 import { useWallpaper } from './lib/wallpapers';
 
 function Shell() {
@@ -84,6 +85,7 @@ function Shell() {
       <CapabilityWatcher />
       <LivePanels />
       <ConfigLayer />
+      <FileViewer />
     </div>
   );
 }

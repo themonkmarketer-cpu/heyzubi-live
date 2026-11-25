@@ -10,6 +10,7 @@ import path from 'node:path';
 import { Readable } from 'node:stream';
 import { env } from './env.js';
 import { libraryRoot } from './paths.js';
+import { openAs, openHeaders } from './library-open.js';
 import { emitBot, getBotRow, listRoutines, listTasks } from './store.js';
 import { computerState, readyScreen, resetBotScreen } from './computer.js';
 import { box } from './box.js';
@@ -463,7 +464,7 @@ configApi.get('/bots/:id/files', async (c) => {
     const dir = `${libraryRoot()}/${b.id}${rel ? `/${rel}` : ''}`;
     const r = await box.bash(`mkdir -p ${shq(`${libraryRoot()}/${b.id}`)} && ls -la --time-style=+%s ${shq(dir)} 2>&1`, 30);
     if (r.exit_code !== 0) return c.json({ status: 'error', path: rel, files: [], error: (r.output ?? '').slice(0, 300) });
-    return c.json({ status: 'ok', path: rel, files: parseLs(r.output ?? '') });
+    return c.json({ status: 'ok', path: rel, files: parseLs(r.output ?? ''), canOpen: box.local });
   } catch (e: any) {
     return c.json({ status: 'error', path: rel, files: [], error: String(e?.message ?? e).slice(0, 300) });
   }
@@ -489,20 +490,37 @@ configApi.post('/bots/:id/files/download', async (c) => {
   }
 });
 
+/** A file in a bot's Library on this machine, or null when it isn't there (or a link leads outside the Library). */
+function libraryFile(botId: string, rel: string): string | null {
+  const root = `${libraryRoot()}/${botId}`;
+  try {
+    // Follow links before checking, so a link inside the library cannot point outside it.
+    const file = fs.realpathSync(`${root}/${rel}`);
+    return file.startsWith(fs.realpathSync(root) + '/') && fs.statSync(file).isFile() ? file : null;
+  } catch { return null; }
+}
+
+/** Show a file in the browser, sealed (library-open.ts); kinds that can't be shown are downloads only. */
+configApi.get('/bots/:id/files/open', (c) => {
+  const b = ownBot(c.get('user').id, c.req.param('id'));
+  if (!b || !box.local) return c.text('Not found.', 404);
+  const rel = safeRel(c.req.query('path'));
+  if (!rel) return c.text('Bad path.', 400);
+  const file = libraryFile(b.id, rel);
+  if (!file) return c.text('That file isn’t in the Library any more.', 404);
+  const name = rel.split('/').pop()!;
+  const as = openAs(name);
+  if (!as) return c.text('This kind of file can’t be shown here. Download it from the Library.', 415);
+  return new Response(Readable.toWeb(fs.createReadStream(file)) as ReadableStream, { headers: openHeaders(name, as, fs.statSync(file).size) });
+});
+
 configApi.get('/bots/:id/files/raw', (c) => {
   const b = ownBot(c.get('user').id, c.req.param('id'));
   if (!b || !box.local) return c.json({ error: 'not found' }, 404);
   const rel = safeRel(c.req.query('path'));
   if (!rel) return c.json({ error: 'bad path' }, 400);
-  const root = `${libraryRoot()}/${b.id}`;
-  let file: string;
-  try {
-    // Follow links before checking, so a link inside the library cannot point outside it.
-    file = fs.realpathSync(`${root}/${rel}`);
-    if (!file.startsWith(fs.realpathSync(root) + '/') || !fs.statSync(file).isFile()) throw new Error('outside');
-  } catch {
-    return c.json({ error: 'not found' }, 404);
-  }
+  const file = libraryFile(b.id, rel);
+  if (!file) return c.json({ error: 'not found' }, 404);
   const name = rel.split('/').pop()!;
   return new Response(Readable.toWeb(fs.createReadStream(file)) as ReadableStream, {
     headers: {

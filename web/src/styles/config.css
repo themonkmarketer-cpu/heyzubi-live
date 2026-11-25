@@ -353,3 +353,11 @@ textarea.pa-input { resize: vertical; line-height: 19px; }
 .profile__name-row { display: flex; gap: 8px; }
 
 .health-item__fix { padding: 0 14px 10px 43px; }
+
+/* Library: Open, and the panel the Windows app shows a file in */
+.lib-open { flex-shrink: 0; }
+.file-viewer { z-index: 160; }
+.modal.file-viewer__box { display: flex; flex-direction: column; width: min(1200px, 100%); max-width: none; height: 100%; max-height: none; overflow: hidden; }
+.file-viewer__bar { display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 16px; border-bottom: 0.5px solid var(--color-border-secondary); }
+.file-viewer__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
+.file-viewer__frame { flex: 1; width: 100%; border: 0; background: #fff; color-scheme: light; }

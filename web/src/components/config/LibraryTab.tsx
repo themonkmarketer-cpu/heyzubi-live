@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { Bot, LibraryFile } from '@shared/types';
 import { configApi, type LibraryListing } from '../../lib/configApi';
 import { relativeShort } from '../../lib/time';
+import { canOpen, downloadFile, openFile } from '../../lib/openFile';
 import { useStore } from '../../store';
 import { Icon } from '../Icon';
 import { Glyph } from './glyphs';
@@ -30,14 +31,12 @@ export function LibraryTab({ bot }: { bot: Bot }) {
     const rel = path ? `${path}/${f.name}` : f.name;
     setBusyFile(f.name); setError(null);
     try {
-      const { url } = await configApi.downloadFile(bot.id, rel);
-      const a = document.createElement('a');
-      a.href = url; a.download = f.name; a.rel = 'noopener';
-      document.body.appendChild(a); a.click(); a.remove();
+      await downloadFile(bot.id, rel);
     } catch (e) { setError(`Couldn’t download ${f.name}: ${(e as Error).message}`); }
     finally { setBusyFile(null); }
   };
 
+  const opens = (f: LibraryFile) => !f.isDir && !!list?.canOpen && canOpen(f.name);
   const crumbs = path ? path.split('/') : [];
 
   return (
@@ -76,7 +75,7 @@ export function LibraryTab({ bot }: { bot: Bot }) {
           ) : (
             list.files.map((f) => (
               <div key={f.name} className={`lib-row${f.isDir ? ' is-dir' : ''}`}>
-                <button type="button" className="lib-row__main" onClick={() => (f.isDir ? setPath(path ? `${path}/${f.name}` : f.name) : download(f))} title={f.isDir ? `Open ${f.name}` : `Download ${f.name}`}>
+                <button type="button" className="lib-row__main" onClick={() => { const rel = path ? `${path}/${f.name}` : f.name; if (f.isDir) setPath(rel); else if (opens(f)) openFile(bot.id, rel); else void download(f); }} title={f.isDir || opens(f) ? `Open ${f.name}` : `Download ${f.name}`}>
                   <span className="lib-row__icon"><Glyph name={f.isDir ? 'folder' : 'doc'} size={16} opacity={0.6} /></span>
                   <span className="panel-row__text">
                     <span className="panel-row__title">{f.name}</span>
@@ -84,9 +83,12 @@ export function LibraryTab({ bot }: { bot: Bot }) {
                   </span>
                 </button>
                 {f.isDir ? <Icon name="chev_right" size={12} opacity={0.5} /> : (
+                  <>
+                  {opens(f) && <button type="button" className="cfg-btn lib-open" onClick={() => openFile(bot.id, path ? `${path}/${f.name}` : f.name)}>Open</button>}
                   <button type="button" className="cfg-icon-btn" onClick={() => download(f)} disabled={busyFile === f.name} aria-label={`Download ${f.name}`} title="Download">
                     {busyFile === f.name ? <span className="cfg-spinner" /> : <Glyph name="download" size={14} />}
                   </button>
+                  </>
                 )}
               </div>
             ))

@@ -4,6 +4,7 @@ import { hub } from '../lib/hub.js';
 import { box } from '../box.js';
 import { env } from '../env.js';
 import { libraryRoot } from '../paths.js';
+import { openAs } from '../library-open.js';
 import { appendRow, getBotRow, listRoutines, toRoutine, describeCron } from '../store.js';
 import { batchActions, executeComposio, LOOKUP_META_TOOLS, MULTI_EXECUTE, SANDBOX_META_TOOLS, toolkitInfo } from '../composio.js';
 import { scheduleRoutine, unscheduleRoutine } from '../routines.js';
@@ -135,6 +136,11 @@ export async function memberStatus(bot: any) {
   };
 }
 
+/** Shows a file just saved to a bot's Library as a card in its chat (Open and Download). */
+function fileCard(botId: string, name: string, content: string) {
+  appendRow(botId, 'card', { type: 'card', card: 'file', ownerId: botId, name, path: name, size: Buffer.byteLength(content), canOpen: box.local && !!openAs(name), status: 'saved' });
+}
+
 export const TOOLS: ToolDef[] = [
   {
     name: 'save_file',
@@ -145,8 +151,10 @@ export const TOOLS: ToolDef[] = [
     impl: async (a, ctx) => {
       const name = String(a.filename).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120) || 'file.txt';
       const file = `${libraryRoot()}/${ctx.botId}/${name}`;
-      await box.writeFile(file, String(a.content ?? ''));
-      return { output: JSON.stringify({ ok: true, path: file }), summary: `Saved ${name}` };
+      const content = String(a.content ?? '');
+      await box.writeFile(file, content);
+      fileCard(ctx.botId, name, content);
+      return { output: JSON.stringify({ ok: true, library_file: name, path: file, shown_to_owner: 'A card with Open and Download is now in your chat. Point the owner to it; the path is on the server and means nothing on their computer.' }), summary: `Saved ${name}` };
     },
   },
   {
@@ -180,10 +188,8 @@ export const TOOLS: ToolDef[] = [
       if (!q) return { output: 'Error: question is empty.', summary: 'No question' };
       const r = await runResearch(ctx.userId, q, Number(a.helpers) || 2);
       const name = `research-${new Date().toISOString().slice(0, 10)}-${q.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40).replace(/-+$/, '')}.md`;
-      try { await box.writeFile(`${libraryRoot()}/${ctx.botId}/${name}`, `# ${q}
-
-${r.brief}
-`); } catch { /* the brief still comes back */ }
+      const brief = `# ${q}\n\n${r.brief}\n`;
+      try { await box.writeFile(`${libraryRoot()}/${ctx.botId}/${name}`, brief); fileCard(ctx.botId, name, brief); } catch { /* the brief still comes back */ }
       return { output: `${r.brief}
 
 (Saved to your Library as ${name}.)`, summary: `Brief with ${r.sources.length} sources` };
