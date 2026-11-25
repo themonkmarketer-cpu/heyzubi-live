@@ -93,7 +93,7 @@ export interface Episode {
   };
   cover: { candidates: { t: number; file: string; note?: string }[]; picked: string | null };
   pack: { instagram: string; facebook: string; commentInstagram: string; commentFacebook: string; /** The line for WhatsApp Status, and YouTube's pinned comment. */ whatsapp?: string; youtubeComment?: string; altText: string; keywords: string[]; facebookTags: string[]; youtubeTitle: string; youtubeDescription: string; youtubeTags: string[]; keywordPlaces: string[]; slot: string | null; platforms: string[]; checks: Check[]; folder: string | null } | null;
-  schedule: { method: 'zubi' | 'self' | null; results: Record<string, { status: 'asked' | 'scheduled' | 'live' | 'failed'; link?: string; note?: string; at: number }>; askedAt?: number };
+  schedule: { method: 'heyzubi' | 'zubi' | 'self' | null; results: Record<string, { status: 'asked' | 'scheduled' | 'live' | 'failed'; link?: string; note?: string; at: number; /** WhatsApp Status: HeyZubi posts it at the slot's time. */ due?: string; sending?: boolean }>; askedAt?: number };
 }
 
 export interface Slot { at: string; label: string; us: string; taken?: string }

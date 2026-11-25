@@ -14,6 +14,7 @@ import { enqueue } from '../agent/loop.js';
 import { giveToHermes } from '../engine.js';
 import { env } from '../env.js';
 import { packChecks } from './checks.js';
+import { accounts, browserOpen, closeBrowser, openForSignIn, PLATFORMS, postingBusy, signedIn, type Platform } from './poster.js';
 import { kieCheck, tvCheck, ProviderError } from './providers.js';
 import { chat, decide, editShot, send, stopChat, tidyLooks } from './agent.js';
 import { partFile } from './edit.js';
@@ -51,6 +52,9 @@ socialApi.get('/', (c) => {
     slots: ready ? slots(u, 10) : [], next: nextNum(u), keys: { topview: !!getKey('topview'), kie: !!getKey('kie') },
   });
 });
+socialApi.get('/posting', (c) => c.json({ signedIn: signedIn(), open: browserOpen(), busy: postingBusy(), accounts: { instagram: accounts().instagram?.handle ?? null, facebook: accounts().facebook?.page ?? null, youtube: accounts().youtube ? 'your channel' : null } }));
+socialApi.post('/posting/open', async (c) => { const p = STR((await body(c)).platform, 20); if (!PLATFORMS.includes(p as Platform)) throw new ReelError('No such platform.'); await openForSignIn(p as Platform); return c.json({ ok: true }); });
+socialApi.post('/posting/close', async (c) => { if (postingBusy()) throw new ReelError('It is scheduling right now.'); await closeBrowser(); return c.json({ ok: true }); });
 socialApi.put('/keys/:name', async (c) => {
   const name = c.req.param('name') as KeyName;
   if (name !== 'topview' && name !== 'kie') throw new ReelError('No such key.');

@@ -74,6 +74,14 @@ export async function start(id: string, stage: StageId, opts: Record<string, any
     try { if (done) finish(id, stage); else needYou(id, stage); } catch { /* deleted */ }
   })();
 }
+/** Work that isn't a step's own run (scheduling) holds the episode the same way: nothing else changes it meanwhile. */
+export function hold(id: string, stage: StageId): AbortSignal {
+  if (running.has(id)) throw new ReelError(`The ${running.get(id)!.stage} stage is working.`);
+  const ctrl = new AbortController();
+  running.set(id, { stage, ctrl });
+  return ctrl.signal;
+}
+export const release = (id: string) => { running.delete(id); };
 export function stop(id: string): boolean { const r = running.get(id); if (!r) return false; r.ctrl.abort(); return true; }
 
 // ---------- writing ----------
@@ -704,6 +712,10 @@ export function resumeReels() {
   for (const e of allEpisodes()) {
     const s = STAGES.find((x) => e.stages[x].status === 'running');
     if (!s) continue;
+    if (s === 'schedule') {
+      patch(e.id, (x) => { x.stages.schedule.status = 'needs_you'; delete x.stages.schedule.progress; for (const [k, r] of Object.entries(x.schedule.results)) if (r.status === 'asked') x.schedule.results[k] = { status: 'failed', at: now(), note: 'HeyZubi restarted while this was being scheduled. Say “schedule” again: what is scheduled already is found and not done twice.' }; });
+      continue;
+    }
     const paid = e.render.parts.some((p) => p.versions.some((v) => v.state === 'submitted' && v.task)) || e.cast.some((c) => c.task);
     patch(e.id, (x) => { x.stages[s].status = paid && s === 'review' ? 'needs_you' : 'failed'; x.stages[s].error = 'HeyZubi restarted while this was working. Press Run again: paid jobs are picked up where they were, not paid twice.'; delete x.stages[s].progress; });
     if (paid && (s === 'render' || s === 'cast')) { patch(e.id, (x) => { x.stages[s].status = 'ready'; delete x.stages[s].error; }); void start(e.id, s).catch((err) => console.warn('[reels] resume:', (err as Error).message)); }

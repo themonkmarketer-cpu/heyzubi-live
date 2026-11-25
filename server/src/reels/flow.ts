@@ -1,16 +1,11 @@
 // The flow in words: every step tells its result and asks its question in the Zubi window, and the owner's reply there is
 // the decision. A plain reply ("2", "approve", "yes to all") is understood here, by rule; anything longer goes to Zubi, and
 // even then a decision only counts when the owner's own message says it (agreed), after the question and its price were shown.
-import fs from 'node:fs';
-import path from 'node:path';
-import { enqueue } from '../agent/loop.js';
-import { giveToHermes, primaryBotId } from '../engine.js';
-import { env } from '../env.js';
 import { db, now } from '../db.js';
-import { appendRow, getBotRow } from '../store.js';
 import { musts } from './checks.js';
-import { approve, flow, isRunning, left, start } from './stages.js';
-import { epFile, getEpisode, istToMs, log, ownerOf, patch, ReelError, series, slotLabel, spent } from './store.js';
+import { openForSignIn, PLATFORMS, postAll, postingBusy, signedIn, TITLE, type Platform } from './poster.js';
+import { approve, flow, hold, isRunning, left, release, start } from './stages.js';
+import { allEpisodes, getEpisode, istToMs, log, patch, ReelError, slotLabel, spent } from './store.js';
 import { STAGES, type Episode, type StageId } from './types.js';
 
 export type GateKind = 'story' | 'script' | 'cast' | 'storyboard' | 'cut' | 'cover' | 'captions' | 'schedule' | 'again';
@@ -83,8 +78,13 @@ function announce(id: string, stage: StageId, what: 'started' | 'needs' | 'faile
     case 'schedule': {
       const p = e.pack, sl = p?.slot ? slotLabel(p.slot) : null;
       if (!p || !sl) return;
-      const tell = post;
-      setTimeout(() => tell(id, `**Everything is approved.** Nothing is scheduled yet.\n\nReply **schedule** and I schedule it for ${sl.label} on ${p.platforms.filter((k) => k !== 'whatsapp').join(', ')} (nothing is published now).${p.platforms.includes('whatsapp') ? ' WhatsApp Status stays with you; its video and caption are in the pack.' : ''} Reply **I’ll do it** to schedule it yourself.`, { proposals: [gate('schedule', `Schedule for ${sl.label}`)] }), 60);
+      const tell = post, off = Object.entries(e.schedule.results).filter(([, r]) => r.status === 'failed').map(([k]) => k), on = signedIn();
+      if (off.length) {
+        const need = PLATFORMS.filter((k) => off.includes(k) && !on[k]).map((k) => TITLE[k]);
+        setTimeout(() => tell(id, `**Not scheduled yet: ${off.join(', ')}.**${need.length ? ` First: the posting browser on Hermes isn’t signed in to ${need.join(', ')}. Say **sign in** and it opens on my screen; you sign in there yourself.` : ''}\n\nReply **schedule** and I try again for ${sl.label}, or **test schedule** to fill everything in without pressing Schedule.`, { proposals: [gate('schedule', `Schedule ${off.join(', ')} for ${sl.label}`)] }), 60);
+        return;
+      }
+      setTimeout(() => tell(id, `**Everything is approved.** Nothing is scheduled yet.\n\nReply **schedule** and I schedule it for ${sl.label} on ${p.platforms.filter((k) => k !== 'whatsapp').join(', ')} (nothing is published now)${p.platforms.includes('whatsapp') ? ', and I post the WhatsApp Status myself at that time' : ''}. Reply **I’ll do it** to schedule it yourself.`, { proposals: [gate('schedule', `Schedule for ${sl.label}`)] }), 60);
       return;
     }
     default: return;
@@ -94,7 +94,7 @@ flow.on = announce;
 /** An episode from before this thread, or one whose question was lost: its step asks (again). */
 export function ensureAsk(id: string) {
   const e = getEpisode(id);
-  if (!e || isRunning(id) || (e.stages.schedule.status === 'needs_you' && e.schedule.method)) return;
+  if (!e || isRunning(id) || (e.stages.schedule.status === 'needs_you' && e.schedule.method && (e.schedule.method === 'self' || !Object.values(e.schedule.results).some((r) => r.status === 'failed')))) return;
   const s = STAGES.find((k) => ['needs_you', 'failed'].includes(e.stages[k].status));
   if (!s) return;
   const p = post;
@@ -169,47 +169,101 @@ export async function carryOut(id: string, a: Ask, x: { pick?: number; custom?: 
   }
 }
 
-/** The owner asks Zubi to schedule the approved pack. It is a message to Zubi with the files; nothing is published now. */
-export function askSchedule(id: string, words: string): string {
+/** The owner said to schedule the approved pack: HeyZubi does it on the box, in its own Chrome (poster.ts). Nothing is published now. */
+export function askSchedule(id: string, words: string, dry = false): string {
   const e = getEpisode(id)!, p = e.pack;
   if (!p?.slot || !p.folder || e.stages.package.status !== 'done') throw new ReelError('Approve the captions first.');
   // WhatsApp Status is the owner's own phone: it is prepared here, never sent from here.
-  const ask = p.platforms.filter((k) => k !== 'whatsapp' && !['scheduled', 'live'].includes(e.schedule.results[k]?.status ?? ''));
-  if (!ask.length) throw new ReelError('There is nothing left for Zubi to schedule.');
-  if (istToMs(p.slot) < Date.now() + 25 * 60_000) throw new ReelError('That slot is too close or past. Tell me another one.');
-  const zubi = primaryBotId();
-  if (!zubi) throw new ReelError('The main team member isn’t set up.');
-  // A copy Zubi's own computer can open.
-  const name = path.basename(p.folder), dest = path.join(env.hermesHome, 'social', name);
-  fs.mkdirSync(path.dirname(dest), { recursive: true });
-  fs.rmSync(dest, { recursive: true, force: true });
-  fs.cpSync(epFile(e, p.folder), dest, { recursive: true });
-  giveToHermes(path.dirname(dest));
-  const l = slotLabel(p.slot);
-  appendRow(zubi, 'message', { type: 'message', role: 'user', text: `Schedule Episode ${e.num}, “${e.title}”, for ${l.label} on ${ask.join(', ')}.` });
-  enqueue(zubi, {
-    type: 'user',
-    text: `[Approved in Reels Factory by ${ownerName(id)}] Schedule Episode ${e.num} “${e.title}” for ${l.label} (${l.us}) on: ${ask.join(', ')}. Schedule only; publish nothing now, and nothing else. First look at the Instagram calendar: if that slot already has a post, stop and say so. Files: ${dest} (reel-v1.mp4, cover.jpg, caption-us-ig.txt, caption-us-fb.txt, youtube.txt, alt-text.txt, keywords.json). Use the files' text exactly.\n- Instagram (Meta Business Suite or instagram.com in your browser): crop Original, the cover as cover.jpg, AI label ON, auto captions off, “Share to” empty. Read the caption back before pressing Schedule, and afterwards check the calendar shows it exactly once.\n- Facebook Page only: the same time, caption-us-fb.txt, thumbnail cover.jpg, the tags in keywords.json in the Tags field when creating it. Check the copyright check passed and the Scheduled list shows it once.\n- YouTube Shorts (Studio): title, description and tags from youtube.txt, thumbnail cover.jpg, AI use Yes, not made for kids, category Education,${series().youtubePlaylist ? ` playlist “${series().youtubePlaylist}”,` : ''} scheduled to go public at the same time (India time). Open the saved page and check the title, description, tags and AI use. Do not post any comment.\nBefore pressing Schedule, check the account is ${series().handle}. If you are not signed in somewhere, stop and tell the owner to sign in on your screen: never enter a password or code. After each one is confirmed on screen, call reel_schedule_report for it. If something blocks one, report it as failed with the reason and do the others.`,
-  });
-  patch(id, (x) => { x.schedule.method = 'zubi'; x.schedule.askedAt = now(); x.stages.schedule.status = 'needs_you'; for (const k of ask) x.schedule.results[k] = { status: 'asked', at: now() }; });
-  log(id, 'schedule', 'approve', `Asked ${getBotRow(zubi)?.name ?? 'Zubi'} to schedule ${ask.join(', ')} for ${l.label}${words ? `. “${words.slice(0, 120)}”` : ''}`);
-  return `Asked for ${ask.join(', ')}, ${l.label}. I report each platform here when it is done.`;
+  const on = signedIn();
+  let ask = PLATFORMS.filter((k) => p.platforms.includes(k) && !['scheduled', 'live'].includes(e.schedule.results[k]?.status ?? ''));
+  if (!ask.length) throw new ReelError('There is nothing left to schedule.');
+  if (istToMs(p.slot) < Date.now() + 45 * 60_000) throw new ReelError('That slot is too close or past. Tell me another one.');
+  const off = ask.filter((k) => !on[k]).map((k) => TITLE[k]);
+  const wa = ask.includes('whatsapp') && on.whatsapp;
+  if (dry && off.length < ask.length) ask = ask.filter((k) => on[k]); // what is signed in is tried
+  else if (off.length) throw new ReelError(`The posting browser on Hermes isn’t signed in to ${off.join(', ')} yet, so nothing was started. Say “sign in”: it opens on my screen and you sign in there yourself. Then say “schedule” again.`);
+  if (!dry) ask = ask.filter((k) => k !== 'whatsapp'); // posted at its time, not now
+  const signal = hold(id, 'schedule'), l = slotLabel(p.slot);
+  const state = (fn: (x: Episode) => void) => patch(id, (x) => { x.stages.schedule.status = 'running'; fn(x); });
+  state((x) => { x.stages.schedule.progress = 'Starting'; if (dry) return; x.schedule.method = 'heyzubi'; x.schedule.askedAt = now(); for (const k of ask) x.schedule.results[k] = { status: 'asked', at: now() }; if (wa) x.schedule.results.whatsapp = { status: 'scheduled', due: p.slot!, at: now(), note: `HeyZubi posts it to My Status at ${slotLabel(p.slot!).label}.` }; });
+  log(id, 'schedule', dry ? 'run' : 'approve', `${dry ? 'Trying out' : 'Scheduling'} ${ask.join(', ')} for ${l.label}${words ? `. “${words.slice(0, 120)}”` : ''}`);
+  void (async () => {
+    const told = new Set<string>();
+    try {
+      await postAll(getEpisode(id)!, ask, {
+        signal, dry, say: (t) => state((x) => { x.stages.schedule.progress = t; }),
+        done: (k: Platform, r) => {
+          told.add(k);
+          if (dry) post(id, 'error' in r ? `**${TITLE[k]}: the try stopped.** ${r.error}` : `**${TITLE[k]}: ready.** ${r.note}`, { ...('error' in r ? { error: true } : {}), images: r.shot ? [r.shot] : [] });
+          else if ('error' in r) markSchedule(id, k, 'failed', '', r.error, 'HeyZubi', r.shot ? [r.shot] : []);
+          else markSchedule(id, k, 'scheduled', r.link ?? '', r.note, 'HeyZubi');
+          state(() => {});
+        },
+      });
+    } catch (err) {
+      const m = err instanceof ReelError ? err.message : 'Something went wrong.';
+      if (!(err instanceof ReelError)) console.warn('[reels] schedule:', err);
+      if (dry) post(id, m, { error: true }); else for (const k of ask) if (!told.has(k)) markSchedule(id, k, 'failed', '', m, 'HeyZubi');
+    } finally {
+      if (!dry && wa) post(id, `**WhatsApp Status: waiting for its time.** I post it to My Status at ${l.label}, after one more check.`);
+      release(id);
+      try {
+        patch(id, (x) => {
+          delete x.stages.schedule.progress;
+          if (!dry) for (const k of ask) if (x.schedule.results[k]?.status === 'asked') x.schedule.results[k] = { status: 'failed', note: 'Stopped before its turn.', at: now() };
+          x.stages.schedule.status = x.pack!.platforms.every((k) => ['scheduled', 'live'].includes(x.schedule.results[k]?.status ?? '')) ? 'done' : 'needs_you';
+        });
+        if (!dry && Object.values(getEpisode(id)!.schedule.results).some((r) => r.status === 'failed')) announce(id, 'schedule', 'needs');
+      } catch { /* the episode was deleted */ }
+    }
+  })();
+  if (!ask.length) return `WhatsApp Status: I post it to My Status at ${l.label}.`;
+  return dry ? `Trying it out on ${ask.join(', ')}: everything is filled in and checked, and Schedule is not pressed.` : `Scheduling ${ask.join(', ')} for ${l.label}, one after the other. I report each one here.`;
 }
-const ownerName = (id: string) => String((db.prepare('SELECT name FROM users WHERE id=?').get(ownerOf(id) ?? '') as any)?.name ?? 'the owner');
+/** Opens the posting browser on the team member's screen, at the first account that still needs a sign-in. */
+/** WhatsApp has no scheduler: HeyZubi posts each waiting Status when its time comes (from 2 minutes before to an hour after). */
+export function initStatusPosts() {
+  const tick = () => {
+    if (postingBusy()) return;
+    for (const e of allEpisodes()) {
+      const r = e.schedule.results.whatsapp;
+      if (!r || r.status !== 'scheduled' || !r.due || isRunning(e.id)) continue;
+      if (r.sending) { patch(e.id, (x) => { x.schedule.results.whatsapp = { status: 'failed', at: now(), note: 'HeyZubi stopped while this was being sent. It is not sent again: look at My status on your phone.' }; }); continue; }
+      const late = (Date.now() - istToMs(r.due)) / 60_000;
+      if (late < -2) continue;
+      if (late > 60) { markSchedule(e.id, 'whatsapp', 'failed', '', `Its time (${slotLabel(r.due).label}) passed more than an hour ago while HeyZubi couldn’t post it. Nothing was sent.`, 'HeyZubi'); continue; }
+      let signal: AbortSignal;
+      try { signal = hold(e.id, 'schedule'); } catch { continue; }
+      void postAll(e, ['whatsapp'], {
+        signal, say: () => {}, sending: () => patch(e.id, (x) => { if (x.schedule.results.whatsapp) x.schedule.results.whatsapp.sending = true; }),
+        done: (_k, res) => { if ('error' in res) markSchedule(e.id, 'whatsapp', 'failed', '', res.error, 'HeyZubi'); else markSchedule(e.id, 'whatsapp', 'live', '', res.note, 'HeyZubi', res.shot ? [res.shot] : []); },
+      }).catch((err) => markSchedule(e.id, 'whatsapp', 'failed', '', (err as Error).message, 'HeyZubi')).finally(() => release(e.id));
+      return; // one at a time
+    }
+  };
+  setInterval(() => { try { tick(); } catch (err) { console.warn('[reels] status:', (err as Error).message); } }, 30_000).unref();
+}
+export async function askSignIn(want?: Platform): Promise<string> {
+  const on = signedIn(), p = want ?? PLATFORMS.find((k) => !on[k]);
+  if (!p) return 'Instagram, Facebook, YouTube and WhatsApp are all signed in on the posting browser. Say “schedule” when you want.';
+  await openForSignIn(p);
+  return `The posting browser is open on my screen at ${TITLE[p]}. Open my screen, take control and ${p === 'whatsapp' ? 'scan the code with WhatsApp on your phone (Settings › Linked devices › Link a device)' : 'sign in yourself (I never type passwords or codes)'}. ${PLATFORMS.filter((k) => !on[k]).length > 1 ? 'Say “sign in” again for the next one. ' : ''}It takes about half a minute until I can see a sign-in.`;
+}
 
-export function markSchedule(id: string, platform: string, status: string, link: string, note: string, by: string) {
+export function markSchedule(id: string, platform: string, status: string, link: string, note: string, by: string, images: string[] = []) {
   const e = getEpisode(id);
   if (!e?.pack?.platforms.includes(platform)) throw new ReelError('That platform isn’t part of this episode.');
   if (!['scheduled', 'live', 'failed', 'asked'].includes(status)) throw new ReelError('Status is scheduled, live or failed.');
   const url = /^https:\/\/[^\s<>"]+$/.test(link) ? link : undefined;
   patch(id, (x) => {
     x.schedule.results[platform] = { status: status as any, ...(url ? { link: url } : {}), ...(note ? { note } : {}), at: now() };
+    if (platform === 'whatsapp') delete x.schedule.results.whatsapp?.sending;
     const all = x.pack!.platforms.every((k) => ['scheduled', 'live'].includes(x.schedule.results[k]?.status ?? ''));
     x.stages.schedule.status = all ? 'done' : 'needs_you';
     if (all) { x.stages.schedule.endedAt = now(); x.stages.schedule.approvedAt = now(); x.stages.schedule.approval = 'Scheduled everywhere'; }
   });
   log(id, 'schedule', status === 'failed' ? 'error' : 'info', `${platform}: ${status} (${by})${url ? ` ${url}` : ''}${note ? `. ${note}` : ''}`);
-  if (by !== 'you') post(id, status === 'failed' ? `**${platform}: not scheduled.** ${note}` : `**${platform}: ${status}.**${url ? ` ${url}` : ''}${note ? ` ${note}` : ''}`, status === 'failed' ? { error: true } : {});
+  if (by !== 'you') post(id, status === 'failed' ? `**${platform}: not scheduled.** ${note}` : `**${platform}: ${status}.**${url ? ` ${url}` : ''}${note ? ` ${note}` : ''}`, status === 'failed' ? { error: true, images } : {});
 }
 
 /** After a free change: whatever is out of date and can be made again for free is made again by itself. */

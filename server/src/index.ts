@@ -40,6 +40,7 @@ setTimeout(resumeInterrupted, 3000);
 // One Hermes session per team member: extras HeyZubi left behind go shortly after start and every hour.
 initSessionTidy();
 resumeReels();
+void import('./reels/flow.js').then((f) => f.initStatusPosts());
 // A message in an episode's session that was being answered when the last process stopped still gets its answer.
 setTimeout(resumeChats, 8000);
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, Archive, ArrowLeft, Check as CheckIcon, Clapperboard, Download, KeyRound, Loader2, Plus, X } from 'lucide-react';
-import { epFileUrl, socialApi, STAGE_INFO, STAGES, usd, type Brief, type Home, type StageId, type StageStatus } from '../../lib/socialApi';
+import { epFileUrl, socialApi, STAGE_INFO, STAGES, usd, type Brief, type Home, type Posting, type StageId, type StageStatus } from '../../lib/socialApi';
 import { lsGet, lsSet } from '../../lib/storage';
 import { useStore } from '../../store';
 import { Modal } from '../modals/Modal';
@@ -174,9 +174,35 @@ function Keys({ home, onClose, onSaved }: { home: Home; onClose: () => void; onS
         <KeyRow name="kie" title="kie.ai" set={home.keys.kie} about="The fallback for renders, used only when you choose it on the Render stage. About $4.20 a part, from the credits you have there. It is checked with a free call before it is saved." onSaved={onSaved} />
         <div className="skey"><div><b>ElevenLabs</b><small>Voices, through Zubi’s Composio. Nothing to add here.</small></div></div>
         <div className="skey"><div><b>Writing and checking</b><small>Zubi’s own Claude subscription.</small></div></div>
+        <PostingRow onOpened={close} />
         <p className="social__fine">Keys stay on the server, readable only by HeyZubi, and are never shown again.</p>
       </div>
     </Modal>
+  );
+}
+/** The Chrome on Hermes that schedules: signed in to by the owner, by hand, on the screen. */
+function PostingRow({ onOpened }: { onOpened: () => void }) {
+  const [p, setP] = useState<Posting | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const load = useCallback(() => { socialApi.posting().then(setP).catch(() => {}); }, []);
+  useEffect(() => { load(); const t = setInterval(load, 5000); return () => clearInterval(t); }, [load]);
+  const open = async (k: string) => {
+    setMsg(null);
+    try {
+      await socialApi.postingOpen(k);
+      const st = useStore.getState(), zubi = st.bots.find((b) => b.isPrimary);
+      if (zubi && st.selectedBotId !== zubi.id) st.selectBot(zubi.id);
+      st.set({ viewerOpen: true, viewerMode: 'control', viewerHint: 'Sign in here yourself. It shows under Connections half a minute later.' });
+      onOpened();
+    } catch (e) { setMsg((e as Error).message); }
+  };
+  return (
+    <div className="skey"><div><b>Posting browser</b><small>Schedules Instagram, the Facebook Page and YouTube from Hermes, and posts WhatsApp Status at its time. You sign in once, on the screen (WhatsApp: scan its code with your phone); HeyZubi never sees or types a password.</small></div>
+      {([['instagram', 'Instagram'], ['facebook', 'Facebook'], ['youtube', 'YouTube'], ['whatsapp', 'WhatsApp Status']] as const).map(([k, l]) => (
+        <div key={k} className="skey__row skey__post"><span>{l}{k !== 'whatsapp' && p?.accounts[k] ? ` (${p.accounts[k]})` : ''}</span>{p?.signedIn[k] ? <span className="spill is-done"><CheckIcon size={11} aria-hidden /> {k === 'whatsapp' ? 'Linked' : 'Signed in'}</span> : <span className="spill">{k === 'whatsapp' ? 'Not linked' : 'Not signed in'}</span>}<button type="button" className="btn btn--secondary btn--sm" disabled={!p || p.busy} onClick={() => void open(k)}>{p?.signedIn[k] ? 'Open' : k === 'whatsapp' ? 'Link' : 'Sign in'}</button></div>))}
+      {p?.open && !p.busy && <div className="skey__row skey__post"><span>It is open on the screen.</span><button type="button" className="btn btn--secondary btn--sm" onClick={() => void socialApi.postingClose().then(load, (e) => setMsg((e as Error).message))}>Close it</button></div>}
+      {msg && <div className="card__error">{msg}</div>}
+    </div>
   );
 }
 function KeyRow({ name, title, set, about, onSaved }: { name: string; title: string; set: boolean; about: string; onSaved: () => void }) {

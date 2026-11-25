@@ -123,3 +123,4 @@
 @media (max-width: 1180px) { .social__work { grid-template-columns: minmax(0, 1fr); overflow-y: auto; } .sstage { overflow: visible; } .sside { border-left: 0; border-top: 1px solid var(--color-border-tertiary); max-height: 520px; min-height: 320px; } .social__work.is-wide { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 820px) { .social__cards, .sopts, .sgrid2, .sparts, .sedit, .sreview__top { grid-template-columns: 1fr; } .sscreens.is-small { grid-template-columns: repeat(3, 1fr); } .sgate { flex-direction: column; align-items: stretch; } .social__scroll, .sstage { padding-left: 16px; padding-right: 16px; } }
 .sai { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; width: 100%; font-size: 12.5px; } .sai b, .sai small { flex-basis: 100%; }
+.skey__post { align-items: center; } .skey__post > span:first-child { flex: 1; font-size: 13px; }

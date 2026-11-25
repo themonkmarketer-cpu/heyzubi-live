@@ -23,7 +23,7 @@ export interface Episode {
   review: (Review | null)[]; studio?: StudioState | null;
   edit: { studioSig?: string; partFiles?: string[]; options: { musicDb: number; trimStart: number; trimEnd: number; dropShots: { part: number; shot: number }[]; brighten?: { part: number; shot: number }[]; trims?: { part: number; shot: number; in: number; out: number }[]; screenOn?: Record<string, string>; screens: Record<string, { on: boolean; f0?: number; f1?: number; motion?: string }>; captionFixes: [string, string][] }; final: string | null; seconds?: number; lufs?: number; peak?: number; version: number; checks: Check[]; previews?: string[]; screenStats?: Record<string, any> };
   cover: { candidates: { t: number; file: string }[]; picked: string | null }; pack: Pack | null;
-  schedule: { method: 'zubi' | 'self' | null; askedAt?: number; results: Record<string, { status: string; link?: string; note?: string; at: number }> };
+  schedule: { method: 'heyzubi' | 'zubi' | 'self' | null; askedAt?: number; results: Record<string, { status: string; link?: string; note?: string; at: number; due?: string }> };
 }
 /** The HyperFrames project of an episode's cut; null when the editor isn't set up on the server. */
 export interface StudioState { ready: boolean; made: boolean; changedAt?: number; seconds?: number; shots?: number; clips?: { id: string; part: number; shot: number; start: number; dur: number }[]; gone?: { part: number; shot: number }[]; sig?: string }
@@ -33,6 +33,7 @@ export interface ChatState { agent: string; online: boolean; talk: number; talks
 export interface Slot { at: string; label: string; us: string; taken?: string }
 export interface Brief { id: string; num: number; title: string; updatedAt: number; createdAt: number; archived: boolean; stages: Record<StageId, StageStatus>; progress: string | null; spent: number; cap: number; cover: string | null; slot: string | null; trade: string; aiEmployee: string; keyword: string; cast: string[]; platforms: string[]; links: Record<string, string>; scheduled: boolean }
 export interface Past { num: number; title: string; trade: string; aiEmployee: string; slot: string | null; usd: number | null; status: string; cast: string[]; hook: string[]; cover: string | null; links: Record<string, string>; youtubeAt: string | null; youtubeTitle: string; keyword: string; platforms: string[] }
+export interface Posting { signedIn: Record<'instagram' | 'facebook' | 'youtube' | 'whatsapp', boolean>; open: boolean; busy: boolean; accounts: Record<'instagram' | 'facebook' | 'youtube', string | null> }
 export interface CastInfo { key: string; name: string; about: string; image: string; look: string; voice: string; role?: 'hero' | 'closer' | '' }
 export interface Home {
   ready: boolean; series: { name: string; handle: string; hookTypes: string[]; assetsExpire: string; cast: CastInfo[]; voices: number } | null;
@@ -85,6 +86,9 @@ export const socialApi = {
   pack: (id: string, b: Record<string, unknown>) => call<Ep>('PATCH', ep(id, '/pack'), b),
   schedule: (id: string, b: Record<string, unknown>) => call<Ep>('POST', ep(id, '/schedule'), b),
   mark: (id: string, b: { platform: string; status: string; link?: string; note?: string }) => call<Ep>('POST', ep(id, '/schedule/mark'), b),
+  posting: () => call<Posting>('GET', '/posting'),
+  postingOpen: (platform: string) => call('POST', '/posting/open', { platform }),
+  postingClose: () => call('POST', '/posting/close'),
   key: (name: string, key: string) => call<{ set: boolean }>('PUT', `/keys/${name}`, { key }),
   block: (at: string, why: string | null) => call<{ slots: Slot[] }>('POST', '/slots/block', { at, why }),
 };
