@@ -274,7 +274,7 @@ function SocialTile({ post }: { post: SocialPost }) {
   );
 }
 
-/** The posts as a grid (Instagram, YouTube, Facebook), newest first or by any count, with the totals above. */
+/** The posts as a grid (Instagram, YouTube, Facebook, LinkedIn), newest first or by any count, with the totals above. */
 function SocialGrid({ posts, empty }: { posts: SocialPost[]; empty: string }) {
   const [sort, setSort] = useState<'new' | CountKey>('new');
   const shown = useMemo(() => (sort === 'new' ? posts : [...posts].sort((a, b) => (b[sort] ?? -1) - (a[sort] ?? -1))), [posts, sort]);
@@ -401,28 +401,62 @@ function FacebookPanel() {
 }
 
 interface LiProfile { name: string; headline: string; picture: string; url: string }
+interface LiExport { at: number; file: string; posts: SocialPost[] }
 function LinkedInPanel() {
-  const [data, setData] = useState<{ connected: boolean; profile?: LiProfile; error?: string } | null>(null);
-  const load = (fresh: boolean) => {
-    fetch(`/api/panels/linkedin${fresh ? '?fresh=1' : ''}`, { credentials: 'include' })
-      .then((r) => r.json()).then(setData).catch(() => setData({ connected: true, error: 'Couldn’t read LinkedIn just now.' }));
-  };
-  useEffect(() => { load(true); }, []);
+  const [data, load] = usePanelData<{ connected: boolean; profile?: LiProfile; export?: LiExport | null; error?: string }>('linkedin', 'LinkedIn', { connected: true });
+  // The file last uploaded (or removed) here, which is newer than what the window loaded with.
+  const [own, setOwn] = useState<LiExport | null | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState('');
+  const [sure, setSure] = useState(false);
+  const file = useRef<HTMLInputElement>(null);
   const p = data?.profile;
+  const exp = own === undefined ? data?.export ?? null : own;
+  const send = async (init: RequestInit) => {
+    setBusy(true); setProblem(''); setSure(false);
+    try {
+      const r = await fetch('/api/panels/linkedin/export', { credentials: 'include', ...init });
+      const j = await r.json();
+      if (r.ok) setOwn(j.export); else setProblem(j.error ?? 'That file couldn’t be read.');
+    } catch { setProblem('Couldn’t reach the server. Try again.'); }
+    setBusy(false);
+  };
+  const upload = (f?: File) => {
+    if (!f) return;
+    if (f.size > 8 * 1024 * 1024) { setProblem('That file is too big (8 MB at most).'); return; }
+    void send({ method: 'PUT', headers: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(f.name) }, body: f });
+  };
   return (
     <section className="lpanel" aria-label="LinkedIn">
       <PanelHead title="LINKEDIN" open="Open" href={p?.url || 'https://www.linkedin.com/feed/'} onRefresh={() => load(true)} onClose={() => usePanels.setState({ linkedin: null })} />
+      <input ref={file} type="file" hidden accept=".xls,.xlsx,.csv" aria-label="LinkedIn export file" onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ''; }} />
       {!data ? <p className="lpanel__mut">Loading your LinkedIn…</p>
-        : !data.connected ? <p className="lpanel__mut">Zubi has no LinkedIn account connected in her Composio. Ask her to connect LinkedIn.</p>
-        : data.error ? <p className="lpanel__mut">{data.error}</p>
-        : p && (
+        : exp ? (
           <>
             <div className="lig__prof">
-              {p.picture ? <img src={p.picture} alt="" referrerPolicy="no-referrer" /> : <span className="lig__pic" />}
-              <div><b>{p.name}</b>{p.url && <small>{p.url.replace(/^https:\/\/www\./, '')}</small>}</div>
+              <img src="https://logos.composio.dev/api/linkedin" alt="" className="is-mark" />
+              <div><b>LinkedIn Page</b><small title={exp.file}>Uploaded {new Date(exp.at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</small></div>
+              <span className="lli__acts">
+                <button type="button" disabled={busy} onClick={() => file.current?.click()}>{busy ? 'Reading…' : 'Update'}</button>
+                <button type="button" disabled={busy} onClick={() => (sure ? void send({ method: 'DELETE' }) : setSure(true))} onBlur={() => setSure(false)}>{sure ? 'Remove all?' : 'Remove'}</button>
+              </span>
             </div>
-            {p.headline && <p className="lli__head">{p.headline}</p>}
-            <p className="lpanel__mut">LinkedIn doesn’t let apps read your posts or feed. Zubi can write a post (with an image) and publish it after your yes.</p>
+            {problem && <p className="lli__bad" role="alert">{problem}</p>}
+            <SocialGrid posts={exp.posts} empty="No posts in that file." />
+            <p className="lli__note">Views are LinkedIn’s impressions. To refresh them, export again and press Update.</p>
+          </>
+        ) : (
+          <>
+            {p && (
+              <div className="lig__prof">
+                {p.picture ? <img src={p.picture} alt="" referrerPolicy="no-referrer" /> : <span className="lig__pic" />}
+                <div><b>{p.name}</b>{p.url && <small>{p.url.replace(/^https:\/\/www\./, '')}</small>}</div>
+              </div>
+            )}
+            {data.error ? <p className="lpanel__mut">{data.error}</p> : !data.connected && <p className="lpanel__mut">Zubi has no LinkedIn account connected in her Composio. Ask her to connect LinkedIn.</p>}
+            <p className="lli__head">LinkedIn doesn’t let apps read your Page’s posts. To see their views, likes, comments and shares here, on LinkedIn open your Page, then <b>Analytics</b>, <b>Content</b>, <b>Export</b>, and upload that file.</p>
+            {problem && <p className="lli__bad" role="alert">{problem}</p>}
+            <button type="button" className="lli__up" disabled={busy} onClick={() => file.current?.click()}>{busy ? 'Reading…' : 'Upload the export'}</button>
           </>
         )}
       <AskZubi ask="Write a LinkedIn post about " label="Write a post with Zubi" />

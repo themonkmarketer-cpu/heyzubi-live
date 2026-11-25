@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 import { env } from './env.js';
 import type { AuthVars } from './lib/auth.js';
 import { hub } from './lib/hub.js';
+import { dropLinkedInExport, EXPORT_MAX, ExportError, linkedInExport, saveLinkedInExport } from './linkedin-export.js';
 import type { PanelName } from './types.js';
 
 /**
@@ -425,13 +426,14 @@ panelsApi.get('/youtube', async (c) => {
 });
 
 /**
- * The owner's LinkedIn profile (name, headline, photo). LinkedIn's API lets apps read only the member's own profile,
- * not their posts or feed, so that is all the window shows; Zubi can still write and publish a post after a yes.
+ * The owner's LinkedIn profile (name, headline, photo), which is all LinkedIn's API lets apps read, and the posts from
+ * the analytics file they exported from their company Page and uploaded here, if any (linkedin-export.ts).
  */
 const LI_IMG = /^https:\/\/media\.licdn\.com\//i;
 const LI_LINK = /^https:\/\/www\.linkedin\.com\/in\/[\w%-]+\/?$/i;
 panelsApi.get('/linkedin', async (c) => {
   const fresh = c.req.query('fresh') === '1';
+  const own = linkedInExport(c.get('user').id);
   try {
     const body = await cached('li', fresh, async () => {
       const accts = active(await zubiAccounts(fresh), 'linkedin');
@@ -450,12 +452,27 @@ panelsApi.get('/linkedin', async (c) => {
         },
       };
     });
-    return c.json(body);
+    return c.json({ ...(body as object), export: own });
   } catch (e) {
     console.warn('[panels] linkedin failed:', (e as Error)?.message ?? e);
-    return c.json({ connected: true, error: why(e) }, 502);
+    return c.json({ connected: true, error: why(e), export: own }, 502);
   }
 });
+panelsApi.put('/linkedin/export', async (c) => {
+  const tooBig = { error: 'That file is too big (8 MB at most).' };
+  if (Number(c.req.header('content-length') ?? 0) > EXPORT_MAX) return c.json(tooBig, 413);
+  const buf = Buffer.from(await c.req.arrayBuffer());
+  if (!buf.length) return c.json({ error: 'No file came through.' }, 400);
+  if (buf.length > EXPORT_MAX) return c.json(tooBig, 413);
+  let name = '';
+  try { name = decodeURIComponent(c.req.header('x-file-name') ?? ''); } catch { /* not a name */ }
+  try { return c.json({ export: saveLinkedInExport(c.get('user').id, name, buf) }); } catch (e) {
+    if (e instanceof ExportError) return c.json({ error: e.message }, 400);
+    console.warn('[panels] linkedin export failed:', (e as Error)?.message ?? e);
+    return c.json({ error: 'That file couldn’t be saved just now.' }, 500);
+  }
+});
+panelsApi.delete('/linkedin/export', (c) => { dropLinkedInExport(c.get('user').id); return c.json({ export: null }); });
 
 /** The owner's most recently changed Google Sheets (names and links only; no cell data is read). */
 panelsApi.get('/sheets', async (c) => {
