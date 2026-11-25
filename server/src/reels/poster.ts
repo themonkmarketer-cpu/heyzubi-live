@@ -247,7 +247,7 @@ export async function openForSignIn(p: Platform): Promise<void> {
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const same = (a: string, b: string) => { const n = (s: string) => s.replace(/[​ ]/g, ' ').replace(/\s+/g, ' ').trim(); return n(a) === n(b); };
-interface Job { sending?: () => void; ep: Episode; dir: string; at: { y: number; m: number; d: number; hh: string; mm: string; dow: string }; say: (t: string) => void; signal: AbortSignal; dry: boolean }
+interface Job { sending?: () => void; ep: Episode | null; dir: string; at: { y: number; m: number; d: number; hh: string; mm: string; dow: string }; say: (t: string) => void; signal: AbortSignal; dry: boolean }
 export interface Posted { status: 'scheduled' | 'ready'; link?: string; note: string; shot?: string }
 const read = (j: Job, f: string) => fs.readFileSync(path.join(j.dir, f), 'utf8').replace(/\r/g, '').trim();
 async function needLogin(t: Tab, p: Platform) {
@@ -513,7 +513,7 @@ async function whatsapp(t: Tab, j: Job): Promise<Posted> {
   const c = await t.ev((c: string) => ({ cap: (document.querySelector<HTMLElement>(c)?.innerText ?? '').trim(), send: document.querySelectorAll('[aria-label="Send 1 selected"]').length, aud: [...document.querySelectorAll<HTMLElement>('button,[role=button]')].map((e) => (e.innerText ?? '').trim()).filter((x) => /^Status \([^)]*\)$/.test(x)) }), COMPOSE);
   const ok = same(c.cap, cap) && c.send === 1 && c.aud.length === 1 && c.aud[0] === 'Status (Contacts)';
   // The composer fills the window now, so this picture shows only the post.
-  const rel = `review/posting-whatsapp.jpg`, shot = await t.shot(epFile(j.ep, rel)).then(() => rel, () => undefined);
+  const rel = `review/posting-whatsapp.jpg`, shot = await t.shot(j.ep ? epFile(j.ep, rel) : path.join(j.dir, 'posting-whatsapp.jpg')).then(() => rel, () => undefined);
   const discard = async () => { await t.click('[aria-label="Close"]', { scroll: false }).catch(() => {}); await sleep(900); await t.click('button,[role=button]', { text: 'Discard', scroll: false, seconds: 5 }).catch(() => {}); };
   if (!ok || j.dry) {
     await discard();
@@ -599,6 +599,20 @@ export async function pinComments(list: PinJob[], o: { signal: AbortSignal; dry?
 }
 
 /** One platform after the other; each tells its result. With `dry` nothing is scheduled: it stops before the last button. */
+/**
+ * A WhatsApp Status that isn't a Reels Factory episode (the series' own queue, moved from the owner's PC): its folder holds
+ * whatsapp-status.mp4 and caption-whatsapp.txt, approved before it was queued.
+ */
+export async function postStatus(dir: string, o: { signal: AbortSignal; dry?: boolean; sending?: () => void }): Promise<Posted> {
+  if (busy) throw new ReelError('The posting browser is busy.');
+  busy = true;
+  let tab: Tab | null = null;
+  try {
+    tab = await Tab.open('about:blank', o.signal, [1680, 900]);
+    return await whatsapp(tab, { ep: null, dir, at: { y: 0, m: 1, d: 1, hh: '00', mm: '00', dow: 'Sun' }, say: () => {}, signal: o.signal, dry: !!o.dry, sending: o.sending });
+  } finally { await tab?.close(); busy = false; await closeBrowser(); }
+}
+
 export async function postAll(ep: Episode, list: Platform[], o: { signal: AbortSignal; dry?: boolean; sending?: () => void; say: (t: string) => void; done: (p: Platform, r: Posted | { error: string; shot?: string }) => void }): Promise<void> {
   if (busy) throw new ReelError('Another episode is being scheduled. Wait until it is done.');
   const pack = ep.pack!, dir = epFile(ep, pack.folder!), m = /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d)$/.exec(pack.slot ?? '');

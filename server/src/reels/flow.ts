@@ -2,8 +2,10 @@
 // the decision. A plain reply ("2", "approve", "yes to all") is understood here, by rule; anything longer goes to Zubi, and
 // even then a decision only counts when the owner's own message says it (agreed), after the question and its price were shown.
 import { db, now } from '../db.js';
+import { primaryBotId } from '../engine.js';
+import { appendRow } from '../store.js';
 import { musts } from './checks.js';
-import { openForSignIn, PLATFORMS, postAll, postingBusy, signedIn, TITLE, type Platform } from './poster.js';
+import { openForSignIn, PLATFORMS, postAll, postingBusy, postStatus, signedIn, TITLE, type Platform } from './poster.js';
 import { approve, flow, hold, isRunning, left, release, start } from './stages.js';
 import { allEpisodes, getEpisode, istToMs, log, patch, ReelError, slotLabel, spent } from './store.js';
 import { STAGES, type Episode, type StageId } from './types.js';
@@ -222,9 +224,31 @@ export function askSchedule(id: string, words: string, dry = false): string {
 }
 /** Opens the posting browser on the team member's screen, at the first account that still needs a sign-in. */
 /** WhatsApp has no scheduler: HeyZubi posts each waiting Status when its time comes (from 2 minutes before to an hour after). */
+db.exec('CREATE TABLE IF NOT EXISTS reel_status (ep INTEGER PRIMARY KEY, due TEXT NOT NULL, dir TEXT NOT NULL, state TEXT NOT NULL, note TEXT, at INTEGER NOT NULL)');
+/** A line in the main team member's chat in HeyZubi. */
+const tellChat = (text: string, tone: 'info' | 'error' = 'info') => { const z = primaryBotId(); if (z) appendRow(z, 'notice', { type: 'notice', text, tone } as any); };
+let statusBusy = false;
+/** The series' own approved Status posts (moved from the owner's PC): one at a time, in their window, never twice. */
+function queuedStatus(): boolean {
+  const set = (ep: number, state: string, note: string) => db.prepare('UPDATE reel_status SET state=?, note=?, at=? WHERE ep=?').run(state, note.slice(0, 300), now(), ep);
+  for (const r of db.prepare("SELECT * FROM reel_status WHERE state IN ('approved','sending') ORDER BY due").all() as { ep: number; due: string; dir: string; state: string }[]) {
+    if (r.state === 'sending') { set(r.ep, 'failed', 'HeyZubi stopped while this was being sent. It is not sent again.'); tellChat(`WhatsApp Status, Episode ${r.ep}: HeyZubi stopped while it was being sent. It isn’t sent again: look at My status on your phone.`, 'error'); continue; }
+    const late = (Date.now() - istToMs(r.due)) / 60_000;
+    if (late < -2) continue;
+    if (late > 60) { set(r.ep, 'failed', 'Its time passed more than an hour ago; nothing was sent.'); tellChat(`WhatsApp Status, Episode ${r.ep}: its time (${slotLabel(r.due).label}) passed more than an hour ago, so nothing was sent.`, 'error'); continue; }
+    statusBusy = true;
+    void postStatus(r.dir, { signal: AbortSignal.timeout(15 * 60_000), sending: () => set(r.ep, 'sending', '') })
+      .then((res) => { set(r.ep, 'posted', res.note); tellChat(`WhatsApp Status, Episode ${r.ep}: posted. ${res.note}`); })
+      .catch((err) => { const m = (err as Error).message; const was = (db.prepare('SELECT state FROM reel_status WHERE ep=?').get(r.ep) as any)?.state; set(r.ep, 'failed', m); tellChat(`WhatsApp Status, Episode ${r.ep}: not posted. ${m}${was === 'sending' ? '' : ''}`, 'error'); })
+      .finally(() => { statusBusy = false; });
+    return true;
+  }
+  return false;
+}
 export function initStatusPosts() {
   const tick = () => {
-    if (postingBusy()) return;
+    if (postingBusy() || statusBusy) return;
+    if (queuedStatus()) return;
     for (const e of allEpisodes()) {
       const r = e.schedule.results.whatsapp;
       if (!r || r.status !== 'scheduled' || !r.due || isRunning(e.id)) continue;
