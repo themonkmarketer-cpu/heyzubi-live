@@ -23,7 +23,8 @@ import { deleteEventTrigger } from './triggers.js';
 import { dispatchRoomMessage } from './agent/rooms.js';
 import { voiceApi } from './voice.js';
 import { usageApi } from './usage-report.js';
-import { retireChatSession } from './engine-sessions.js';
+import { retireChatSession, retireRoomSession } from './engine-sessions.js';
+import { roomMembers } from './agent/rooms.js';
 import { clickyApi } from './clicky.js';
 import { whatsappApi } from './whatsapp.js';
 import { generationsApi } from './generations.js';
@@ -400,7 +401,8 @@ api.post('/bots/:id/fresh', (c) => {
   interrupt(b.id);
   const oldGeneration = getBotRow(b.id).generation;
   clearConversation(b.id);
-  void retireChatSession(b.id, oldGeneration); // the old chat's Hermes session goes: one per team member
+  if (getBotRow(b.id).kind === 'room') for (const m of roomMembers(b.id)) void retireRoomSession(m.id, b.id, oldGeneration);
+  else void retireChatSession(b.id, oldGeneration); // the session stays; what the model remembers of the old chat goes
   emitBot(b.id);
   return c.json({ ok: true });
 });

@@ -30,7 +30,7 @@ export type Trigger =
   /** An outside program (n8n, a script) through the API: never the owner's own words. */
   | { type: 'program'; source: string; text: string }
   /** owner: the notice carries on from the owner's own words (their group message, an app they just connected). */
-  | { type: 'system'; text: string; owner?: boolean };
+  | { type: 'system'; text: string; owner?: boolean; /** A group chat's turn: it runs in the member's session for that group. */ room?: string };
 
 // ---------- per-bot serial queue ----------
 
@@ -447,7 +447,9 @@ async function runTurn(botId: string, trigger: Trigger) {
     const engine = await engineFor(botId);
     if (ctrl.signal.aborted) throw new Error('interrupted');
     const why = notOwnerWhy(trigger);
-    if (why) unmark = markNotOwner(engine.home, `hq-${botId}-g${bot.generation}`, why, chatSessionId(botId));
+    const room = trigger.type === 'system' ? trigger.room : undefined, roomRow = room ? getBotRow(room) : null;
+    const conversation = room && roomRow ? `hq-${botId}-room-${room}-g${roomRow.generation}` : `hq-${botId}-g${bot.generation}`;
+    if (why) unmark = markNotOwner(engine.home, conversation, why, chatSessionId(botId, room));
 
     let input = triggerText(trigger);
     if (bot.handback_at) {
@@ -459,21 +461,21 @@ async function runTurn(botId: string, trigger: Trigger) {
     const res = await fetch(`${engine.url}/v1/responses`, {
       method: 'POST',
       signal: ctrl.signal,
-      headers: { 'content-type': 'application/json', accept: 'text/event-stream', ...(engine.key ? { authorization: `Bearer ${engine.key}` } : {}), ...chatHeaders(botId, engine) },
+      headers: { 'content-type': 'application/json', accept: 'text/event-stream', ...(engine.key ? { authorization: `Bearer ${engine.key}` } : {}), ...chatHeaders(botId, engine, room) },
       body: JSON.stringify({
         model: bot.model || 'hermes-agent',
         ...(bot.provider ? { provider: bot.provider } : {}),
         input,
         instructions: await instructionsFor(userId, botId),
         // One engine-side thread per conversation; "New chat" bumps the generation and starts another.
-        conversation: `hq-${botId}-g${bot.generation}`,
+        conversation,
         stream: true,
         store: true,
         model_options: { reasoning_effort: bot.effort ?? 'medium' },
       }),
     });
     if (!res.ok || !res.body) throw new Error(await failureText(res));
-    noteChat(botId, engine, res);
+    noteChat(botId, engine, res, room);
 
     for await (const ev of sseEvents(res.body)) {
       const d = ev.data;

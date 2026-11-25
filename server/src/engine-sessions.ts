@@ -13,16 +13,23 @@ import { env } from './env.js';
 type EngineRef = { url: string; key: string };
 
 /**
- * Everything said with the main team member in HeyZubi (the chat, the Zubi window of Reels Factory, the Pointer Assistant,
- * the Status test) is one Hermes session of this name (Murtaza, 26 Nov 2026: "only 1 chat session under hermes by the
- * name hermes-heyzubi … no new session"). The header makes Hermes run the turn in it; Hermes does one turn at a time.
- * What the model remembers is still each window's own (the stored conversation, or what HeyZubi sends with the turn).
+ * Every team member's HeyZubi conversation is one Hermes session in its own engine, named heyzubi-<name> (heyzubi-zubi,
+ * heyzubi-mark), and every group chat one more in each member's engine, named heyzubi-<group> (Murtaza, 26 Nov 2026:
+ * "each bot gets its own session… as well a group… they stay connected to their respective chats session only").
+ * Everything said with that member in HeyZubi runs in it (for the main member also the Reels Factory window, the Pointer
+ * Assistant and the Status test); New chat keeps it and only clears what the model remembers. The header makes Hermes
+ * run the turn in that session; Hermes does one turn at a time. Each window still sends its own context.
  */
-export const CHAT_SESSION = 'hermes-heyzubi';
 db.exec("CREATE TABLE IF NOT EXISTS engine_sessions (session_id TEXT PRIMARY KEY, kind TEXT NOT NULL, bot_id TEXT NOT NULL, at INTEGER NOT NULL)");
-export const chatHeaders = (botId: string, engine: EngineRef): Record<string, string> => (botId === primaryBotId() && engine.key ? { 'X-Hermes-Session-Key': CHAT_SESSION } : {});
+const slug = (s: string) => s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'chat';
+/** Hermes finds the session by this key. The main member's keeps the key it was made with, so its history stays. */
+const sessionKey = (botId: string, roomId?: string) => (roomId ? `heyzubi-${botId}-${roomId}` : botId === primaryBotId() ? 'hermes-heyzubi' : `heyzubi-${botId}`);
+/** What Hermes shows: heyzubi-<the member's or the group's name>. */
+export const sessionTitle = (botId: string, roomId?: string) => `heyzubi-${slug(String((db.prepare('SELECT name FROM bots WHERE id=?').get(roomId ?? botId) as any)?.name ?? 'chat'))}`;
+const kindOf = (roomId?: string) => (roomId ? `room:${roomId}` : 'chat');
+export const chatHeaders = (botId: string, engine: EngineRef, roomId?: string): Record<string, string> => (engine.key && engineKind(botId) ? { 'X-Hermes-Session-Key': sessionKey(botId, roomId) } : {});
 /** That session's id, once a turn has run in it. */
-export const chatSessionId = (botId: string): string | null => (db.prepare("SELECT session_id AS s FROM engine_sessions WHERE kind='chat' AND bot_id=?").get(botId) as any)?.s ?? null;
+export const chatSessionId = (botId: string, roomId?: string): string | null => (db.prepare('SELECT session_id AS s FROM engine_sessions WHERE kind=? AND bot_id=?').get(kindOf(roomId), botId) as any)?.s ?? null;
 
 const auth = (engine: EngineRef) => ({ 'content-type': 'application/json', ...(engine.key ? { authorization: `Bearer ${engine.key}` } : {}) });
 const patchSession = (engine: EngineRef, sid: string, body: object) => fetch(`${engine.url}/api/sessions/${encodeURIComponent(sid)}`, { method: 'PATCH', headers: auth(engine), body: JSON.stringify(body), signal: AbortSignal.timeout(10_000) });
@@ -37,15 +44,16 @@ async function patchWhenThere(engine: EngineRef, sid: string, body: object): Pro
 }
 const named = new Set<string>();
 /** After a turn of one of the main team member's conversations started: remember its session and keep its name. */
-export function noteChat(botId: string, engine: EngineRef & { home?: string }, res: Response | null | undefined) {
+export function noteChat(botId: string, engine: EngineRef & { home?: string }, res: Response | null | undefined, roomId?: string) {
   const sid = res?.headers.get('x-hermes-session-id') ?? '';
-  if (!sid || !res?.ok || !Object.keys(chatHeaders(botId, engine)).length) return;
-  if (chatSessionId(botId) !== sid) db.transaction(() => {
-    db.prepare("DELETE FROM engine_sessions WHERE kind='chat' AND bot_id=?").run(botId);
-    db.prepare("INSERT OR REPLACE INTO engine_sessions(session_id,kind,bot_id,at) VALUES (?,'chat',?,?)").run(sid, botId, Date.now());
+  if (!sid || !res?.ok || !Object.keys(chatHeaders(botId, engine, roomId)).length) return;
+  if (chatSessionId(botId, roomId) !== sid) db.transaction(() => {
+    db.prepare('DELETE FROM engine_sessions WHERE kind=? AND bot_id=?').run(kindOf(roomId), botId);
+    db.prepare('INSERT OR REPLACE INTO engine_sessions(session_id,kind,bot_id,at) VALUES (?,?,?,?)').run(sid, kindOf(roomId), botId, Date.now());
   })();
-  if (named.has(sid)) return;
-  named.add(sid);
+  const CHAT_SESSION = sessionTitle(botId, roomId);
+  if (named.has(`${sid} ${CHAT_SESSION}`)) return;
+  named.add(`${sid} ${CHAT_SESSION}`);
   void (async () => {
     let r = await patchWhenThere(engine, sid, { title: CHAT_SESSION });
     if (r?.status === 400 && engine.home) {
@@ -55,13 +63,13 @@ export function noteChat(botId: string, engine: EngineRef & { home?: string }, r
       s?.close();
       if (old) { await patchSession(engine, old.id, { title: `${CHAT_SESSION} until ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`, archived: true }).catch(() => null); r = await patchWhenThere(engine, sid, { title: CHAT_SESSION }); }
     }
-    if (!r?.ok) { named.delete(sid); console.warn('[sessions] the chat session kept its old name:', r?.status ?? 'no answer'); }
-  })().catch(() => named.delete(sid));
+    if (!r?.ok) { named.delete(`${sid} ${CHAT_SESSION}`); console.warn('[sessions] the chat session kept its old name:', r?.status ?? 'no answer'); }
+  })().catch(() => named.delete(`${sid} ${CHAT_SESSION}`));
 }
 /** A piece of background work (writing, checking, a coding run) gets a session of its own: hidden at once, deleted when done. */
 export function hideOneOff(botId: string, engine: EngineRef, res: Response | null | undefined) {
   const sid = res?.headers.get('x-hermes-session-id') ?? '';
-  if (!sid || sid === chatSessionId(botId)) return;
+  if (!sid || db.prepare("SELECT 1 FROM engine_sessions WHERE session_id=? AND kind<>'work'").get(sid)) return;
   db.prepare("INSERT OR IGNORE INTO engine_sessions(session_id,kind,bot_id,at) VALUES (?,'work',?,?)").run(sid, botId, Date.now());
   void patchWhenThere(engine, sid, { hidden: true }).catch(() => null);
 }
@@ -108,7 +116,7 @@ export async function deleteStoredResponses(engine: EngineRef, home: string, ses
 /** After a one-off call (its response carries X-Hermes-Session-Id): delete that session, retrying once if still busy. */
 export function dropOneOff(engine: EngineRef & { home?: string }, res: Response | null | undefined) {
   const sid = res?.headers.get('x-hermes-session-id') ?? '';
-  if (!sid || db.prepare("SELECT 1 FROM engine_sessions WHERE session_id=? AND kind='chat'").get(sid)) return; // never the chat itself
+  if (!sid || db.prepare("SELECT 1 FROM engine_sessions WHERE session_id=? AND kind<>'work'").get(sid)) return; // never a chat's own session
   const forget = (ok: boolean) => { if (ok) db.prepare("DELETE FROM engine_sessions WHERE session_id=? AND kind='work'").run(sid); };
   void deleteEngineSession(engine, sid).then((ok) => {
     forget(ok);
@@ -150,6 +158,28 @@ export async function retireChatSession(botId: string, oldGeneration: number) {
     await deleteStoredResponses(engine, home!, new Set([sid]));
   } catch (e) { console.warn('[sessions] old chat not removed:', (e as Error).message); }
 }
+/** A group's fresh chat: each member keeps its group session and forgets only the old group conversation. */
+export async function retireRoomSession(botId: string, roomId: string, oldGeneration: number) {
+  try {
+    const home = engineHome(botId);
+    const sid = home ? hqConversations(home).get(`hq-${botId}-room-${roomId}-g${oldGeneration}`) : undefined;
+    if (!sid) return;
+    await deleteStoredResponses(await engineFor(botId), home!, new Set([sid]));
+  } catch (e) { console.warn('[sessions] old group chat not cleared:', (e as Error).message); }
+}
+/** Each chat session keeps its name: after a rename of the member or the group, or one made before the names. */
+export async function keepNames(): Promise<void> {
+  for (const r of db.prepare("SELECT session_id AS sid, kind, bot_id AS bot FROM engine_sessions WHERE kind<>'work'").all() as { sid: string; kind: string; bot: string }[]) {
+    try {
+      const roomId = r.kind.startsWith('room:') ? r.kind.slice(5) : undefined, want = sessionTitle(r.bot, roomId), home = engineHome(r.bot);
+      const s = home ? openRO(path.join(home, 'state.db')) : null;
+      const now = s?.prepare('SELECT title FROM sessions WHERE id=?').get(r.sid) as { title: string | null } | undefined;
+      s?.close();
+      if (!now) { db.prepare('DELETE FROM engine_sessions WHERE session_id=?').run(r.sid); continue; } // gone from Hermes: the next turn makes it again
+      if (now.title !== want) await patchSession(await engineFor(r.bot), r.sid, { title: want });
+    } catch (e) { console.warn('[sessions] name not kept:', (e as Error).message); }
+  }
+}
 
 export interface ExtraSession { home: string; who: string; id: string; title: string }
 
@@ -160,7 +190,7 @@ export interface ExtraSession { home: string; who: string; id: string; title: st
  */
 export function extraSessions(): ExtraSession[] {
   const bots = db.prepare("SELECT id, name, generation, engine FROM bots WHERE engine IN ('primary','managed')").all() as { id: string; name: string; generation: number; engine: string }[];
-  const reserved = new Set<string>((db.prepare("SELECT session_id AS s FROM engine_sessions WHERE kind='chat'").all() as { s: string }[]).map((x) => x.s));
+  const reserved = new Set<string>((db.prepare("SELECT session_id AS s FROM engine_sessions WHERE kind<>'work'").all() as { s: string }[]).map((x) => x.s));
   const byHome = new Map<string, { who: string; managed: boolean }>();
   for (const b of bots) {
     const home = engineHome(b.id);
@@ -228,6 +258,6 @@ export async function tidyEngineSessions(): Promise<number> {
 
 /** Tidy shortly after start (engines are up by then) and every hour. */
 export function initSessionTidy() {
-  setTimeout(() => void tidyEngineSessions(), 2 * 60_000).unref();
-  setInterval(() => void tidyEngineSessions(), 60 * 60_000).unref();
+  setTimeout(() => void tidyEngineSessions().then(() => keepNames()), 2 * 60_000).unref();
+  setInterval(() => void tidyEngineSessions().then(() => keepNames()), 60 * 60_000).unref();
 }

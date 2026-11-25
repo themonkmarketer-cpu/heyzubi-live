@@ -65,6 +65,7 @@ export function dispatchRoomMessage(roomId: string, text: string, enqueue: (botI
     const ask = (m: { id: string; name: string }, recent: string) => {
       enqueue(m.id, {
         type: 'system',
+        room: roomId,
         owner: true, // the user posted in the group
         text:
           `[Group chat "${room.name}"] The owner wrote in this group, in their own words, and asked for your view: posting it here is what they asked for (nothing else is approved by that). Members: ${members.map((x) => x.name).join(', ')}. ${lead.name} leads this group and will give the user the combined answer.\n` +
@@ -86,6 +87,7 @@ export function dispatchRoomMessage(roomId: string, text: string, enqueue: (botI
     }).then(() => {
       enqueue(lead.id, {
         type: 'system',
+        room: roomId,
         owner: true,
         text:
           `[Group chat "${room.name}"] The owner wrote in this group, in their own words, and asked for the group's answer: posting it here is what they asked for (nothing else is approved by that). You lead this group. ${others.map((x) => x.name).join(', ')} have given their views (below).\n` +
@@ -102,6 +104,7 @@ export function dispatchRoomMessage(roomId: string, text: string, enqueue: (botI
   for (const m of responders) {
     enqueue(m.id, {
       type: 'system',
+      room: roomId,
       owner: true, // the user posted in the group
       text:
         `[Group chat "${room.name}"] Members: ${members.map((x) => x.name).join(', ')}. ` +
