@@ -19,7 +19,7 @@ roomsApi.get('/:id/members', (c) => {
     const b = db.prepare('SELECT id, name, label, description, avatar_shape, avatar_color, avatar_prop FROM bots WHERE id=?').get(m.id) as any;
     return { id: b.id, name: b.name, label: b.label, description: b.description, avatarShape: b.avatar_shape, avatarColor: b.avatar_color, avatarProp: b.avatar_prop ?? null };
   });
-  return c.json({ members, leadId: room.lead_bot_id ?? null });
+  return c.json({ members, leadId: room.lead_bot_id ?? null, researchId: room.research_bot_id ?? null });
 });
 
 /** The group's lead: after the others give their view, the lead wraps up one answer. { botId | null }. */
@@ -34,6 +34,20 @@ roomsApi.put('/:id/lead', async (c) => {
   appendRow(room.id, 'event', { type: 'event', event: 'bot-message', text: name ? `${name} now leads this group` : 'This group has no lead now' });
   hub.emit(user.id, { type: 'roster' });
   return c.json({ ok: true, leadId: lead });
+});
+
+/** The group's researcher: goes first when the group has a lead, and the others build on what it finds. { botId | null }. */
+roomsApi.put('/:id/research', async (c) => {
+  const user = c.get('user');
+  const room = ownRoom(user.id, c.req.param('id'));
+  if (!room) return c.json({ error: 'not found' }, 404);
+  const { botId } = await c.req.json<{ botId: string | null }>().catch(() => ({ botId: null }));
+  const id = botId && roomMembers(room.id).some((m) => m.id === botId) ? botId : null;
+  db.prepare('UPDATE bots SET research_bot_id=?, updated_at=? WHERE id=?').run(id, now(), room.id);
+  const name = id ? (db.prepare('SELECT name FROM bots WHERE id=?').get(id) as any)?.name : null;
+  appendRow(room.id, 'event', { type: 'event', event: 'bot-message', text: name ? `${name} does the research for this group` : 'No one does the research for this group now' });
+  hub.emit(user.id, { type: 'roster' });
+  return c.json({ ok: true, researchId: id });
 });
 
 /** Create a group from the UI: { name, botIds[] }. */
@@ -59,6 +73,7 @@ roomsApi.put('/:id/members', async (c) => {
   const next = [...new Set((botIds ?? []).filter((id) => db.prepare("SELECT 1 FROM bots WHERE id=? AND user_id=? AND COALESCE(kind,'agent')<>'room'").get(id, user.id)))];
   db.prepare('UPDATE bots SET members=?, description=?, updated_at=? WHERE id=?').run(JSON.stringify(next), `Group chat with ${next.length} Bots`, now(), room.id);
   if (room.lead_bot_id && !next.includes(room.lead_bot_id)) db.prepare('UPDATE bots SET lead_bot_id=NULL WHERE id=?').run(room.id);
+  if (room.research_bot_id && !next.includes(room.research_bot_id)) db.prepare('UPDATE bots SET research_bot_id=NULL WHERE id=?').run(room.id);
   const name = (id: string) => (db.prepare('SELECT name FROM bots WHERE id=?').get(id) as any)?.name ?? id;
   const added = next.filter((id) => !before.has(id)).map(name);
   const removed = [...before].filter((id) => !next.includes(id)).map(name);

@@ -216,7 +216,9 @@ mcpApi.get('/:bot', (c) => {
     // A long reconnect wait, so an engine rides out the app's restart (its client gives up after two tries).
     await stream.write('retry: 15000\n\n');
     console.log(`[mcp] ${c.req.param('bot') === 'primary' ? 'main agent' : 'engine'} listening for tool changes${stale ? ' (told to list them again)' : ''}`);
-    if (stale) send(LIST_CHANGED);
+    // A new session too: an engine that reconnects keeps the tools it registered before and only looks again when told.
+    if (!stale) await stream.sleep(5_000); // its first listing is still going on
+    send(LIST_CHANGED);
     while (open) {
       await stream.sleep(25_000);
       if (open) await stream.write(': keep-alive\n\n').catch(() => { open = false; });

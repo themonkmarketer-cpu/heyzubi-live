@@ -6,6 +6,7 @@ import { getBot, getBotRow, updateRow } from './store.js';
 import { assignEngine, primaryBotId, provisionEngine } from './engine.js';
 import { enqueue } from './agent/loop.js';
 import { isPropId } from './avatar-props.js';
+import { isGender, type Gender } from './gender.js';
 import type { AvatarColor, AvatarShape } from './types.js';
 
 /**
@@ -30,7 +31,7 @@ export const agentCount = () => (db.prepare("SELECT COUNT(*) n FROM bots WHERE C
 
 export interface NewBot {
   name: string; label?: string; description?: string; instructions?: string; avatarShape?: string; avatarColor?: string;
-  mode?: string; isPrimary?: boolean; team?: string | null; isManager?: boolean; avatarProp?: string | null;
+  mode?: string; isPrimary?: boolean; team?: string | null; isManager?: boolean; avatarProp?: string | null; gender?: Gender | null;
 }
 
 export function createBot(userId: string, b: NewBot) {
@@ -44,6 +45,9 @@ export function createBot(userId: string, b: NewBot) {
   ).run(id, userId, b.name.trim().slice(0, 60) || 'New Bot', b.label ?? '', b.description ?? '', b.instructions ?? '', shape, color, b.mode === 'teammate' ? 'teammate' : 'personal', b.isPrimary ? 1 : 0, now(), now());
   if (b.team && !b.isPrimary) db.prepare('UPDATE bots SET team=?, is_manager=? WHERE id=?').run(String(b.team).slice(0, 40), b.isManager ? 1 : 0, id);
   if (isPropId(b.avatarProp)) db.prepare('UPDATE bots SET avatar_prop=? WHERE id=?').run(b.avatarProp, id);
+  if (isGender(b.gender)) db.prepare('UPDATE bots SET gender=? WHERE id=?').run(b.gender, id);
+  // The usual call voices are women's; a man gets a man's (the owner can change it in its settings).
+  if (b.gender === 'male') db.prepare("UPDATE bots SET voice='orion', gemini_voice='Puck' WHERE id=?").run(id);
   // The first bot is the agent that already runs on the computer; the others get an engine of their own.
   if (assignEngine(id) === 'managed') provisionEngine(id);
   hub.emit(userId, { type: 'roster' });

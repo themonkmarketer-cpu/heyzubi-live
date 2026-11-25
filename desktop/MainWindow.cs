@@ -361,8 +361,10 @@ internal sealed class MainWindow : Form
 
     private void HidePanel() => _panel.Visible = false;
 
+    /// <summary>Opens a web or mail link in the PC's own app. Anything else (an empty page, another program's link) is left alone.</summary>
     private static void OpenExternal(string url)
     {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var u) || !(u.Scheme == "https" || u.Scheme == "http" || u.Scheme == "mailto")) return;
         try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
     }
 }

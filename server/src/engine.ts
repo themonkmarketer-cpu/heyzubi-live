@@ -5,6 +5,7 @@ import path from 'node:path';
 import YAML from 'yaml';
 import { displayFor } from './box.js';
 import { cdpUrlFor, screenFor } from './computer.js';
+import { personaLine } from './gender.js';
 import { db } from './db.js';
 import { env } from './env.js';
 import { libraryRoot } from './paths.js';
@@ -293,6 +294,7 @@ function soul(b: any): string {
   const role = b.label ? `, ${b.label}` : '';
   return [
     `You are ${b.name}${role}. You work for ${owner} as one of a small team of AI agents, each with its own screen on a shared computer.`,
+    b.gender ? `\n${personaLine(b.gender)}` : '',
     b.description ? `\n${b.description}` : '',
     '\nYou are direct, warm and brief. You do the work rather than describe it, and you say plainly what you did and what you could not do.',
     '',

@@ -1,3 +1,6 @@
+import { resumeReels } from './reels/stages.js';
+import { resumeChats } from './reels/agent.js';
+import { editorFetch, isEditorHost } from './reels/studio-proxy.js';
 import { kanbanApi } from './routes-kanban.js';
 import { syncAllIdentities } from './hermes-identity.js';
 import { installZubiSkills } from './zubi-skills.js';
@@ -36,6 +39,9 @@ expireStaleApprovals();
 setTimeout(resumeInterrupted, 3000);
 // One Hermes session per team member: extras HeyZubi left behind go shortly after start and every hour.
 initSessionTidy();
+resumeReels();
+// A message in an episode's session that was being answered when the last process stopped still gets its answer.
+setTimeout(resumeChats, 8000);
 
 const app = new Hono();
 // Nothing the server sends is meant to be shown inside another site's frame (clickjacking), so every
@@ -80,7 +86,9 @@ if (fs.existsSync(webDist)) {
   app.get('*', (c) => c.html(fs.readFileSync(path.join(webDist, 'index.html'), 'utf8')));
 }
 
-const server = serve({ fetch: app.fetch, port: env.port, hostname: env.host }, (info) => console.log(`[heyzubi] server on http://localhost:${info.port} (listening on ${env.host ?? 'every interface'})`));
+// The HyperFrames editor answers on an address of its own (studio-proxy.ts): nothing of the app is there, and nothing of it here.
+const answer: typeof app.fetch = (req, ...rest) => (isEditorHost(req.headers.get('host')) ? editorFetch(req) : app.fetch(req, ...rest));
+const server = serve({ fetch: answer, port: env.port, hostname: env.host }, (info) => console.log(`[heyzubi] server on http://localhost:${info.port} (listening on ${env.host ?? 'every interface'})`));
 attachVncRelay(server as unknown as Server);
 // HEYZUBI_NO_SCHEDULER=1 for extra dev/test servers sharing a database copy, so routines and triggers don't fire twice.
 if (compatEnv('NO_SCHEDULER') !== '1') {

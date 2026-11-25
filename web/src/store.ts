@@ -175,6 +175,8 @@ export const useStore = create<State>((set, get) => ({
         return;
       case 'tasks':
       case 'memories':
+      case 'prompts':
+      case 'social':
         // Picked up by configStore.ts (Tasks view, Library/Tasks tabs, bot settings).
         window.dispatchEvent(new CustomEvent('heyzubi:event', { detail: ev }));
         return;

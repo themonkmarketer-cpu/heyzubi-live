@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { CardBody, Row } from '@shared/types';
-import { api, openPopup } from '../../lib/api';
+import { api, openWhenReady } from '../../lib/api';
 import { useStore } from '../../store';
 import { Icon } from '../Icon';
 import { ToolkitLogo } from '../ToolkitLogo';
@@ -74,6 +74,9 @@ export function QuestionCard({ row, body }: { row: Row; body: Card<'question'> }
   const { busy, error, run } = useBusy();
   const pending = body.status === 'pending';
   const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const [otherOpen, setOtherOpen] = useState(false);
+  const [own, setOwn] = useState('');
+  const ownAnswer = !!body.answer && !body.options.includes(body.answer);
   return (
     <div className={`card question-card${pending ? '' : ' is-resolved'}`}>
       <div className="question-card__head">
@@ -97,6 +100,19 @@ export function QuestionCard({ row, body }: { row: Row; body: Card<'question'> }
             </button>
           );
         })}
+        {body.other && (pending && otherOpen ? (
+          <form className="question-other" onSubmit={(e) => { e.preventDefault(); const t = own.trim(); if (t && !busy) void run('other', () => api.answer(row.botId, row.seq, t)); }}>
+            <span className="question-option__key">{letters[body.options.length]}</span>
+            <input className="text-input question-other__input" value={own} maxLength={300} autoFocus placeholder="Type your own" aria-label="Your own answer" onChange={(e) => setOwn(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setOtherOpen(false); } }} />
+            <button type="submit" className="btn btn--primary btn--sm" disabled={!own.trim() || !!busy}>OK</button>
+          </form>
+        ) : (
+          <button type="button" className={`question-option${ownAnswer ? ' is-chosen' : ''}`} disabled={!pending || !!busy} onClick={() => setOtherOpen(true)}>
+            <span className="question-option__key">{letters[body.options.length]}</span>
+            <span className="question-option__label">{ownAnswer ? body.answer : 'Other'}</span>
+            {ownAnswer && <Icon name="check" size={12} opacity={0.6} style={{ marginLeft: 'auto', marginTop: 6 }} />}
+          </button>
+        ))}
       </div>
       {pending && (
         <div className="question-card__foot">
@@ -120,12 +136,12 @@ export function ConnectCard({ row, body }: { row: Row; body: Card<'connect'> }) 
   useEffect(() => { setWaiting(false); }, [connectionsVersion, body.status]);
 
   const connect = () => run('connect', async () => {
-    const popup = openPopup('about:blank');
+    const popup = openWhenReady(true);
     try {
       const { redirectUrl } = await api.connect(body.toolkit, row.botId, row.seq);
-      if (popup) popup.location.href = redirectUrl; else window.open(redirectUrl, '_blank');
+      popup.go(redirectUrl);
       setWaiting(true);
-    } catch (e) { popup?.close(); throw e; }
+    } catch (e) { popup.close(); throw e; }
   });
 
   return (

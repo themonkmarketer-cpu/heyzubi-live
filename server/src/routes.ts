@@ -36,6 +36,8 @@ import { isSarvamVoice } from './sarvam.js';
 import { prefsApi, getPrefs } from './prefs.js';
 import { apiKeysApi, inboundApi } from './inbound.js';
 import { codingApi } from './coding.js';
+import { promptsApi } from './prompts.js';
+import { socialApi } from './reels/routes.js';
 import { desktopApi, desktopDevicesApi } from './desktop.js';
 
 export const api = new Hono<AuthVars>();
@@ -603,6 +605,8 @@ api.route('/clicky', clickyApi);
 api.route('/whatsapp', whatsappApi);
 api.route('/generations', generationsApi);
 api.route('/panels', panelsApi);
+api.route('/prompts', promptsApi);
+api.route('/social', socialApi);
 api.route('/status', statusApi);
 api.route('/prefs', prefsApi);
 api.route('/keys', apiKeysApi);

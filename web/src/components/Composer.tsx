@@ -10,6 +10,7 @@ import { useDictation } from '../voice/dictation';
 import { speakReply, stopSpeaking, useSpeak } from '../voice/speak';
 import { AudioLines, Camera, ImagePlus, LayoutGrid, PhoneOff, Speech, SquarePen } from 'lucide-react';
 import { toggleCamera, useCamera } from './CameraBubble';
+import { PromptChips, usePrompts } from './PromptChips';
 
 const MAX_H = 200;
 /** Replies up to this long are read aloud after a voice message; longer ones get a Listen button instead. */
@@ -29,6 +30,18 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
   const [menu, setMenu] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
   const setModal = useStore((s) => s.setModal);
+
+  // Prompt chips: a chip fills the box; sending what came from it counts as a use.
+  const prompts = usePrompts(bot.id);
+  const picked = useRef<string | null>(null);
+  useEffect(() => { picked.current = null; }, [bot.id]);
+  useEffect(() => { if (!text.trim()) picked.current = null; }, [text]);
+  const pickPrompt = (p: { id: string; text: string }) => {
+    const next = text.trim() && text.trim() !== p.text ? `${text.trimEnd()}\n${p.text}` : p.text;
+    picked.current = p.id;
+    setText(next);
+    setTimeout(() => { const el = ref.current; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 0);
+  };
 
   // Per-bot drafts.
   useEffect(() => { setText(drafts.get(bot.id) ?? ''); setError(null); ref.current?.focus(); }, [bot.id]);
@@ -93,6 +106,7 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
     setSending(true); setError(null);
     try {
       await api.send(bot.id, t);
+      if (picked.current) { void api.usedPrompt(bot.id, picked.current).catch(() => { /* only a count */ }); picked.current = null; }
       setText(''); setPics([]);
       drafts.delete(bot.id);
     } catch (e) {
@@ -185,6 +199,7 @@ export function Composer({ bot, running }: { bot: Bot; running: boolean }) {
       {!error && !vmNote && voiceMsg.state !== 'idle' && <div className="composer__note" role="status">{voiceMsg.state === 'recording'
           ? 'Recording a voice message… click the red button to send (Esc cancels)'
           : 'Transcribing and sending your voice message…'}</div>}
+      <PromptChips bot={bot} prompts={prompts} text={text} onPick={pickPrompt} />
       <div className={`composer${multiline ? ' is-multiline' : ''}`}>
         <div className="composer__left">
           <span className="composer__plus-anchor">

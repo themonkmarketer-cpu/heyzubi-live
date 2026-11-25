@@ -10,11 +10,12 @@ export function MembersCard({ room }: { room: Bot }) {
   const bots = useStore((s) => s.bots);
   const [members, setMembers] = useState<RoomMember[] | null>(null);
   const [leadId, setLeadId] = useState<string | null>(null);
+  const [researchId, setResearchId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    api.roomMembers(room.id).then((r) => { setMembers(r.members); setLeadId(r.leadId ?? null); }).catch((e) => setError((e as Error).message));
+    api.roomMembers(room.id).then((r) => { setMembers(r.members); setLeadId(r.leadId ?? null); setResearchId(r.researchId ?? null); }).catch((e) => setError((e as Error).message));
   }, [room.id]);
   useEffect(load, [load]);
 
@@ -28,6 +29,10 @@ export function MembersCard({ room }: { room: Bot }) {
   const setLead = async (id: string | null) => {
     setError(null);
     try { const r = await api.setRoomLead(room.id, id); setLeadId(r.leadId); } catch (e) { setError((e as Error).message); }
+  };
+  const setResearch = async (id: string | null) => {
+    setError(null);
+    try { const r = await api.setRoomResearch(room.id, id); setResearchId(r.researchId); } catch (e) { setError((e as Error).message); }
   };
   const candidates = bots.filter((b) => b.kind !== 'room' && !ids.includes(b.id));
 
@@ -44,6 +49,17 @@ export function MembersCard({ room }: { room: Bot }) {
               <span className="members__name">{m.name}</span>
               {m.label && <span className="members__label">{m.label}</span>}
             </span>
+            {m.id !== leadId && (
+              <button
+                type="button"
+                className={`members__lead${m.id === researchId ? ' is-lead' : ''}`}
+                onClick={() => void setResearch(m.id === researchId ? null : m.id)}
+                aria-pressed={m.id === researchId}
+                title={m.id === researchId ? `${m.name} does the research: goes first, and the others build on it. Click to stop.` : `Have ${m.name} do the research: goes first, and the others build on it. Works when the group has a lead.`}
+              >
+                Research
+              </button>
+            )}
             <button
               type="button"
               className={`members__lead${m.id === leadId ? ' is-lead' : ''}`}

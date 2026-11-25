@@ -94,6 +94,7 @@
 .sidebar-nav::before { content: ''; position: sticky; display: block; top: 0; height: 1px; margin: -6px -12px 5px; background: var(--color-border-tertiary); }
 .sidebar-nav .sidebar-island { margin-bottom: 0; }
 .sidebar-nav__row { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.sidebar-nav__row.is-one { grid-template-columns: 1fr; }
 .sidebar-nav__row .sidebar-island { min-width: 0; gap: 6px; padding: 0 8px 0 4px; }
 .sidebar-nav__row .sidebar-island__icon { width: 28px; flex-shrink: 0; }
 .sidebar-nav__row .sidebar-island__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

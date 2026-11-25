@@ -115,6 +115,8 @@ export type CardBody =
       card: 'question';
       question: string;
       options: string[];
+      /** Show an "Other" choice with a box for the owner's own words. */
+      other?: boolean;
       status: 'pending' | 'answered' | 'dismissed';
       answer?: string;
     }
@@ -271,6 +273,9 @@ export interface WaDraft {
   at: number;
 }
 
+/** A prompt saved for a team member: a chip above its message box (the most used) or in its list. */
+export interface SavedPrompt { id: string; botId: string; title: string; text: string; byBot: boolean; uses: number; lastUsedAt: number | null }
+
 /** Server-sent events on GET /api/events */
 export type ServerEvent =
   | { type: 'whatsapp'; draft: WaDraft }
@@ -286,5 +291,7 @@ export type ServerEvent =
   | { type: 'routines'; botId: string }
   | { type: 'tasks'; botId: string }
   | { type: 'memories'; botId: string }
+  | { type: 'prompts'; botId: string }
+  | { type: 'social'; episodeId: string }
   | { type: 'connections' }
   | { type: 'ping' };

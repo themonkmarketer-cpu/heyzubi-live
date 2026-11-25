@@ -20,9 +20,11 @@ import { Cron } from 'croner';
 import { runResearch } from '../research.js';
 import { listCodingRuns, startCodingRun } from '../coding.js';
 import { turnIsOwner } from './loop.js';
+import { addPrompt, deletePrompt, listPrompts, PromptError, updatePrompt } from '../prompts.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createBot, COLORS, UserError } from '../team.js';
+import { GENDERS, isGender, personaLine } from '../gender.js';
 import { engineHome, engineInfo, mayUsePrimary, ownClaudeSignIn, primaryBotId } from '../engine.js';
 import { configureProfile } from '../hermes-profile.js';
 import { PROP_IDS, PROPS, propFor } from '../avatar-props.js';
@@ -54,6 +56,16 @@ interface ToolDef {
 }
 
 const obj = (properties: Record<string, unknown>, required: string[] = []) => ({ type: 'object', properties, required, additionalProperties: false });
+
+/** Changing saved prompts is for turns from the owner's own words; every change shows in the chat. */
+function promptChange(ctx: ToolCtx, fn: () => { title: string; id: string }, done: string): ToolResult {
+  if (!turnIsOwner(ctx.botId)) return { output: 'Not changed: saved prompts change only when the owner asks you in their own message in HeyZubi.' };
+  try {
+    const p = fn();
+    appendRow(ctx.botId, 'event', { type: 'event', event: 'bot-message', text: `Prompt ${done}: ${p.title}` });
+    return { output: JSON.stringify({ ok: true, prompt_id: p.id, title: p.title }), summary: `Prompt ${done}` };
+  } catch (e) { if (e instanceof PromptError) return { output: e.message }; throw e; }
+}
 
 function botByName(userId: string, name: string) {
   return db.prepare('SELECT * FROM bots WHERE user_id=? AND lower(name)=lower(?)').get(userId, name.trim()) as any;
@@ -333,6 +345,38 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: 'list_prompts',
+    description: 'List your saved prompts: the chips the owner sees above your message box (the 5 most used) and the rest of the list.',
+    parameters: obj({}),
+    activity: 'working',
+    label: 'Checking saved prompts',
+    impl: async (_a, ctx) => ({ output: JSON.stringify(listPrompts(ctx.botId).map((p) => ({ prompt_id: p.id, title: p.title, text: p.text, uses: p.uses }))) }),
+  },
+  {
+    name: 'add_prompt',
+    description: 'Save a prompt for the owner as a chip above your message box, when they ask you to. `title` is the short name on the chip (40 characters at most); `text` is what fills the box, written as the owner would say it to you (2000 at most). It never sends by itself.',
+    parameters: obj({ title: { type: 'string' }, text: { type: 'string' } }, ['title', 'text']),
+    activity: 'working',
+    label: 'Saving a prompt',
+    impl: async (a, ctx) => promptChange(ctx, () => addPrompt(ctx.botId, a.title, a.text, true), 'added'),
+  },
+  {
+    name: 'update_prompt',
+    description: 'Change the title or text of one of your saved prompts, when the owner asks you to (prompt_id from list_prompts).',
+    parameters: obj({ prompt_id: { type: 'string' }, title: { type: 'string' }, text: { type: 'string' } }, ['prompt_id']),
+    activity: 'working',
+    label: 'Changing a prompt',
+    impl: async (a, ctx) => promptChange(ctx, () => updatePrompt(ctx.botId, String(a.prompt_id), { title: a.title, text: a.text }, true), 'changed'),
+  },
+  {
+    name: 'delete_prompt',
+    description: 'Delete one of your saved prompts, when the owner asks you to (prompt_id from list_prompts).',
+    parameters: obj({ prompt_id: { type: 'string' } }, ['prompt_id']),
+    activity: 'working',
+    label: 'Removing a prompt',
+    impl: async (a, ctx) => promptChange(ctx, () => deletePrompt(ctx.botId, String(a.prompt_id)), 'deleted'),
+  },
+  {
     name: 'create_task',
     description: 'Track a piece of work the user asked for as a task (use one per request when asked for several things at once).',
     parameters: obj({ title: { type: 'string' } }, ['title']),
@@ -405,12 +449,12 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'ask_user',
-    description: 'Ask the user a multiple-choice question when you need a decision before continuing. Ends your turn; their answer arrives as their next message.',
-    parameters: obj({ question: { type: 'string' }, options: { type: 'array', items: { type: 'string' } } }, ['question', 'options']),
+    description: 'Ask the user a multiple-choice question when you need a decision before continuing. Set other to true to add an "Other" choice with a box for their own words (don\'t list Other yourself). Ends your turn; their answer arrives as their next message.',
+    parameters: obj({ question: { type: 'string' }, options: { type: 'array', items: { type: 'string' } }, other: { type: 'boolean' } }, ['question', 'options']),
     activity: 'waiting_for_you',
     label: 'Waiting on you',
     impl: async (a, ctx) => {
-      appendRow(ctx.botId, 'card', { type: 'card', card: 'question', question: a.question, options: (a.options ?? []).slice(0, 6), status: 'pending' });
+      appendRow(ctx.botId, 'card', { type: 'card', card: 'question', question: a.question, options: (a.options ?? []).filter((o: unknown) => a.other !== true || !/^other\b/i.test(String(o).trim())).slice(0, 6), ...(a.other === true ? { other: true } : {}), status: 'pending' });
       return { output: 'Question shown to the user. Stop here and wait for their answer.', endTurn: true };
     },
   },
@@ -458,15 +502,16 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'create_team_member',
-    description: `Add a new team member (a bot) to HeyZubi, for the owner. It becomes a HeyZubi bot with its own Hermes profile, the same name, mascot and description in both apps, and its own screen and engine. This is the ONLY way to add a bot: never create Hermes profiles with the hermes CLI or a terminal. Confirm the name, role and description with the owner first (ask_user). A card then appears in this chat that walks the owner through signing the new member in to Claude. mascot is one of: ${MASCOTS}; leave it out to pick one from the role. persona is the full SOUL.md text (optional; a short default is written otherwise).`,
+    description: `Add a new team member (a bot) to HeyZubi, for the owner. It becomes a HeyZubi bot with its own Hermes profile, the same name, mascot and description in both apps, and its own screen and engine. This is the ONLY way to add a bot: never create Hermes profiles with the hermes CLI or a terminal. The owner decides first, on cards (ask_user): the name (three ideas, and other: true; the question also says the role, what it owns, its limits and its mascot), then the gender of its persona. Their answers are the go-ahead. A card then appears in this chat that walks the owner through signing the new member in to Claude. mascot is one of: ${MASCOTS}; leave it out to pick one from the role. persona is the full SOUL.md text (optional; a short default is written otherwise).`,
     parameters: obj({
       name: { type: 'string', description: 'Short first name, e.g. "Sam".' },
       role: { type: 'string', description: 'Short role label shown after the name, e.g. "Sales".' },
       description: { type: 'string', description: 'One or two sentences on what it owns and its limits.' },
+      gender: { type: 'string', enum: [...GENDERS], description: 'The gender of its persona, as the owner chose it.' },
       persona: { type: 'string', description: 'Optional SOUL.md text: who it is, how it works, its rules.' },
       mascot: { type: 'string', enum: [...PROP_IDS] },
       color: { type: 'string', enum: COLORS.filter((c) => c !== 'black') },
-    }, ['name', 'role', 'description']),
+    }, ['name', 'role', 'description', 'gender']),
     activity: 'working',
     label: 'Adding a team member',
     impl: async (a, ctx) => {
@@ -478,18 +523,20 @@ export const TOOLS: ToolDef[] = [
       const role = String(a.role ?? '').trim().slice(0, 40);
       const description = String(a.description ?? '').trim().slice(0, 500);
       if (!role || !description) return { output: 'A role and a description are needed.' };
+      if (!isGender(a.gender)) return { output: 'Ask the owner for the gender of its persona first: ask_user with the options Female, Male and Neutral.' };
       const mascot = (PROP_IDS as readonly string[]).includes(a.mascot) ? a.mascot : propFor({ name, label: role, description });
       const color = (COLORS as string[]).includes(a.color) && a.color !== 'black' ? a.color : undefined;
       let bot: any;
       try {
-        bot = createBot(ctx.userId, { name, label: role, description, avatarProp: mascot ?? null, avatarColor: color, mode: 'personal' });
+        bot = createBot(ctx.userId, { name, label: role, description, avatarProp: mascot ?? null, avatarColor: color, mode: 'personal', gender: a.gender });
       } catch (e: any) {
         if (e instanceof UserError) return { output: e.message };
         throw e;
       }
       // Its persona goes in through Hermes's own profile editor (as the Profile tab does), once Hermes has made the profile.
       let persona = 'default';
-      const soul = typeof a.persona === 'string' ? a.persona.trim().slice(0, 20_000) : '';
+      const given = typeof a.persona === 'string' ? a.persona.trim().slice(0, 20_000) : '';
+      const soul = given && `${given}\n\n${personaLine(a.gender)}\n`;
       const home = await profileReady(bot.id, 150_000);
       if (soul) {
         if (!home) persona = 'not written yet: the profile was still being made. Call team_member_status in a minute, then set it with the owner in its settings › Hermes profile.';
@@ -502,7 +549,7 @@ export const TOOLS: ToolDef[] = [
       const row = getBotRow(bot.id);
       return {
         output: JSON.stringify({
-          created: true, name, role, mascot: mascot ?? null, hermes_profile: row?.hermes_profile ?? null,
+          created: true, name, role, gender: a.gender, mascot: mascot ?? null, hermes_profile: row?.hermes_profile ?? null,
           skills_folder: home ? path.join(home, 'skills') : null, persona,
           next: `A card is now in this chat for ${name}: it shows the setup and has the "Sign in to Claude" button. If skills should be installed, put each reviewed skill folder in skills_folder first. Then tell the owner in one or two short lines to sign ${name} in with the card, and stop. You'll get a message when ${name} is signed in.`,
         }),
@@ -521,6 +568,18 @@ export const TOOLS: ToolDef[] = [
       if (!bot || bot.kind === 'room') return { output: `No team member named "${a.name}". Team: ${(db.prepare("SELECT name FROM bots WHERE user_id=? AND COALESCE(kind,'agent')<>'room'").all(ctx.userId) as any[]).map((b) => b.name).join(', ')}` };
       if (bot.is_primary) return { output: 'That is the main agent.' };
       return { output: JSON.stringify(await memberStatus(bot)) };
+    },
+  },
+  {
+    name: 'reel_schedule_report',
+    description: 'Report how scheduling an episode went, when the owner asked you to schedule it from Reels Factory: once per platform, after you saw it confirmed on screen (or could not do it).',
+    parameters: obj({ episode: { type: 'integer' }, platform: { type: 'string', enum: ['instagram', 'facebook', 'youtube'] }, status: { type: 'string', enum: ['scheduled', 'failed'] }, link: { type: 'string' }, note: { type: 'string' } }, ['episode', 'platform', 'status']),
+    activity: 'working',
+    label: 'Reporting the schedule',
+    impl: async (a, ctx) => {
+      if (ctx.botId !== primaryBotId()) return { output: 'Only the main agent reports this.' };
+      const { reportSchedule } = await import('../reels/routes.js');
+      return { output: reportSchedule(Number(a.episode), String(a.platform), String(a.status), String(a.link ?? ''), String(a.note ?? '').slice(0, 300)), summary: `${a.platform}: ${a.status}` };
     },
   },
   {

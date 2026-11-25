@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { CardBody, EngineInfo, Row } from '@shared/types';
-import { api } from '../../lib/api';
+import { api, openWhenReady } from '../../lib/api';
 import { configApi } from '../../lib/configApi';
 import { useStore } from '../../store';
 import { useConfigUI } from '../../configStore';
@@ -41,12 +41,12 @@ export function TeammateCard({ row, body }: { row: Row; body: Body }) {
   const start = async () => {
     setBusy('start'); setError(null); setCode('');
     // The tab is opened before the request, so the browser doesn't treat it as a pop-up.
-    const tab = window.open('about:blank', '_blank');
+    const tab = openWhenReady();
     try {
       const r = await configApi.claudeSignInStart(body.teammateId);
       setLink(r.url);
-      if (tab) { tab.opener = null; tab.location.href = r.url; } else window.open(r.url, '_blank', 'noopener');
-    } catch (e) { tab?.close(); setError((e as Error).message || 'The sign-in could not start.'); }
+      tab.go(r.url);
+    } catch (e) { tab.close(); setError((e as Error).message || 'The sign-in could not start.'); }
     finally { setBusy(null); }
   };
   const finish = async () => {

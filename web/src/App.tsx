@@ -1,5 +1,5 @@
 import { BoardView } from './components/board/BoardView';
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { startEvents } from './lib/events';
 import { startNotifications } from './lib/notify';
 import { isConnectedMessage } from './lib/api';
@@ -24,6 +24,8 @@ import { CapabilityWatcher, LivePanels } from './components/LivePanels';
 import { WallpaperPicker } from './components/WallpaperPicker';
 import { FileViewer } from './lib/openFile';
 import { useWallpaper } from './lib/wallpapers';
+
+const SocialView = lazy(() => import('./components/social/SocialView').then((m) => ({ default: m.SocialView })));
 
 function Shell() {
   const detailsOpen = useStore((s) => s.detailsOpen);
@@ -72,7 +74,7 @@ function Shell() {
   return (
     <div className={`app${collapsed ? ' is-sidebar-collapsed' : ''}${detailsOpen && hasBot && view === 'chat' ? ' has-details' : ''}`}>
       <Sidebar />
-      {view === 'tasks' ? <TasksView /> : view === 'routines' ? <RoutinesView /> : view === 'generations' ? <GenerationsView /> : view === 'board' ? <BoardView /> : <ChatView />}
+      {view === 'tasks' ? <TasksView /> : view === 'routines' ? <RoutinesView /> : view === 'generations' ? <GenerationsView /> : view === 'social' ? <Suspense fallback={<main className="chat" />}><SocialView /></Suspense> : view === 'board' ? <BoardView /> : <ChatView />}
       {detailsOpen && hasBot && view === 'chat' && <DetailsPanel />}
       {modal === 'create' && <CreateBotModal />}
       {modal === 'group' && <CreateGroupModal />}

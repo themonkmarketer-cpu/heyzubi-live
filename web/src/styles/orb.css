@@ -83,7 +83,7 @@
 .sorb__ic .sorb__mask { width: 22px; height: 22px; }
 
 /* Under the sidebar's Capabilities entry (Sidebar.tsx CapabilitiesIsland): the same orb, in the list. */
-.sidebar-caps { display: flex; justify-content: center; margin: 0 0 2px; animation: sorb-pipe 0.2s ease-out both; }
+.sidebar-caps { grid-column: 1 / -1; order: -1; display: flex; justify-content: center; margin: 0 0 2px; animation: sorb-pipe 0.2s ease-out both; }
 .sidebar-caps .sorb { padding-top: 0; }
 .sidebar-caps .sorb::before { display: none; }
 .sidebar-island__chev { margin-left: auto; display: inline-flex; padding-right: 10px; transition: transform 150ms; }

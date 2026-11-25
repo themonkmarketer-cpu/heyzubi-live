@@ -10,9 +10,8 @@ import { Icon } from './Icon';
 import { Menu } from './Menu';
 import { UpdateRow } from './UpdateRow';
 import { SidebarOrb } from './SidebarOrb';
-import { lsGet, lsSet } from '../lib/storage';
 import { keys } from '../lib/keys';
-import { LogOut, Settings } from 'lucide-react';
+import { ChartNoAxesColumn, Clapperboard, LogOut, Settings } from 'lucide-react';
 
 function initials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -70,6 +69,17 @@ function GenerationsIsland() {
   );
 }
 
+/** Sidebar entry for Reels Factory: the cartoon reel pipeline, in place of the chat. */
+function SocialIsland() {
+  const on = useConfigUI((s) => s.view === 'social');
+  return (
+    <button type="button" className={`sidebar-island${on ? ' is-active' : ''}`} onClick={() => useConfigUI.getState().setView(on ? 'chat' : 'social')} title="Reels Factory" aria-pressed={on}>
+      <span className="sidebar-island__icon"><Clapperboard size={18} strokeWidth={1.7} aria-hidden /></span>
+      <span className="sidebar-island__label">Reels Factory</span>
+    </button>
+  );
+}
+
 /** Sidebar entry for Kanban: Hermes's own task board, as cards in columns. */
 function BoardIsland() {
   const view = useConfigUI((s) => s.view);
@@ -86,24 +96,34 @@ function BoardIsland() {
   );
 }
 
+/** Sidebar entry for Usage: the page in Settings with each team member's turns, tokens and cost. */
+function UsageIsland() {
+  const on = useConfigUI((s) => s.appSettings === 'usage');
+  return (
+    <button type="button" className={`sidebar-island${on ? ' is-active' : ''}`} onClick={() => useConfigUI.getState().openAppSettings('usage')} title="Usage" aria-haspopup="dialog">
+      <span className="sidebar-island__icon"><ChartNoAxesColumn size={18} strokeWidth={1.7} aria-hidden /></span>
+      <span className="sidebar-island__label">Usage</span>
+    </button>
+  );
+}
+
 /**
- * Capabilities: Zubi's orb and the ring of what it can do. It sits at the top of the nav at the bottom of the sidebar
- * and opens upwards, above this entry. The entry opens and closes it (remembered per browser); in the narrow sidebar
- * it widens the sidebar and opens it.
+ * Capabilities: Zubi's orb and the ring of what it can do. It sits beside Usage at the top of the nav at the bottom of
+ * the sidebar; the orb opens across the whole row, above it. It starts open and highlighted every time the app
+ * loads; the entry closes and opens it, and in the narrow sidebar it widens the sidebar and opens it.
  */
 function CapabilitiesIsland() {
   const collapsed = useStore((s) => s.sidebarCollapsed);
-  const [open, setOpen] = useState(() => lsGet('capabilitiesOpen') === '1');
-  const show = (v: boolean) => { setOpen(v); lsSet('capabilitiesOpen', v ? '1' : '0'); };
+  const [open, setOpen] = useState(true);
   const click = () => {
-    if (collapsed) { useStore.getState().set({ sidebarCollapsed: false }); show(true); return; }
-    show(!open);
+    if (collapsed) { useStore.getState().set({ sidebarCollapsed: false }); setOpen(true); return; }
+    setOpen(!open);
   };
   const shown = open && !collapsed;
   return (
     <>
       {shown && <div id="sidebar-capabilities" className="sidebar-caps"><SidebarOrb /></div>}
-      <button type="button" className={`sidebar-island${shown ? ' is-open' : ''}`} onClick={click} title={shown ? 'Hide capabilities' : 'Show capabilities'}
+      <button type="button" className={`sidebar-island${shown ? ' is-open is-active' : ''}`} onClick={click} title={shown ? 'Hide capabilities' : 'Show capabilities'}
         aria-expanded={shown} aria-controls="sidebar-capabilities">
         <span className="sidebar-island__icon">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -240,10 +260,13 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* The views, at the bottom just above Updates, built upwards: Routines and Tasks, then Kanban and Gallery, then
-          Capabilities (its orb opens upwards). Two to a row; one per row in the narrow sidebar. */}
+      {/* The views, at the bottom just above Updates: Usage and Capabilities (its orb opens upwards), then Kanban and Gallery,
+          then Routines and Tasks, then Reels Factory. Two to a row; one per row in the narrow sidebar. */}
       <nav className="sidebar-nav" aria-label="Views">
-        <CapabilitiesIsland />
+        <div className="sidebar-nav__row">
+          <UsageIsland />
+          <CapabilitiesIsland />
+        </div>
         <div className="sidebar-nav__row">
           <BoardIsland />
           <GenerationsIsland />
@@ -251,6 +274,9 @@ export function Sidebar() {
         <div className="sidebar-nav__row">
           <RoutinesIsland />
           <TasksIsland />
+        </div>
+        <div className="sidebar-nav__row is-one">
+          <SocialIsland />
         </div>
       </nav>
 

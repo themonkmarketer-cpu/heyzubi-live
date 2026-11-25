@@ -60,26 +60,35 @@ export function dispatchRoomMessage(roomId: string, text: string, enqueue: (botI
   const lead = room.lead_bot_id ? members.find((m) => m.id === room.lead_bot_id) : undefined;
   if (lead && !mentioned.length && members.length >= 2) {
     const others = members.filter((m) => m.id !== lead.id).slice(0, MAX_RESPONDERS);
-    const recent = recentNow();
-    for (const m of others) {
+    // A researcher goes first and posts its findings, so the others build on them instead of guessing.
+    const research = others.find((m) => m.id === room.research_bot_id);
+    const ask = (m: { id: string; name: string }, recent: string) => {
       enqueue(m.id, {
         type: 'system',
         owner: true, // the user posted in the group
         text:
-          `[Group chat "${room.name}"] Members: ${members.map((x) => x.name).join(', ')}. ${lead.name} leads this group and will give the user the combined answer.\n` +
+          `[Group chat "${room.name}"] The owner wrote in this group, in their own words, and asked for your view: posting it here is what they asked for (nothing else is approved by that). Members: ${members.map((x) => x.name).join(', ')}. ${lead.name} leads this group and will give the user the combined answer.\n` +
           `Recent group messages:\n${recent}\n\n` +
-          'Give your view from your own role: what is missing, what is likely to go wrong, what you would do. Be specific, and disagree where you do; don\'t just agree. ' +
+          (m.id === research?.id
+            ? 'You do the research for this group and go first. Look things up with your tools, then post what you found: the facts that matter, with sources, and what you could not find. Keep opinion to a line or two. '
+            : `Give your view from your own role: what is missing, what is likely to go wrong, what you would do. Be specific, and disagree where you do; don't just agree. ${research ? `${research.name} does the research: build on those findings (above) instead of redoing them. ` : ''}`) +
           `Do not wrap up or summarise for the group: ${lead.name} does that. Reply by calling post_to_group with group_name "${room.name}" (use your tools first if the request needs real work). If you have nothing to add, call stay_silent.`,
       });
-    }
+    };
+    const finished = (ids: string[], minutes: number) => Promise.race([Promise.all(ids.map((id) => runInBotQueue(id, async () => {}))), new Promise((r) => setTimeout(r, minutes * 60_000))]);
+    const rest = others.filter((m) => m !== research);
+    const first = async () => { if (research) { ask(research, recentNow()); await finished([research.id], 10); } };
     // Once every member has finished (or after 15 minutes), the lead answers for the group.
-    const done = Promise.all(others.map((m) => runInBotQueue(m.id, async () => {})));
-    void Promise.race([done, new Promise((r) => setTimeout(r, 15 * 60_000))]).then(() => {
+    void first().then(() => {
+      const recent = recentNow();
+      for (const m of rest) ask(m, recent);
+      return finished(rest.map((m) => m.id), 15);
+    }).then(() => {
       enqueue(lead.id, {
         type: 'system',
         owner: true,
         text:
-          `[Group chat "${room.name}"] You lead this group. ${others.map((x) => x.name).join(', ')} have given their views (below).\n` +
+          `[Group chat "${room.name}"] The owner wrote in this group, in their own words, and asked for the group's answer: posting it here is what they asked for (nothing else is approved by that). You lead this group. ${others.map((x) => x.name).join(', ')} have given their views (below).\n` +
           `Recent group messages:\n${recentNow()}\n\n` +
           'Give the user one combined answer: the plan or decision, where the team agreed, where they disagreed and what you would do about it. Keep it short. ' +
           `Post it by calling post_to_group with group_name "${room.name}". Do not write a normal reply.`,

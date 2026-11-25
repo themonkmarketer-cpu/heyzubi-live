@@ -1,4 +1,4 @@
-import type { Bot, ComputerState, LiveState, Routine, Row, Toolkit, User } from '@shared/types';
+import type { Bot, ComputerState, LiveState, Routine, Row, SavedPrompt, Toolkit, User } from '@shared/types';
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -65,9 +65,15 @@ export const api = {
   exportTeam: (name: string) => req<Record<string, unknown>>('GET', `/teams/${encodeURIComponent(name)}/export`),
   importTeam: (file: unknown) => req<{ bots: unknown[] }>('POST', '/teams/import', file),
   setBotTeam: (botId: string, p: { team?: string | null; isManager?: boolean }) => req<{ bot: unknown }>('PATCH', `/bots/${botId}`, p),
-  roomMembers: (id: string) => req<{ members: RoomMember[]; leadId: string | null }>('GET', `/rooms/${id}/members`),
+  roomMembers: (id: string) => req<{ members: RoomMember[]; leadId: string | null; researchId?: string | null }>('GET', `/rooms/${id}/members`),
   setRoomLead: (id: string, botId: string | null) => req<{ ok: true; leadId: string | null }>('PUT', `/rooms/${id}/lead`, { botId }),
   setRoomMembers: (id: string, botIds: string[]) => req<{ ok: true; members: string[] }>('PUT', `/rooms/${id}/members`, { botIds }),
+  setRoomResearch: (id: string, botId: string | null) => req<{ ok: true; researchId: string | null }>('PUT', `/rooms/${id}/research`, { botId }),
+  prompts: (botId: string) => req<{ prompts: SavedPrompt[] }>('GET', `/prompts/${botId}`),
+  addPrompt: (botId: string, title: string, text: string) => req<{ prompt: SavedPrompt }>('POST', `/prompts/${botId}`, { title, text }),
+  updatePrompt: (botId: string, id: string, title: string, text: string) => req<{ prompt: SavedPrompt }>('PATCH', `/prompts/${botId}/${id}`, { title, text }),
+  deletePrompt: (botId: string, id: string) => req<{ ok: true }>('DELETE', `/prompts/${botId}/${id}`),
+  usedPrompt: (botId: string, id: string) => req<{ ok: true }>('POST', `/prompts/${botId}/${id}/used`),
   createRoom: (name: string, botIds: string[]) => req<{ id: string }>('POST', '/rooms', { name, botIds }),
 };
 
@@ -80,6 +86,24 @@ export function openPopup(url: string) {
   const top = window.screenY + (window.outerHeight - h) / 2;
   connectPopup = window.open(url, 'heyzubi-connect', `width=${w},height=${h},left=${left},top=${top}`);
   return connectPopup;
+}
+
+/**
+ * A tab (or the connect popup) for a link that has to be fetched first. In a browser it opens empty at once, or it would
+ * be blocked as a pop-up. The Windows app sends links to the PC's browser and can't open an empty one, so there the link
+ * itself is opened when it's known.
+ */
+export function openWhenReady(popup = false) {
+  const desktopApp = !!(window as { chrome?: { webview?: unknown } }).chrome?.webview;
+  const w = desktopApp ? null : popup ? openPopup('about:blank') : window.open('about:blank', '_blank');
+  return {
+    go(url: string) {
+      if (!w) { window.open(url, '_blank', popup ? undefined : 'noopener'); return; }
+      if (!popup) w.opener = null;
+      w.location.href = url;
+    },
+    close() { w?.close(); },
+  };
 }
 
 /** The "app connected" note from our OAuth callback page: it must come from the popup we opened or from this app's own origin. */

@@ -167,6 +167,10 @@ addColumn('bots', 'hermes_profile', 'TEXT');
 addColumn('bots', 'handback_at', 'INTEGER');
 // The prop a team member holds in its avatar (a paintbrush, code brackets…): a prop id, 'none', or NULL = picked from its role.
 addColumn('bots', 'avatar_prop', 'TEXT');
+// A team member's persona: 'female', 'male' or 'neutral' (asked when Zubi makes it); NULL = not said.
+addColumn('bots', 'gender', 'TEXT');
+// A group's researcher: goes first, so the others answer with its findings in front of them.
+addColumn('bots', 'research_bot_id', 'TEXT');
 addColumn('screens', 'width', 'INTEGER');
 addColumn('screens', 'height', 'INTEGER');
 // JSON list of the tools an approval card asked about: "Always allow" stores a policy for each of

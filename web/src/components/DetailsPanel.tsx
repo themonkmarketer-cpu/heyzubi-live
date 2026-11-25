@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Routine } from '@shared/types';
 import { BotAvatarFor } from '../avatar/BotAvatar';
-import { api, openPopup } from '../lib/api';
+import { api, openWhenReady } from '../lib/api';
 import { botVars } from '../lib/colors';
 import { computerStatusText } from '../lib/computer';
 import { displayName, useSelectedBot, useStore } from '../store';
@@ -58,8 +58,8 @@ export function DetailsPanel() {
 
   const openComputer = (mode: ScreenMode) => set({ viewerOpen: true, viewerMode: mode, viewerHint: null });
   const addSlack = async () => {
-    const popup = openPopup('about:blank');
-    try { const { redirectUrl } = await api.connect('slack'); if (popup) popup.location.href = redirectUrl; } catch { popup?.close(); }
+    const popup = openWhenReady(true);
+    try { const { redirectUrl } = await api.connect('slack'); popup.go(redirectUrl); } catch { popup.close(); }
   };
 
   return (

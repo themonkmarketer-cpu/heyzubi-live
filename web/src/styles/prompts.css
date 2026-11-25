@@ -1,0 +1,18 @@
+/* Prompt chips above the message box, and the list to add, edit and delete them */
+.pchips { display: flex; flex-wrap: wrap; gap: 6px; max-width: 960px; margin: 0 auto 8px; padding-top: 8px; }
+.pchips__chip { display: block; max-width: 210px; height: 28px; padding: 0 12px; border-radius: 999px; border: 0.5px solid var(--color-border-secondary); background: var(--color-bg-pane); color: var(--color-text-primary); font-size: 12.5px; line-height: 26px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pchips__chip:hover { background: var(--color-bg-hover); }
+.pchips__chip:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 1px; }
+.pchips__tool { display: inline-flex; align-items: center; gap: 5px; border-style: dashed; color: var(--color-text-secondary); flex-shrink: 0; }
+.prompts-modal { width: 520px; max-width: calc(100vw - 24px); }
+.prompts-modal__body { display: flex; flex-direction: column; gap: 12px; padding: 16px; max-height: 60vh; overflow-y: auto; }
+.prompts-modal__field { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; color: var(--color-text-secondary); }
+.prompts-modal__text { min-height: 120px; padding: 10px 12px; resize: vertical; line-height: 20px; }
+.prompts-modal__list { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.prompts-modal__row { display: flex; align-items: center; gap: 6px; border-radius: 10px; padding-right: 6px; }
+.prompts-modal__row:hover { background: var(--color-bg-hover); }
+.prompts-modal__use { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; padding: 8px 10px; text-align: left; }
+.prompts-modal__use b { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prompts-modal__use small { font-size: 11.5px; color: var(--color-text-tertiary); }
+.prompts-modal__none { margin: 0; font-size: 13px; color: var(--color-text-tertiary); }
+.prompts-modal__hint { flex: 1; font-size: 12px; line-height: 16px; color: var(--color-text-tertiary); }

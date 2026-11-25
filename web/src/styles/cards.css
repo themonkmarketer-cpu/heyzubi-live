@@ -33,6 +33,9 @@
 .question-card.is-resolved .question-option__key, .question-card.is-resolved .question-option__label { color: var(--color-text-quaternary); }
 .question-card.is-resolved .question-option.is-chosen .question-option__label { color: var(--color-text-primary); }
 .question-card.is-resolved .question-option.is-chosen .question-option__key { background: var(--bot-action, var(--color-primary)); color: var(--bot-on-action, #FFFFFF); border-color: transparent; }
+.question-card__q { white-space: pre-line; }
+.question-other { display: flex; align-items: center; gap: 8px; padding: 6px 8px; }
+.question-other__input { flex: 1; min-width: 0; height: 32px; padding: 4px 10px; }
 .question-card__foot { display: flex; justify-content: flex-end; padding: 0 12px 10px; margin-top: -4px; }
 
 /* draft card */

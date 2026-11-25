@@ -1,0 +1,50 @@
+/* Reels Factory's home: the Scheduled / Published / Cast tabs, as a carousel or a list. Theme tokens only. */
+.stab { margin-top: 26px; }
+.stab__top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.stab__tabs { display: flex; gap: 4px; padding: 5px; border-radius: 14px; border: 1px solid var(--color-border-tertiary); background: var(--color-bg-elevated); max-width: 100%; overflow-x: auto; }
+.stab__tabs button { padding: 7px 14px; border-radius: 10px; font-size: 13px; color: var(--color-text-secondary); white-space: nowrap; }
+.stab__tabs button b { margin-left: 4px; color: var(--color-bot-purple); font-variant-numeric: tabular-nums; }
+.stab__tabs button:hover { background: var(--color-bg-hover); } .stab__tabs .is-on { background: var(--color-bg-active); color: var(--color-text-primary); font-weight: 600; }
+.stab__search { position: relative; flex: 1; min-width: 190px; } .stab__search svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--color-text-tertiary); pointer-events: none; }
+.stab__search .text-input { width: 100%; height: 38px; padding-left: 34px; border-radius: 12px; }
+.stab__view { display: flex; gap: 2px; padding: 3px; border-radius: 11px; border: 1px solid var(--color-border-tertiary); background: var(--color-bg-elevated); }
+.stab__view button { display: grid; place-items: center; width: 32px; height: 30px; border-radius: 8px; color: var(--color-text-tertiary); } .stab__view button:hover { color: var(--color-text-primary); } .stab__view [aria-pressed='true'] { background: var(--color-bg-active); color: var(--color-text-primary); }
+.stab__filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px; margin: 14px 0; }
+.stab__filters label { display: flex; flex-direction: column; gap: 5px; min-width: 118px; max-width: 210px; flex: 1 1 124px; font-size: 12px; color: var(--color-text-tertiary); }
+.stab__filters select { width: 100%; height: 36px; border-radius: 10px; font-size: 12.5px; }
+.stab__filters label:has(.stab__sort) { min-width: 150px; } .stab__sort { display: flex; align-items: center; gap: 4px; } .stab__sort .sicon { flex-shrink: 0; width: 32px; height: 34px; border: 1px solid var(--color-border-tertiary); }
+.stab__clear { display: inline-flex; align-items: center; gap: 4px; height: 36px; }
+.stab__links { display: inline-flex; flex-wrap: wrap; gap: 6px; } .stab__links a { padding: 2px 9px; border-radius: 999px; background: var(--color-bg-tertiary); font-size: 11.5px; line-height: 18px; color: var(--color-text-primary); text-decoration: none; white-space: nowrap; } .stab__links > span { padding: 2px 3px; font-size: 11.5px; line-height: 18px; color: var(--color-text-tertiary); } .stab__links a:hover { background: var(--color-bg-active); }
+
+/* list */
+.stab__rows { overflow-x: auto; border: 1px solid var(--color-border-tertiary); border-radius: 14px; background: var(--color-bg-elevated); }
+.stab__rows .social__table th { padding: 10px; white-space: nowrap; } .stab__rows .social__table td { padding: 9px 10px; vertical-align: middle; overflow-wrap: normal; }
+.stab__rows tr:hover td { background: var(--color-bg-hover); } .stab__rows .is-slot td { color: var(--color-text-tertiary); } .stab__rows td > b { font-weight: 600; } .stab__rows td:nth-child(2) > b, .stab__rows td:nth-child(2) > small { white-space: nowrap; }
+.stab__pic { width: 46px; } .stab__pic img, .stab__pic span { display: grid; place-items: center; width: 34px; height: 46px; border-radius: 7px; object-fit: cover; background: var(--color-bg-tertiary); color: var(--color-text-tertiary); }
+.stab__pic.is-wide { width: 98px; } .stab__pic.is-wide img { width: 86px; height: 50px; }
+
+/* carousel */
+.sflow { --w: clamp(150px, 19vw, 214px); --h: calc(var(--w) * 16 / 9); position: relative; padding: 34px 0 22px; border-radius: 20px; border: 1px solid var(--color-border-tertiary); overflow: hidden; touch-action: pan-y; user-select: none;
+  background: radial-gradient(70% 55% at 50% 0%, color-mix(in srgb, var(--color-bot-purple) 13%, transparent), transparent 70%), radial-gradient(60% 40% at 50% 100%, color-mix(in srgb, var(--color-bot-teal) 15%, transparent), transparent 75%), var(--color-bg-elevated); }
+.sflow.is-wide { --w: clamp(230px, 34vw, 400px); --h: calc(var(--w) * 9 / 16); }
+.sflow:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
+.sflow__stage { position: relative; height: calc(var(--h) + 66px); perspective: 1100px; }
+.sflow__card { position: absolute; left: 50%; top: 0; width: var(--w); height: var(--h); padding: 0; border-radius: 14px; overflow: visible; background: var(--color-bg-tertiary); transition: transform 0.42s cubic-bezier(0.22, 0.8, 0.3, 1), opacity 0.3s; box-shadow: 0 14px 34px rgba(0, 0, 0, 0.35); -webkit-box-reflect: below 8px linear-gradient(transparent 78%, rgba(0, 0, 0, 0.2)); }
+.sflow__card img, .sflow__blank { display: block; width: 100%; height: 100%; border-radius: 14px; object-fit: cover; }
+.sflow__card.is-mid { box-shadow: 0 0 0 2px var(--color-bot-blue), 0 18px 46px rgba(0, 0, 0, 0.45); }
+.sflow__card:not(.is-mid) img { filter: brightness(0.78); }
+.sflow__card:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 4px; }
+.sflow__blank { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 12px; border: 1.5px dashed var(--color-border-primary); text-align: center; color: var(--color-text-tertiary); } .sflow__blank b { font-size: 17px; color: var(--color-text-primary); } .sflow__blank small { font-size: 11.5px; }
+.sflow__badge { position: absolute; left: 9px; top: 9px; max-width: calc(100% - 18px); padding: 3px 9px; border-radius: 8px; background: rgba(12, 12, 18, 0.72); color: #fff; font-size: 11px; line-height: 17px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sflow__card.is-need .sflow__badge { background: rgba(150, 92, 16, 0.9); }
+.sflow__play { position: absolute; left: 50%; top: 50%; display: grid; place-items: center; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.85); background: rgba(12, 12, 18, 0.62); color: #fff; } .sflow__card:hover .sflow__play { background: rgba(12, 12, 18, 0.82); }
+.sflow__nav { position: absolute; top: calc(34px + var(--h) / 2 - 22px); z-index: 30; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--color-border-secondary); background: var(--color-bg-chrome, var(--color-bg-elevated)); color: var(--color-text-primary); }
+.sflow__nav.is-prev { left: 14px; } .sflow__nav.is-next { right: 14px; } .sflow__nav:disabled { opacity: 0.3; cursor: default; } .sflow__nav:not(:disabled):hover { background: var(--color-bg-active-solid, var(--color-bg-active)); }
+.sflow__cap { display: flex; flex-direction: column; align-items: center; gap: 3px; min-height: 108px; padding: 0 70px; text-align: center; } .sflow__cap > b { font-size: 16px; } .sflow__cap > span { font-size: 13px; color: var(--color-text-secondary); } .sflow__cap small { font-size: 12px; color: var(--color-text-tertiary); }
+.sflow__acts { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; margin-top: 7px; min-height: 28px; }
+.sflow__count { position: absolute; right: 18px; bottom: 14px; font-size: 12px; color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
+@media (max-width: 720px) {
+  .stab__filters label { flex: 1 1 140px; } .sflow__cap { padding: 0 18px 22px; }
+  .stab__rows thead { display: none; } .stab__rows tr { display: grid; grid-template-columns: 56px 1fr; padding: 8px 4px; border-top: 1px solid var(--color-border-tertiary); } .stab__rows .social__table td { border: 0; padding: 3px 8px; grid-column: 2; } .stab__rows td:empty { display: none; } .stab__rows td.stab__pic { grid-column: 1; grid-row: 1 / span 7; }
+}
+@media (prefers-reduced-motion: reduce) { .sflow__card { transition: none; } }

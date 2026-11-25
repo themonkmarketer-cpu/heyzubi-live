@@ -11,7 +11,7 @@ import { giveToHermes } from './engine.js';
 
 const ADD_MEMBER = `---
 name: team-app-add-member
-description: Use when the owner asks to add, build, create or hire a new bot, agent or team member (sales, marketing, support, research and so on), including one built from a course, lesson, repo or document.
+description: Use when the owner asks to add, build, create or hire a new bot, agent or team member (sales, marketing, support, research and so on), including one built from a course, lesson, repo or document. Also when the owner drops a link with no instruction and it turns out to be about building an AI agent.
 ---
 
 # Adding a team member in HeyZubi
@@ -27,19 +27,20 @@ Never use \`hermes profile create\`, copy another profile, or write into a profi
 
 ## Steps: one at a time, short messages
 
-1. **Understand the role.** If the owner gave a source (lesson, repo, doc), read it first and check that nothing in it runs code you haven't read or holds secrets.
+1. **Understand the role.** If the owner gave a source (lesson, repo, doc), read it first (the transcript too, and the repo it links to) and check that nothing in it runs code you haven't read or holds secrets. A link on its own is enough: the owner doesn't have to say "build the agent". If it isn't about an agent, say in one line what it is and ask what to do with it. If the team already has a member for that role, say so and ask before making another.
 2. **Draft:**
-   - name: a short first name; ask if none was given;
+   - name: three short first names that suit the role, none of them on the team already (mix them, so any gender can follow);
    - role: one or two words, for example "Sales";
    - description: one or two sentences on what it owns, ending with "Never sends, posts, spends or changes outside systems without approval.";
    - mascot: from the tool's list, matching the role (trend for sales, megaphone for marketing, lifebuoy for support, magnifier for research);
    - persona: the SOUL.md text. Say who it is, that Zubi is the chief of staff who hands it work and approvals, and who else is on the team by name. Cover how it works and its approval rules.
-3. **Confirm with ask_user.** Put the name and role, the description and the mascot in the question, with the options "Create <name>" and "Change something".
-4. **Create.** Call create_team_member. It takes about a minute (it waits for the Hermes profile) and returns hermes_profile and skills_folder.
-5. **Skills (only if the source has them).** Copy each reviewed skill folder into skills_folder, then call team_member_status to see them listed.
-6. **Hand over to the card.** Tell the owner in one or two lines: "<name> is set up in HeyZubi and Hermes. Tap **Sign in <name> to Claude** on the card above. Claude opens in a new tab: click Authorize, copy the code, and paste it into the card." Then stop and wait.
-7. **When you're told the owner signed in** (a message from the app), send the new member a one-line hello with send_to_bot. When it replies, tell the owner that it's ready and in the sidebar, and name one or two first tasks it could take.
-8. **If something didn't work,** call team_member_status and follow its next_step. If the owner chose "Later", say once that the sign-in is in the member's settings (Engine) and leave it.
+3. **Ask the name.** ask_user with your three names as the options and other: true (the app adds "Other" with a box, so don't list it). The question says, in three or four short lines: what you read, the role, what it owns and its limits, the mascot, any skills you will add or leave out, and "What should the name be?". Skip this only if the owner already gave a name.
+4. **Ask the gender.** When the name comes back, ask_user "Should <name>'s persona be female, male or neutral?" with the options Female, Male and Neutral. Skip this only if the owner already said it, as in "her name should be Somi". If both the name and the gender were given, ask once instead: the summary, with "Create <name>" and "Change something". The answers are the go-ahead: don't ask again. If an answer asks for a change, change it and ask once more.
+5. **Create.** Call create_team_member with the gender, and write the persona with the matching pronouns. It takes about a minute (it waits for the Hermes profile) and returns hermes_profile and skills_folder.
+6. **Skills (only if the source has them).** Copy each reviewed skill folder into skills_folder, then call team_member_status to see them listed.
+7. **Hand over to the card.** Tell the owner in one or two lines: "<name> is set up in HeyZubi and Hermes. Tap **Sign in <name> to Claude** on the card above. Claude opens in a new tab: click Authorize, copy the code, and paste it into the card." Then stop and wait.
+8. **When you're told the owner signed in** (a message from the app), send the new member a one-line hello with send_to_bot. When it replies, tell the owner that it's ready and in the sidebar, and name one or two first tasks it could take.
+9. **If something didn't work,** call team_member_status and follow its next_step. If the owner chose "Later", say once that the sign-in is in the member's settings (Engine) and leave it.
 
 ## Rules
 

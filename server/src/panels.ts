@@ -50,16 +50,18 @@ export function showPanel(userId: string, panel: PanelName, open = true): { outp
 const COMPOSIO_URL = process.env.HQ_ZUBI_COMPOSIO_URL ?? 'https://connect.composio.dev/mcp';
 const TOKEN = path.join(env.hermesHome, 'mcp-tokens', 'composio.json');
 
-class TokenExpired extends Error {}
+export class TokenExpired extends Error { constructor() { super('Zubi’s app sign-in is renewing. Try again in a moment.'); } }
+/** Is Zubi's Composio sign-in usable right now? (It lasts an hour and only Zubi renews it.) */
+export function composioFresh(): boolean { try { return Number(JSON.parse(fs.readFileSync(TOKEN, 'utf8')).expires_at ?? 0) > Date.now() / 1000 + 60; } catch { return false; } }
 
 /** One tool call on Zubi's Composio MCP (JSON-RPC over HTTP, answered as an event stream). */
-async function zubiComposio(name: string, args: Record<string, unknown>): Promise<any> {
+export async function zubiComposio(name: string, args: Record<string, unknown>, ms = 25_000): Promise<any> {
   let tok: { access_token?: string; expires_at?: number };
   try { tok = JSON.parse(fs.readFileSync(TOKEN, 'utf8')); } catch { throw new Error('Zubi’s Composio connection was not found on hermes-box.'); }
   if (!tok.access_token || Number(tok.expires_at ?? 0) < Date.now() / 1000 + 20) throw new TokenExpired();
   const r = await fetch(COMPOSIO_URL, {
     method: 'POST',
-    signal: AbortSignal.timeout(25_000),
+    signal: AbortSignal.timeout(ms),
     headers: { Authorization: `Bearer ${tok.access_token}`, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
   });
