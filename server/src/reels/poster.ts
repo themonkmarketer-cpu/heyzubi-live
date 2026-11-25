@@ -20,7 +20,7 @@ export const TITLE: Record<Platform, string> = { instagram: 'Instagram', faceboo
 const HOME: Record<Platform, string> = { instagram: 'https://www.instagram.com/', facebook: 'https://business.facebook.com/latest/home', youtube: 'https://studio.youtube.com/', whatsapp: 'https://web.whatsapp.com/' };
 
 /** Which accounts: private, beside the rest of the series. */
-interface Accounts { instagram?: { handle: string }; facebook?: { assetId: string; businessId: string; page: string }; youtube?: { channelId: string } }
+interface Accounts { instagram?: { handle: string }; facebook?: { assetId: string; businessId: string; page: string }; youtube?: { channelId: string; handle?: string } }
 export function accounts(): Accounts {
   try { return JSON.parse(fs.readFileSync(path.join(seriesDir(), 'posting.json'), 'utf8')) as Accounts; } catch { return {}; }
 }
@@ -530,6 +530,73 @@ async function whatsapp(t: Tab, j: Job): Promise<Posted> {
   return { status: 'scheduled', shot, note: `Posted to My Status (Contacts); My status shows “${row}”.` };
 }
 const DO: Record<Platform, (t: Tab, j: Job) => Promise<Posted>> = { instagram, facebook, youtube, whatsapp };
+
+// ---------- the daily YouTube comment ----------
+export interface PinJob { label: string; id: string; text: string }
+export interface Pinned { label: string; id: string; result: 'pinned' | 'already' | 'not public' | 'would pin' | 'failed'; note?: string }
+/**
+ * Once a Short is public: the prepared comment, posted once as the channel and pinned (Murtaza, 24 Nov 2026: "Yes, daily
+ * check"). A video that already has a comment pinned by the channel is left alone, so nothing is ever posted twice.
+ * With `dry`, only looks.
+ */
+export async function pinComments(list: PinJob[], o: { signal: AbortSignal; dry?: boolean }): Promise<Pinned[]> {
+  const handle = accounts().youtube?.handle;
+  if (!handle) throw new ReelError('Which YouTube handle is it? posting.json doesn’t say.');
+  if (busy) throw new ReelError('The posting browser is busy.');
+  busy = true;
+  const out: Pinned[] = [];
+  let t: Tab | null = null;
+  try {
+    t = await Tab.open('about:blank', o.signal, [1680, 1000]);
+    for (const v of list) {
+      if (o.signal.aborted) break;
+      try {
+        await t.go(`https://studio.youtube.com/video/${v.id}/edit`);
+        await sleep(7000);
+        await needLogin(t, 'youtube');
+        const vis = await t.wait('Studio’s visibility', 40, () => t!.ev(() => document.querySelector<HTMLElement>('ytcp-video-metadata-visibility')?.innerText.replace(/\s+/g, ' ').trim() || null));
+        if (!/\bPublic\b/.test(vis) || /\bScheduled\b/i.test(vis)) { out.push({ label: v.label, id: v.id, result: 'not public', note: vis.slice(0, 40) }); continue; }
+        await t.go(`https://www.youtube.com/watch?v=${v.id}`);
+        await sleep(6000);
+        const comments = async () => {
+          await t!.ev(() => document.querySelector('ytd-comments')?.scrollIntoView({ block: 'start' }));
+          await sleep(2500);
+          return t!.ev((h: string) => [...document.querySelectorAll<HTMLElement>('ytd-comment-thread-renderer')].slice(0, 10).map((c) => ({ mine: !!c.querySelector(`a[href="/${h}"], a[href$="/${h}"]`) || (c.querySelector<HTMLElement>('#author-text')?.innerText.trim() === h), pinned: !!c.querySelector('#pinned-comment-badge ytd-pinned-comment-badge-renderer, #pinned-comment-badge:not([hidden]) *') && /Pinned by/i.test(c.querySelector<HTMLElement>('#pinned-comment-badge')?.innerText ?? ''), text: (c.querySelector<HTMLElement>('#content-text')?.innerText ?? '').replace(/\s+/g, ' ').slice(0, 80) })), handle);
+        };
+        await t.wait('The comments', 40, () => t!.ev(() => !!document.querySelector('ytd-comments #simplebox-placeholder, ytd-comments ytd-comment-thread-renderer') || null).then(async (x) => { if (!x) await t!.ev(() => window.scrollBy(0, 700)); return x; }));
+        const now = await comments(), first = v.text.replace(/\s+/g, ' ').slice(0, 40);
+        if (now.some((c) => c.mine && c.pinned)) { out.push({ label: v.label, id: v.id, result: 'already' }); continue; }
+        if (o.dry) { out.push({ label: v.label, id: v.id, result: 'would pin', note: `public and not pinned yet${now.some((c) => c.mine && c.text.startsWith(first.slice(0, 30))) ? ', but our comment is there unpinned' : ''}: it would get the comment` }); continue; }
+        // Posted only when our comment isn't there yet (a run stopped between posting and pinning finds it).
+        if (!now.some((c) => c.mine && c.text.startsWith(first.slice(0, 30)))) {
+          await t.click('ytd-comments #simplebox-placeholder');
+          await sleep(1200);
+          await t.click('ytd-comments #contenteditable-root');
+          await t.send('Input.insertText', { text: v.text });
+          await sleep(1000);
+          const typed = await t.text('ytd-comments #contenteditable-root');
+          if (!same(typed ?? '', v.text)) throw new ReelError('The comment didn’t read back right; nothing was posted.');
+          await t.click('ytd-comments #submit-button button, ytd-comments #submit-button');
+          await t.wait('The new comment', 40, async () => (await comments()).some((c) => c.mine && c.text.startsWith(first.slice(0, 30))) || null);
+        }
+        const menu = await t.ev((h: string, first: string) => { const c = [...document.querySelectorAll<HTMLElement>('ytd-comment-thread-renderer')].find((x) => (x.querySelector<HTMLElement>('#author-text')?.innerText.trim() === h || !!x.querySelector(`a[href$="/${h}"]`)) && (x.querySelector<HTMLElement>('#content-text')?.innerText ?? '').replace(/\s+/g, ' ').startsWith(first)); const b = c?.querySelector<HTMLElement>('#action-menu button, #action-menu yt-icon-button'); if (!b) return null; b.scrollIntoView({ block: 'center' }); const r = b.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; }, handle, first.slice(0, 30));
+        if (!menu) throw new ReelError('The comment is posted, but its menu wasn’t found to pin it. Pin it by hand.');
+        await t.clickAt(menu); await sleep(1200);
+        await t.click('ytd-menu-service-item-renderer, tp-yt-paper-item', { text: 'Pin', scroll: false });
+        await sleep(1200);
+        await t.click('yt-confirm-dialog-renderer #confirm-button button, yt-confirm-dialog-renderer #confirm-button', { scroll: false, seconds: 10 });
+        await sleep(3000);
+        await t.go(`https://www.youtube.com/watch?v=${v.id}`); await sleep(6000);
+        await t.wait('The comments', 40, () => t!.ev(() => !!document.querySelector('ytd-comments ytd-comment-thread-renderer') || null).then(async (x) => { if (!x) await t!.ev(() => window.scrollBy(0, 700)); return x; }));
+        const after = await comments();
+        out.push(after.some((c) => c.mine && c.pinned) ? { label: v.label, id: v.id, result: 'pinned' } : { label: v.label, id: v.id, result: 'failed', note: 'posted, but “Pinned by” doesn’t show yet: have a look' });
+      } catch (e) {
+        out.push({ label: v.label, id: v.id, result: 'failed', note: e instanceof ReelError ? e.message : String((e as Error).message).slice(0, 120) });
+      }
+    }
+  } finally { await t?.close(); busy = false; await closeBrowser(); }
+  return out;
+}
 
 /** One platform after the other; each tells its result. With `dry` nothing is scheduled: it stops before the last button. */
 export async function postAll(ep: Episode, list: Platform[], o: { signal: AbortSignal; dry?: boolean; sending?: () => void; say: (t: string) => void; done: (p: Platform, r: Posted | { error: string; shot?: string }) => void }): Promise<void> {

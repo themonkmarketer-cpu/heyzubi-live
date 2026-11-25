@@ -41,6 +41,7 @@ setTimeout(resumeInterrupted, 3000);
 initSessionTidy();
 resumeReels();
 void import('./reels/flow.js').then((f) => f.initStatusPosts());
+void import('./reels/jobs.js').then((j) => j.initJobs());
 // A message in an episode's session that was being answered when the last process stopped still gets its answer.
 setTimeout(resumeChats, 8000);
 
