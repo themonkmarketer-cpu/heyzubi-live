@@ -3,21 +3,23 @@
 import fs from 'node:fs';
 import { engineFor, primaryBotId } from '../engine.js';
 import { composioFresh } from '../panels.js';
-import { dropOneOff } from '../engine-sessions.js';
+import { chatHeaders, dropOneOff, hideOneOff, noteChat } from '../engine-sessions.js';
 import { getBotRow } from '../store.js';
 import { ReelError } from './store.js';
 
-async function ask(instructions: string, content: any[], minutes: number, signal?: AbortSignal, rule = 'Do not call any tools and do not ask questions. Answer with one JSON object only: no prose before or after it, no code fence.', effort = 'high', onUsage?: (tokens: number) => void): Promise<string> {
+async function ask(instructions: string, content: any[], minutes: number, signal?: AbortSignal, rule = 'Do not call any tools and do not ask questions. Answer with one JSON object only: no prose before or after it, no code fence.', effort = 'high', onUsage?: (tokens: number) => void, talk = false): Promise<string> {
   const botId = primaryBotId();
   if (!botId) throw new ReelError('The main team member isn’t set up, and it does the writing.');
   const bot = getBotRow(botId);
   const engine = await engineFor(botId);
   const ctrl = AbortSignal.any([AbortSignal.timeout(minutes * 60_000), ...(signal ? [signal] : [])]);
   let res: Response | null = null;
+  // What the owner says goes in the team member's one session; work nobody talks in gets a hidden one that is deleted.
+  const chat = talk ? chatHeaders(botId, engine) : {}, inChat = Object.keys(chat).length > 0;
   try {
     res = await fetch(`${engine.url}/v1/responses`, {
       method: 'POST', signal: ctrl,
-      headers: { 'content-type': 'application/json', accept: 'text/event-stream', ...(engine.key ? { authorization: `Bearer ${engine.key}` } : {}) },
+      headers: { 'content-type': 'application/json', accept: 'text/event-stream', ...(engine.key ? { authorization: `Bearer ${engine.key}` } : {}), ...chat },
       body: JSON.stringify({
         model: bot?.model || 'hermes-agent', ...(bot?.provider ? { provider: bot.provider } : {}),
         instructions: `${instructions}\n\n${rule}`,
@@ -25,6 +27,7 @@ async function ask(instructions: string, content: any[], minutes: number, signal
         model_options: { reasoning_effort: effort },
       }),
     });
+    if (inChat) noteChat(botId, engine, res); else hideOneOff(botId, engine, res);
     if (!res.ok || !res.body) throw new ReelError(`The writer didn’t answer (HTTP ${res.status}: ${(await res.text().catch(() => '')).slice(0, 160)}).`);
     let text = '', done = '', buf = '';
     const dec = new TextDecoder();
@@ -45,7 +48,7 @@ async function ask(instructions: string, content: any[], minutes: number, signal
     if (e instanceof ReelError) throw e;
     if (signal?.aborted) throw new ReelError('Stopped by you.');
     throw new ReelError((e as Error).name === 'TimeoutError' ? `The writer took longer than ${minutes} minutes.` : `The writer couldn’t be reached (${String((e as Error).message).slice(0, 120)}).`);
-  } finally { dropOneOff(engine, res); }
+  } finally { if (!inChat) dropOneOff(engine, res); }
 }
 
 /**
@@ -74,7 +77,7 @@ export function jsonIn(text: string): any {
  * Asks for JSON until `check` finds nothing wrong (it returns what to fix), at most `tries` times; what was wrong goes
  * back with the next ask. With `lenient`, the last answer is used even when something is still wrong.
  */
-export async function askJson<T>(o: { instructions: string; prompt: string; images?: { label: string; file: string }[]; check?: (v: T) => string[]; tries?: number; minutes?: number; lenient?: boolean; signal?: AbortSignal; onTry?: (n: number, problems: string[]) => void; onUsage?: (tokens: number) => void }): Promise<T> {
+export async function askJson<T>(o: { instructions: string; prompt: string; images?: { label: string; file: string }[]; check?: (v: T) => string[]; tries?: number; minutes?: number; lenient?: boolean; signal?: AbortSignal; onTry?: (n: number, problems: string[]) => void; onUsage?: (tokens: number) => void; talk?: boolean }): Promise<T> {
   let problems: string[] = [], last: T | null = null;
   const tries = o.tries ?? 3;
   for (let n = 1; n <= tries; n++) {
@@ -83,7 +86,7 @@ export async function askJson<T>(o: { instructions: string; prompt: string; imag
     for (const im of o.images ?? []) content.push({ type: 'input_text', text: im.label }, { type: 'input_image', image_url: `data:image/${im.file.endsWith('.png') ? 'png' : 'jpeg'};base64,${fs.readFileSync(im.file).toString('base64')}` });
     content.push({ type: 'input_text', text: o.prompt });
     if (problems.length) content.push({ type: 'input_text', text: `Your last answer${last ? ' is below' : ' could not be used'}. Return the whole corrected JSON object, fixing exactly these points and keeping everything else:\n- ${problems.join('\n- ')}${last ? `\n\nLast answer:\n${JSON.stringify(last)}` : ''}` });
-    const text = await ask(o.instructions, content, o.minutes ?? 10, o.signal, undefined, undefined, o.onUsage);
+    const text = await ask(o.instructions, content, o.minutes ?? 10, o.signal, undefined, undefined, o.onUsage, o.talk);
     try { last = jsonIn(text) as T; } catch (e) { problems = [(e as Error).message]; continue; }
     problems = o.check?.(last) ?? [];
     if (!problems.length) return last;

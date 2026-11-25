@@ -414,19 +414,36 @@ function begin(id: string, talk: number, again: boolean) {
     try { const w = working.get(id); add(id, talk, 'agent', m, { error: true, ...(w?.did.length ? { did: w.did } : {}) }); } catch { /* the episode was deleted */ }
   }).finally(() => { working.delete(id); tell(id); try { settle(id); } catch { /* deleted */ } });
 }
+/** The latest of the main chat, so one team member doesn't forget in this window what was said in the other. */
+function mainChat(): string {
+  try {
+    const b = getBotRow(primaryBotId()!);
+    const list = (db.prepare("SELECT body FROM rows WHERE bot_id=? AND generation=? AND kind='message' ORDER BY seq DESC LIMIT 6").all(b.id, b.generation) as any[]).reverse().map((r) => JSON.parse(r.body)).filter((m) => m.text?.trim());
+    return list.length ? `LATEST IN YOUR MAIN CHAT WITH THE OWNER (only so you know; nothing there answers a question here):\n${list.map((m) => `${m.role === 'user' ? 'OWNER' : 'YOU'}: ${String(m.text).replace(/\s+/g, ' ').slice(0, 300)}`).join('\n')}\n\n` : '';
+  } catch { return ''; }
+}
 async function converse(id: string, talk: number, signal: AbortSignal, again_: boolean) {
   const did = working.get(id)!.did, no: string[] = [], shown: string[] = [], proposals: Proposal[] = [], steps: string[] = again_ ? ['- HeyZubi restarted while you were answering this message. Some of it may be done already: read LATEST EVENTS and the state before you act, and repeat nothing that is done.'] : [];
   let images: { label: string; file: string }[] = [], reply = '', tokens = 0;
   for (let n = 1; n <= 7; n++) {
     const e = getEpisode(id);
     if (!e) return;
+    const asked = rows(id, talk, 18).filter((r) => r.role === 'you').pop()?.text ?? '';
     const said = rows(id, talk, 18).map((r) => `${r.role === 'you' ? 'OWNER' : 'YOU'}: ${r.text}${r.data.did?.length ? ` [did: ${r.data.did.join('; ')}]` : ''}${r.data.proposals?.length ? ` [proposed: ${r.data.proposals.map((p) => `${p.label} (${p.state === 'done' ? 'the owner said yes' : p.state === 'no' ? 'declined' : p.state === 'old' ? 'no longer asked' : 'not answered yet'})`).join('; ')}]` : ''}`).join('\n');
     const r = await askJson<{ reply: string; actions?: any[] }>({
       instructions: `You are ${agentName()}, making the cartoon reel series “${series().name}” with its owner. You are in the Zubi window beside one episode, the only place the owner writes: there are no buttons. The steps are Story, Script, Cast, Screens, Storyboard, Render (with its check and the final cut), Cover (with the captions) and Schedule; each step posts its result and question here by itself. The owner gives you free instructions; you carry them out with the actions below, and answer plainly.
 Rules: act rather than explain. Look at the picture before you say anything about how it looks. Say only what the results show; never say something is done that a result did not confirm. You cannot spend or approve on your own: propose it with its price, say “reply yes”, and confirm only what the owner's own message agreed to. After a free change the cut is made again by itself; say so. When the owner reports a fault, find its cause first, then fix what is free and propose the rest with a precise note for the video model (say what must be seen, not what went wrong; for speech: "the mouth opens and moves clearly with every word from the first frame"). Prefer one shot's retake over a whole part. A time the owner gives is a time in the cut: find the clip and whose line is heard there in the EDITOR list before acting. A line marked off screen needs no moving mouth. Answer every separate point of a message. Never propose again what the owner declined or switched off unless they ask for it. Never invent abilities for the AI Employee in the story. If something can't be done here, say so in one sentence and what can be done instead. Never repeat a step's question in full; it is already in the window. Replies: the owner's language, short sentences, under 110 words, no headings or tables, no internal names of actions.
-${ACTIONS}`,
-      prompt: `${state(e)}\n\nTHE CONVERSATION (the last message is the one to answer):\n${said}\n\n${steps.length ? `WHAT YOU HAVE DONE FOR THIS MESSAGE SO FAR:\n${steps.join('\n')}\n\n` : ''}${n === 7 ? 'This is your last step: no more actions, only the reply.\n' : ''}Answer with JSON: {"reply": "what you tell the owner (leave empty while you still need to act)", "actions": [ ... ] (empty when you are finished)}`,
-      images, signal, minutes: 6, tries: 2, onUsage: (t) => { tokens += t; },
+${ACTIONS}
+
+${state(e)}
+
+${mainChat()}THE CONVERSATION (the last message is the one to answer):
+${said}
+
+Answer with JSON: {"reply": "what you tell the owner (leave empty while you still need to act)", "actions": [ ... ] (empty when you are finished)}`,
+      // Only this part stays in the team member's Hermes session, beside its chat: the owner's words, then what came of them.
+      prompt: `[Reels Factory, Episode ${e.num}] ${steps.length ? `What you have done for the owner's last message so far:\n${steps.join('\n')}` : `The owner: ${asked}`}${n === 7 ? '\nThis is your last step: no more actions, only the reply.' : ''}`,
+      talk: true, images, signal, minutes: 6, tries: 2, onUsage: (t) => { tokens += t; },
       check: (v) => (typeof v?.reply === 'string' && (v.actions === undefined || Array.isArray(v.actions)) ? (!v.reply.trim() && !(v.actions ?? []).length ? ['give a reply or actions'] : []) : ['reply must be text and actions a list']),
     });
     reply = r.reply.trim() || reply;

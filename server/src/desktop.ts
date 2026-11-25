@@ -16,7 +16,7 @@ import { usage } from './usage.js';
 import { speakFor, tidyDictation, transcribeFor } from './voice.js';
 import { getPrefs } from './prefs.js';
 import { engineFor } from './engine.js';
-import { dropOneOff } from './engine-sessions.js';
+import { chatHeaders, dropOneOff, noteChat } from './engine-sessions.js';
 
 db.exec(`CREATE TABLE IF NOT EXISTS desktop_devices (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, hash TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL, last_used_at INTEGER);
 CREATE TABLE IF NOT EXISTS desktop_pairings (hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at INTEGER NOT NULL);
@@ -230,7 +230,7 @@ async function answer(a: AnswerIn): Promise<AnswerOut> {
       const r = await fetch(`${engine.url}/v1/responses`, {
         method: 'POST',
         signal: AbortSignal.timeout(90_000),
-        headers: { 'content-type': 'application/json', ...(engine.key ? { authorization: `Bearer ${engine.key}` } : {}) },
+        headers: { 'content-type': 'application/json', ...(engine.key ? { authorization: `Bearer ${engine.key}` } : {}), ...chatHeaders(a.bot.id, engine) },
         body: JSON.stringify({
           model: prefs.model || a.bot.model || 'hermes-agent',
           ...(a.bot.provider && !prefs.model ? { provider: a.bot.provider } : {}),
@@ -252,7 +252,8 @@ async function answer(a: AnswerIn): Promise<AnswerOut> {
         }),
       });
       const j: any = await r.json().catch(() => ({}));
-      dropOneOff(engine, r); // one question, no session left behind
+      noteChat(a.bot.id, engine, r); // the main team member's one session, or
+      if (!Object.keys(chatHeaders(a.bot.id, engine)).length) dropOneOff(engine, r); // one question, no session left behind
       if (!r.ok) {
         console.warn('[desktop] claude answer failed:', r.status, String(j?.error?.message ?? j?.error ?? '').slice(0, 200));
         return { error: `${a.bot.name}’s Claude couldn’t answer just now (HTTP ${r.status}). Try again, or switch the brain to Grok in Settings › Pointer Assistant.`, status: 502 };

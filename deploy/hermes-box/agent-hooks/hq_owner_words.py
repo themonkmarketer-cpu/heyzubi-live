@@ -149,6 +149,9 @@ def heyzubi_marker(chain):
         fallback = None
         with ro("response_store.db") as rs:
             for m in marks:
+                # The main team member's one session, named by HeyZubi: also when this conversation has no stored response.
+                if m.get("session") in ids:
+                    return m
                 row = rs.execute(
                     "SELECT json_extract(r.data, '$.session_id') FROM conversations c JOIN responses r ON r.response_id = c.response_id WHERE c.name = ?",
                     (m.get("conversation", ""),)).fetchone()

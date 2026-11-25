@@ -7,7 +7,8 @@ import { appendRow, emitBot, getBotRow, getLive, getRow, setLive, updateRow } fr
 import type { ActivityKind, MessageBody, ToolCallBody } from '../types.js';
 import { batchActions, toolkitInfo } from '../composio.js';
 import { screenForWork } from '../computer.js';
-import { engineFor } from '../engine.js';
+import { engineFor, primaryBotId } from '../engine.js';
+import { chatHeaders, chatSessionId, noteChat } from '../engine-sessions.js';
 import { instructionsFor } from './prompt.js';
 import { activityFor, appToolName, humanizeSlug, policyFor, type Policy } from './tools.js';
 
@@ -115,13 +116,26 @@ ${NOT_OWNER_RULE}`;
   }
 }
 
+/** What was said in the Zubi window of Reels Factory since the last message here (it is the same team member). */
+function elsewhere(botId: string): string {
+  try {
+    if (botId !== primaryBotId()) return '';
+    db.exec('CREATE TABLE IF NOT EXISTS engine_seen (bot_id TEXT PRIMARY KEY, reel_chat_id INTEGER NOT NULL)');
+    const seen = (db.prepare('SELECT reel_chat_id AS n FROM engine_seen WHERE bot_id=?').get(botId) as any)?.n ?? 0;
+    const rows = (db.prepare("SELECT c.id, c.role, c.text, e.num FROM reel_chat c JOIN reel_episodes e ON e.id=c.episode_id WHERE c.id>? AND c.role IN ('you','agent') AND c.at>? ORDER BY c.id DESC LIMIT 10").all(seen, now() - 3 * 86400_000) as any[]).reverse();
+    if (!rows.length) return '';
+    db.prepare('INSERT OR REPLACE INTO engine_seen(bot_id,reel_chat_id) VALUES (?,?)').run(botId, rows[rows.length - 1].id);
+    return `[Note: since the last message here, this was said in your Reels Factory window. It is only so you know; it was dealt with there, so don't act on it again.]\n${rows.map((r) => `Episode ${r.num}, ${r.role === 'you' ? 'the owner' : 'you'}: ${String(r.text).replace(/\s+/g, ' ').slice(0, 300)}`).join('\n')}\n[End of the note. The owner's message:]\n`;
+  } catch { return ''; } // Reels Factory isn't set up here
+}
+
 /** While a turn that isn't the owner's words runs, tell the engine's hook (see deploy/hermes-box/agent-hooks). */
-function markNotOwner(home: string, conversation: string, why: string): () => void {
+function markNotOwner(home: string, conversation: string, why: string, session: string | null): () => void {
   const dir = path.join(home, 'hq-guard');
   const file = path.join(dir, `${conversation.replace(/[^\w.-]/g, '_')}.json`);
   try {
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(file, JSON.stringify({ conversation, why, since: Date.now(), until: Date.now() + 2 * 3600_000 }));
+    fs.writeFileSync(file, JSON.stringify({ conversation, ...(session ? { session } : {}), why, since: Date.now(), until: Date.now() + 2 * 3600_000 }));
   } catch (e) { console.warn('[agent] not-owner marker not written:', (e as Error).message); }
   return () => { try { fs.unlinkSync(file); } catch { /* already gone */ } };
 }
@@ -433,7 +447,7 @@ async function runTurn(botId: string, trigger: Trigger) {
     const engine = await engineFor(botId);
     if (ctrl.signal.aborted) throw new Error('interrupted');
     const why = notOwnerWhy(trigger);
-    if (why) unmark = markNotOwner(engine.home, `hq-${botId}-g${bot.generation}`, why);
+    if (why) unmark = markNotOwner(engine.home, `hq-${botId}-g${bot.generation}`, why, chatSessionId(botId));
 
     let input = triggerText(trigger);
     if (bot.handback_at) {
@@ -441,10 +455,11 @@ async function runTurn(botId: string, trigger: Trigger) {
       db.prepare('UPDATE bots SET handback_at=NULL WHERE id=?').run(botId);
     }
 
+    if (trigger.type === 'user') input = elsewhere(botId) + input;
     const res = await fetch(`${engine.url}/v1/responses`, {
       method: 'POST',
       signal: ctrl.signal,
-      headers: { 'content-type': 'application/json', accept: 'text/event-stream', ...(engine.key ? { authorization: `Bearer ${engine.key}` } : {}) },
+      headers: { 'content-type': 'application/json', accept: 'text/event-stream', ...(engine.key ? { authorization: `Bearer ${engine.key}` } : {}), ...chatHeaders(botId, engine) },
       body: JSON.stringify({
         model: bot.model || 'hermes-agent',
         ...(bot.provider ? { provider: bot.provider } : {}),
@@ -458,6 +473,7 @@ async function runTurn(botId: string, trigger: Trigger) {
       }),
     });
     if (!res.ok || !res.body) throw new Error(await failureText(res));
+    noteChat(botId, engine, res);
 
     for await (const ev of sseEvents(res.body)) {
       const d = ev.data;

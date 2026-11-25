@@ -4,7 +4,7 @@
 // base branch. It never pushes to the base branch and never merges: the owner reviews and merges on GitHub.
 // HeyZubi writes a "coding" marker for that conversation; the hq_owner_words hook then refuses merges,
 // force pushes, pushes to the base branch and sending or deleting anything while the run works.
-import { dropOneOff } from './engine-sessions.js';
+import { dropOneOff, hideOneOff } from './engine-sessions.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Hono } from 'hono';
@@ -132,6 +132,7 @@ export async function startCodingRun(userId: string, botId: string, a: { repo: s
           model_options: { reasoning_effort: 'high' },
         }),
       });
+      hideOneOff(botId, engine, res);
       if (!res.ok || !res.body) throw new Error(`engine answered ${res.status}: ${(await res.text().catch(() => '')).slice(0, 300)}`);
       for await (const ev of sseEvents(res.body)) {
         if (ev.type === 'response.output_text.delta' && typeof ev.data?.delta === 'string') text += ev.data.delta;
