@@ -135,8 +135,10 @@ export function Composer({ bot, running, target }: { bot: Bot; running: boolean;
     if (files.length) void addPictures(files);
   }, [pendingPics, own]); // eslint-disable-line react-hooks/exhaustive-deps
   const shareScreen = async () => {
-    const f = await screenshotOnce(`screen-${stamp()}.png`);
-    if (f) void addPictures([f]);
+    try {
+      const f = await screenshotOnce(`screen-${stamp()}.png`);
+      if (f) void addPictures([f]);
+    } catch (e) { setError((e as Error).message); }
   };
   const [meeting, setMeeting] = useState(false);
   const [extra, setExtra] = useState<'announce' | 'debate' | null>(null);

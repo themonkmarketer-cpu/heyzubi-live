@@ -28,24 +28,29 @@ export function canvasToFile(canvas: HTMLCanvasElement, type: 'image/jpeg' | 'im
   return new Promise((res) => canvas.toBlob((b) => res(b ? new File([b], name, { type }) : null), type, type === 'image/jpeg' ? 0.9 : undefined));
 }
 
-/** One frame of the screen, window or tab the person picks. Null when they cancel or the browser refuses. */
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * One frame of the screen, window or tab the person picks. Null when they cancel or the browser refuses; throws when
+ * sharing started but no picture could be taken (so the caller can say so). Waits on timers, not animation frames:
+ * Chrome pauses those while the tab is hidden or covered by its own share picker.
+ */
 export async function screenshotOnce(name: string): Promise<File | null> {
   if (!navigator.mediaDevices?.getDisplayMedia) return null;
   let stream: MediaStream | null = null;
   try {
-    stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    try { stream = await navigator.mediaDevices.getDisplayMedia({ video: true }); } catch { return null; } // refused or cancelled
     const v = document.createElement('video');
     v.muted = true; v.playsInline = true; v.srcObject = stream;
-    await v.play();
-    for (let i = 0; i < 40 && !v.videoWidth; i++) await new Promise((r) => setTimeout(r, 25));
-    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    await Promise.race([v.play().catch(() => {}), sleep(2000)]);
+    for (let i = 0; i < 60 && !v.videoWidth; i++) await sleep(50);
+    await sleep(150); // let a real frame arrive
     const c = grabFrame(v);
-    stream.getTracks().forEach((t) => t.stop());
-    stream = null;
     v.srcObject = null;
-    return c ? await canvasToFile(c, 'image/png', name) : null;
-  } catch {
-    return null; // refused or cancelled: nothing to say
+    if (!c) throw new Error('The shared screen sent no picture. Try again, or pick a different screen or window.');
+    const f = await canvasToFile(c, 'image/png', name);
+    if (!f) throw new Error('The screenshot couldn’t be saved. Try again.');
+    return f;
   } finally {
     stream?.getTracks().forEach((t) => t.stop());
   }
