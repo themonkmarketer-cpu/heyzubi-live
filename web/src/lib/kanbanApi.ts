@@ -133,6 +133,12 @@ export const kanbanApi = {
     return res.json() as Promise<{ attachment: KanbanAttachment | null }>;
   },
   detach: (board: string, attachmentId: number) => req<{ ok: boolean }>('DELETE', `/attachments/${attachmentId}${q(board)}`),
+  /** Every parent -> child link on the board (what each card unblocks). */
+  links: (board: string) => req<{ links: [string, string][] }>('GET', `/links${q(board)}`),
+  /** The prep assistant: a one-liner rewritten as a self-contained brief (nothing is created). */
+  brief: (board: string, p: { title: string; body?: string; assignee?: string }) => req<{ title: string; body: string }>('POST', `/brief${q(board)}`, p),
+  /** A readable page of a card's work: every run (or one), what happened, comments, the worker's log. */
+  reportUrl: (board: string, id: string, run?: number) => `/api/kanban/tasks/${encodeURIComponent(id)}/report${board || run ? '?' : ''}${[board ? `board=${encodeURIComponent(board)}` : '', run ? `run=${run}` : ''].filter(Boolean).join('&')}`,
   /** `inline` shows plain raster images in the page; anything else downloads. */
   attachmentUrl: (board: string, attachmentId: number, inline = false) =>
     `/api/kanban/attachments/${attachmentId}${board || inline ? '?' : ''}${[board ? `board=${encodeURIComponent(board)}` : '', inline ? 'inline=1' : ''].filter(Boolean).join('&')}`,

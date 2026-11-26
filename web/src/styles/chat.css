@@ -282,3 +282,13 @@
 
 /* Team headings in the sidebar */
 .bot-list__team { padding: 10px 12px 4px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--color-text-tertiary); }
+
+/* Live controls and guards: what is holding the team member back right now */
+.composer__guards { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 4px 6px; }
+.composer__guard { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; line-height: 1.3; background: var(--color-bg-secondary, rgba(127, 127, 127, 0.12)); color: var(--color-text-secondary); }
+.composer__guard .link-btn { font-size: 12px; }
+.composer__guard.is-block { background: rgba(214, 140, 30, 0.16); color: var(--color-text-primary); }
+.composer__guard.is-warn { background: rgba(220, 60, 60, 0.16); color: var(--color-text-primary); }
+.composer__guard.is-info { background: rgba(60, 130, 220, 0.14); color: var(--color-text-primary); }
+.composer__guard.is-pause { background: rgba(127, 127, 127, 0.16); }
+.composer__btn.is-on { opacity: 1; color: var(--color-brand, #7c6cff); }

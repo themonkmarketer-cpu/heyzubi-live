@@ -81,7 +81,7 @@ configApi.get('/bots/:id/skills', (c) => {
 // Hermes lets the agent save and update step-by-step skills in its own home (skills/**/SKILL.md) as it learns.
 // Shown here read-only, newest first, with a warning on any that look like they hold a secret.
 
-const SECRET_LIKE = /(\bsk-[A-Za-z0-9_-]{20,}|\bxai-[A-Za-z0-9]{20,}|\bAIza[0-9A-Za-z_-]{30,}|\bgh[pousr]_[A-Za-z0-9]{30,}|\bAKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY|\b(api[_-]?key|secret|token|password|passwd)\b["']?\s*[:=]\s*["']?[A-Za-z0-9_\-/+=]{16,})/i;
+export const SECRET_LIKE = /(\bsk-[A-Za-z0-9_-]{20,}|\bxai-[A-Za-z0-9]{20,}|\bAIza[0-9A-Za-z_-]{30,}|\bgh[pousr]_[A-Za-z0-9]{30,}|\bAKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY|\b(api[_-]?key|secret|token|password|passwd)\b["']?\s*[:=]\s*["']?[A-Za-z0-9_\-/+=]{16,})/i;
 export const skillFront = (text: string, key: string) => {
   const m = /^---\s*\n([\s\S]*?)\n---/.exec(text);
   const line = m?.[1].split('\n').find((l) => l.toLowerCase().startsWith(`${key}:`));

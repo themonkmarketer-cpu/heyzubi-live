@@ -35,6 +35,8 @@ export const api = {
   rows: (id: string) => req<{ generation: number; rows: Row[] }>('GET', `/bots/${id}/rows`),
   send: (id: string, text: string, voice?: boolean) => req<{ row: Row }>('POST', `/bots/${id}/messages`, voice ? { text, voice: true } : { text }),
   interrupt: (id: string) => req<{ ok: true }>('POST', `/bots/${id}/interrupt`),
+  /** Live controls: pause after the current step, steer (pause, then carry on with a note), block or allow actions. */
+  control: (id: string, action: 'pause' | 'steer' | 'block' | 'allow', text?: string) => req<{ ok: true; running?: boolean; blocked?: boolean }>('POST', `/bots/${id}/control`, { action, text }),
   fresh: (id: string) => req<{ ok: true }>('POST', `/bots/${id}/fresh`),
 
   approve: (approvalId: string, decision: 'allow' | 'always' | 'deny') => req<{ ok: true }>('POST', `/approvals/${approvalId}`, { decision }),
@@ -55,6 +57,10 @@ export const api = {
   apiKeys: () => req<{ keys: { id: string; name: string; createdAt: number; lastUsedAt: number | null }[] }>('GET', '/keys'),
   createApiKey: (name: string) => req<{ id: string; name: string; key: string }>('POST', '/keys', { name }),
   deleteApiKey: (id: string) => req<{ ok: true }>('DELETE', `/keys/${id}`),
+  webhooks: () => req<{ hooks: Webhook[] }>('GET', '/webhooks'),
+  createWebhook: (p: WebhookInput & { auth: 'bearer' | 'hmac' }) => req<{ hook: Webhook; secret: string }>('POST', '/webhooks', p),
+  patchWebhook: (id: string, p: Partial<WebhookInput>) => req<{ hook: Webhook }>('PATCH', `/webhooks/${id}`, p),
+  deleteWebhook: (id: string) => req<{ ok: true }>('DELETE', `/webhooks/${id}`),
   /** HeyZubi for Windows: paired computers and one-time pairing codes. */
   desktopDevices: () => req<{ devices: { id: string; name: string; createdAt: number; lastUsedAt: number | null }[] }>('GET', '/desktop-devices'),
   desktopPair: () => req<{ code: string; expiresAt: number }>('POST', '/desktop-devices/pair'),
@@ -111,3 +117,6 @@ export function isConnectedMessage(e: MessageEvent): boolean {
   if ((e.data as { type?: string } | null)?.type !== 'heyzubi-connected') return false;
   return e.origin === window.location.origin || (connectPopup !== null && e.source === connectPopup);
 }
+
+export interface WebhookInput { name: string; bot: string | null; trust: 'approve' | 'allow'; required: string[]; prompt: string }
+export interface Webhook extends WebhookInput { id: string; auth: 'bearer' | 'hmac'; createdAt: number; lastUsedAt: number | null; path: string }

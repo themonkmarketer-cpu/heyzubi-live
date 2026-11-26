@@ -77,7 +77,8 @@ export interface MessageBody {
   text: string;
   streaming?: boolean;
   /** Set when a message came from another bot, a routine or a voice call rather than the user typing. */
-  from?: { kind: 'bot' | 'routine' | 'voice' | 'program'; id: string; name: string };
+  /** steer: the owner's note sent while the bot was working (it pauses after its step and carries on with it). */
+  from?: { kind: 'bot' | 'routine' | 'voice' | 'program' | 'steer'; id: string; name: string };
   citations?: { url: string; title?: string }[];
 }
 
@@ -201,6 +202,12 @@ export interface LiveState {
   caption?: string | null;
   /** Tool calls made so far in the current turn. */
   steps?: number;
+  /** The owner asked it to pause when the step it is on finishes. */
+  pausing?: boolean;
+  /** The owner blocked its actions (it can talk and look things up, not send, post or delete). */
+  blocked?: boolean;
+  /** A guard on in this run: the circuit breaker blocked actions, stopped it, or it read outside content. */
+  guard?: 'breaker' | 'stopped' | 'outside' | null;
 }
 
 export interface Routine {

@@ -5,7 +5,7 @@ import { Icon } from '../Icon';
 import { Attachments } from './Attachments';
 import { ConfirmDialog } from './BoardDialogs';
 import { agentState } from './TaskCard';
-import { ago, assignEffect, moveTargets, when } from './boardModel';
+import { ago, assignEffect, isOwner, moveTargets, when } from './boardModel';
 
 /**
  * A task's details, in a drawer beside the board (full screen on a phone). Fields save on their own when you leave
@@ -231,7 +231,20 @@ export function TaskDrawer({ board, id, version, workflow, bots, who, assignees,
               </div>
             )}
             {!!t.consecutive_failures && t.last_failure_error && lastRun?.error !== t.last_failure_error && <div className="kb-run__err">{t.last_failure_error}</div>}
+            {runs.length > 0 && (
+              <div className="kb-reports">
+                <a href={kanbanApi.reportUrl(board, t.id)} target="_blank" rel="noreferrer noopener">Full report</a>
+                {runs.slice(0, 6).map((r) => <a key={r.id} href={kanbanApi.reportUrl(board, t.id, r.id)} target="_blank" rel="noreferrer noopener" title={`${r.outcome || r.status || 'running'} · ${when(r.started_at)}`}>Run {r.id}{r.profile ? ` · ${who(r.profile)}` : ''}{/fail|error|crash|gave_up|reclaim/i.test(`${r.outcome} ${r.status}`) ? ' (failed)' : ''}</a>)}
+              </div>
+            )}
           </section>
+          {(isOwner(t.assignee) || t.status === 'blocked') && t.status !== 'done' && (
+            <div className="kb-sec kb-sec--soft">
+              <div className="cfg-field__label">{isOwner(t.assignee) ? 'Your step' : 'It needs something from you'}</div>
+              <div className="kb-text">Answer in a comment below, then move it to Done with the result (it carries on), or dismiss it if it isn’t needed.</div>
+              <button type="button" className="cfg-btn cfg-btn--secondary" onClick={() => void kanbanApi.update(board, t.id, { status: 'archived' }).then(() => { onChanged(); onClose(); }).catch((e: Error) => setSave({ state: 'error', msg: `Not dismissed: ${e.message}` }))}>Dismiss</button>
+            </div>
+          )}
 
           <label className="cfg-field">
             <span className="cfg-field__label">Description</span>

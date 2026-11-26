@@ -505,13 +505,22 @@ async function startGateway(botId: string): Promise<void> {
   const b = botRow(botId);
   if (!b || b.engine !== 'managed') throw new Error('not a managed engine');
   if (!b.engine_port) db.prepare('UPDATE bots SET engine_port=? WHERE id=?').run(freePort(), botId);
-  const url = managedUrl(botId);
+  let url = managedUrl(botId);
 
   // A gateway from an earlier run of this server is still good: use it as it is.
   if ((await healthy(url)) && managedKey(botId) && (await keyAccepted(url, managedKey(botId)))) return;
   if (await healthy(url)) {
     if (gatewayPid(homeFor(botId))) await stopGateway(botId);
-    else throw new Error(`Port ${botRow(botId).engine_port} is taken by something else.`);
+    else {
+      // Something this server doesn't know answers there (a gateway Hermes runs for a profile with no bot here):
+      // move to the next port nobody answers on.
+      const used = new Set((db.prepare('SELECT engine_port FROM bots WHERE engine_port IS NOT NULL').all() as any[]).map((r) => r.engine_port as number));
+      let p = env.enginePortBase;
+      for (let n = 0; n < 200 && (used.has(p) || (await healthy(`http://127.0.0.1:${p}`, 800))); n++) p++;
+      if (used.has(p) || (await healthy(`http://127.0.0.1:${p}`, 800))) throw new Error(`Port ${botRow(botId).engine_port} is taken by something else, and no free port was found.`);
+      db.prepare('UPDATE bots SET engine_port=? WHERE id=?').run(p, botId);
+      url = managedUrl(botId);
+    }
   }
 
   const { home, key, display } = await writeHome(botId);

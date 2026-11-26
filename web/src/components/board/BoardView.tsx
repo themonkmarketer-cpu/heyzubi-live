@@ -77,6 +77,15 @@ export function BoardView() {
   const [slug, setSlug] = useState('');
   const [workflow, setWorkflow] = useState<KanbanWorkflow | null>(null);
   const [data, setData] = useState<KanbanBoardData | null>(null);
+  const [links, setLinks] = useState<[string, string][]>([]);
+  /** How many cards wait on each card, down the whole chain. */
+  const blocking = useMemo(() => {
+    const kids = new Map<string, string[]>();
+    for (const [p, c] of links) kids.set(p, [...(kids.get(p) ?? []), c]);
+    const out = new Map<string, number>();
+    for (const id of kids.keys()) { const seen = new Set<string>(), todo = [...kids.get(id)!]; while (todo.length) { const x = todo.pop()!; if (!seen.has(x)) { seen.add(x); todo.push(...(kids.get(x) ?? [])); } } out.set(id, seen.size); }
+    return out;
+  }, [links]);
   const [offline, setOffline] = useState<string | null>(null);
   const [syncedAt, setSyncedAt] = useState<number | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -106,9 +115,10 @@ export function BoardView() {
   const reload = useCallback(async (board = slug) => {
     setSyncing(true);
     try {
-      const d = await kanbanApi.board(board);
+      const [d, l] = await Promise.all([kanbanApi.board(board), kanbanApi.links(board).catch(() => ({ links: [] as [string, string][] }))]);
       cursor.current = d.latest_event_id;
       setData(d);
+      setLinks(l.links);
       setOffline(null);
       setSyncedAt(Date.now());
     } catch (e) { setOffline((e as Error).message); }
@@ -442,7 +452,7 @@ export function BoardView() {
                       {col.shown.map((card, i) => (
                         <div key={card.id} className="kb-slot">
                           {markerAt === i && <div className="kb-marker" aria-hidden />}
-                          <TaskCard card={card} bots={bots} workflow={workflow} who={who} dragging={drag?.id === card.id} open={openId === card.id}
+                          <TaskCard card={card} blocking={blocking.get(card.id) ?? 0} bots={bots} workflow={workflow} who={who} dragging={drag?.id === card.id} open={openId === card.id}
                             onOpen={() => setOpenId(card.id)} onMove={(to) => requestMove(card, to)} onDragStart={dragStart(card)} onDragEnd={dragEnd} />
                         </div>
                       ))}
@@ -471,7 +481,7 @@ export function BoardView() {
         <TaskDrawer board={slug} id={openId} version={data?.latest_event_id ?? 0} workflow={workflow} bots={bots} who={who} assignees={data?.assignees ?? []}
           onClose={closeDrawer} onChanged={() => void reload()} onMove={(card, to) => requestMove(card, to)} />
       )}
-      {creating && workflow && <CreateDialog workflow={workflow} column={creating} people={people} who={who} onCreate={addChain} onClose={() => setCreating(null)} />}
+      {creating && workflow && <CreateDialog workflow={workflow} column={creating} people={people} who={who} onCreate={addChain} onBrief={(p) => kanbanApi.brief(slug, p)} onClose={() => setCreating(null)} />}
       {pending && (
         <MoveDialog card={pending.card} toLabel={workflow?.columns.find((c) => c.key === pending.to)?.label ?? pending.to} plan={pending.plan}
           onCancel={() => setPending(null)} onConfirm={(extra) => { const p = pending; setPending(null); void doMove(p.card, p.to, extra); }} />

@@ -51,6 +51,11 @@ def attach(a):
         up = UploadFile(file=fh, filename=a["filename"], headers=Headers({"content-type": a.get("content_type") or "application/octet-stream"}))
         return asyncio.run(api.upload_task_attachment(a["id"], file=up, board=board_of(a), uploaded_by=a.get("author")))
 
+def links(a):
+    # Every parent -> child link on the board (what each card unblocks).
+    with api._board_conn(board_of(a)) as (_b, conn):
+        return {"links": [[r["parent_id"], r["child_id"]] for r in conn.execute("SELECT parent_id, child_id FROM task_links")]}
+
 def attachment_file(a):
     # Hermes's download handler checks the file still lives under its attachments folder; HeyZubi then sends that file.
     r = api.download_attachment(int(a["attachment"]), board=board_of(a))
@@ -70,6 +75,8 @@ OPS = {
     "attach": attach,
     "attachment_file": attachment_file,
     "detach": lambda a: api.remove_attachment(int(a["attachment"]), board=board_of(a)),
+    "log": lambda a: api.get_task_log(a["id"], tail=int(a.get("tail") or 30000), board=board_of(a)),
+    "links": links,
 }
 
 for line in sys.stdin:

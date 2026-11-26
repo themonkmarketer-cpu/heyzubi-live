@@ -132,33 +132,90 @@ function PanelHead({ title, open, href, onRefresh, onClose }: { title: string; o
 }
 
 interface Email { id: string; from: string; subject: string; snippet: string; at: number; unread?: boolean }
+interface TriageMail { id: string; from: string; email: string; subject: string; snippet: string; at: number; why: string[]; link: string; waitingFor?: number }
+interface Triage { connected: boolean; account?: string; vips?: string[]; top: TriageMail[]; waiting: TriageMail[]; error?: string }
+
+function MailRow({ e, waiting }: { e: TriageMail; waiting?: boolean }) {
+  return (
+    <li className="lmail is-triage">
+      <div className="lmail__top"><a href={e.link} target="_blank" rel="noreferrer noopener"><b>{e.from}</b></a><span>{waiting && e.waitingFor ? `waiting ${ago(Date.now() - e.waitingFor)}` : ago(e.at)}</span></div>
+      <div className="lmail__subj">{e.subject}</div>
+      {e.snippet && <div className="lmail__snip">{e.snippet}</div>}
+      {e.why.length > 0 && <div className="lmail__why">{e.why.map((w) => <span key={w} className={w === 'Looks automated' ? 'is-low' : ''}>{w}</span>)}</div>}
+    </li>
+  );
+}
+
+type GmailView = 'latest' | 'triage' | 'waiting';
+/** Latest emails; Triage (sorted by who matters, with the reasons); Waiting on you (real people you haven't answered). */
 function GmailPanel() {
+  const [view, setView] = useState<GmailView>(() => ((['latest', 'triage', 'waiting'] as const).find((v) => v === lsGet('gmailView')) ?? 'latest'));
   const [data, setData] = useState<{ connected: boolean; emails: Email[]; error?: string; account?: string } | null>(null);
+  const [tri, setTri] = useState<Triage | null>(null);
+  const [vipEdit, setVipEdit] = useState<string | null>(null);
+  const loadTriage = (fresh: boolean) => {
+    fetch(`/api/panels/gmail/triage${fresh ? '?fresh=1' : ''}`, { credentials: 'include' })
+      .then((r) => r.json()).then(setTri).catch(() => setTri({ connected: true, top: [], waiting: [], error: 'Couldn’t sort your inbox just now.' }));
+  };
   const load = (fresh: boolean) => {
     fetch(`/api/panels/gmail${fresh ? '?fresh=1' : ''}`, { credentials: 'include' })
       .then((r) => r.json()).then(setData).catch(() => setData({ connected: true, emails: [], error: 'Couldn’t read Gmail just now.' }));
+    if (view !== 'latest' || tri) loadTriage(fresh);
   };
-  useEffect(() => { load(true); }, []);
+  useEffect(() => { load(true); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const pick = (v: GmailView) => { setView(v); lsSet('gmailView', v); if (v !== 'latest' && !tri) loadTriage(false); };
+  const saveVips = async () => {
+    const list = (vipEdit ?? '').split(/[\n,]+/).map((x) => x.trim()).filter(Boolean);
+    await fetch('/api/prefs', { method: 'PATCH', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ vips: list }) }).catch(() => {});
+    setVipEdit(null); setTri(null); loadTriage(true);
+  };
+  const off = !!data && !data.connected;
+  const list = view === 'triage' ? tri?.top ?? [] : tri?.waiting ?? [];
   return (
     <section className="lpanel" aria-label="Gmail">
       <PanelHead title="GMAIL" open="Open" href="https://mail.google.com/" onRefresh={() => load(true)} onClose={() => usePanels.setState({ gmail: null })} />
+      {!off && (
+        <div className="lmail__tabs" role="tablist" aria-label="Gmail view">
+          {([['latest', 'Latest'], ['triage', 'Triage'], ['waiting', 'Waiting on you']] as const).map(([k, l]) => (
+            <button key={k} type="button" role="tab" aria-selected={view === k} className={view === k ? 'is-active' : ''} onClick={() => pick(k)}>
+              {l}{k === 'waiting' && tri?.waiting?.length ? ` (${tri.waiting.length})` : ''}
+            </button>
+          ))}
+        </div>
+      )}
       {!data ? <p className="lpanel__mut">Loading your inbox…</p>
-        : !data.connected ? (
-          <p className="lpanel__mut">Zubi has no Gmail account connected in her Composio. Ask her to connect Gmail.</p>
-        ) : data.error ? <p className="lpanel__mut">{data.error}</p>
-        : data.emails.length === 0 ? <p className="lpanel__mut">Your inbox is empty.</p>
+        : off ? <p className="lpanel__mut">Zubi has no Gmail account connected in her Composio. Ask her to connect Gmail.</p>
+        : view === 'latest' ? (data.error ? <p className="lpanel__mut">{data.error}</p>
+          : data.emails.length === 0 ? <p className="lpanel__mut">Your inbox is empty.</p>
+          : (
+            <ul className="lpanel__list">
+              {data.account && <li className="lpanel__acct">{data.account}</li>}
+              {data.emails.map((e) => (
+                <li key={e.id} className={`lmail${e.unread ? ' is-unread' : ''}`}>
+                  <div className="lmail__top"><b>{e.from}</b><span>{ago(e.at)}</span></div>
+                  <div className="lmail__subj">{e.subject}</div>
+                  {e.snippet && <div className="lmail__snip">{e.snippet}</div>}
+                </li>
+              ))}
+            </ul>
+          ))
+        : !tri ? <p className="lpanel__mut">Sorting your inbox…</p>
+        : tri.error ? <p className="lpanel__mut">{tri.error}</p>
         : (
-          <ul className="lpanel__list">
-            {data.account && <li className="lpanel__acct">{data.account}</li>}
-            {data.emails.map((e) => (
-              <li key={e.id} className={`lmail${e.unread ? ' is-unread' : ''}`}>
-                <div className="lmail__top"><b>{e.from}</b><span>{ago(e.at)}</span></div>
-                <div className="lmail__subj">{e.subject}</div>
-                {e.snippet && <div className="lmail__snip">{e.snippet}</div>}
-              </li>
-            ))}
-          </ul>
+          <>
+            {view === 'triage' && (
+              <div className="lmail__vips">
+                {vipEdit === null
+                  ? <span>VIPs: {tri.vips?.length ? tri.vips.join(', ') : 'none yet'} <button type="button" className="link-btn" onClick={() => setVipEdit((tri.vips ?? []).join(', '))}>Edit</button></span>
+                  : <span><input className="text-input" value={vipEdit} onChange={(e) => setVipEdit(e.target.value)} placeholder="name@client.com, client.com" aria-label="VIPs: emails or domains" /> <button type="button" className="link-btn" onClick={() => void saveVips()}>Save</button></span>}
+              </div>
+            )}
+            {list.length === 0
+              ? <p className="lpanel__mut">{view === 'triage' ? 'Nothing stands out in the last two weeks.' : 'Nobody is waiting on your reply.'}</p>
+              : <ul className="lpanel__list">{list.map((e) => <MailRow key={e.id} e={e} waiting={view === 'waiting'} />)}</ul>}
+          </>
         )}
+      {!off && view === 'waiting' && list.length > 0 && <AskZubi ask="Draft replies (drafts only, don't send) to the people waiting on me in Gmail: " label="Draft replies with Zubi" />}
     </section>
   );
 }

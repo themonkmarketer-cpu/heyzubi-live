@@ -17,9 +17,11 @@ export interface NewCard {
 
 const MAX_STEPS = 6;
 
-export function CreateDialog({ workflow, column, people, who, onCreate, onClose }: {
+export function CreateDialog({ workflow, column, people, who, onCreate, onBrief, onClose }: {
   workflow: KanbanWorkflow; column: string; people: string[]; who: (p: string) => string;
   onCreate: (card: NewCard) => Promise<string | null>;
+  /** The prep assistant: turns the one-liner into a self-contained brief for review. */
+  onBrief?: (p: { title: string; body?: string; assignee?: string }) => Promise<{ title: string; body: string }>;
   onClose: () => void;
 }) {
   const [title, setTitle] = useState('');
@@ -28,8 +30,16 @@ export function CreateDialog({ workflow, column, people, who, onCreate, onClose 
   const [steps, setSteps] = useState<{ who: string; what: string }[]>([]);
   const [where, setWhere] = useState(column);
   const [busy, setBusy] = useState(false);
+  const [briefing, setBriefing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const key = useRef(newKey()); // one key per dialog: a double submit can't make two cards
+  const makeBrief = async () => {
+    if (!onBrief || briefing || (!title.trim() && !body.trim())) return;
+    setBriefing(true); setError(null);
+    try { const b = await onBrief({ title: title.trim(), body: body.trim(), assignee }); setTitle(b.title); setBody(b.body); }
+    catch (e) { setError((e as Error).message); }
+    finally { setBriefing(false); }
+  };
   const cols = workflow.columns.filter((c) => ADDABLE.includes(c.key));
   const bots = people.filter((p) => !isOwner(p));
   const colLabel = (k: string, label: string) =>
@@ -58,7 +68,7 @@ export function CreateDialog({ workflow, column, people, who, onCreate, onClose 
             <input className="text-input" autoFocus value={title} maxLength={300} onChange={(e) => setTitle(e.target.value)} placeholder="What needs doing?" />
           </label>
           <label className="cfg-field">
-            <span className="cfg-field__label">What to do (optional)</span>
+            <span className="cfg-field__label kb-brief-row">What to do (optional){onBrief && <button type="button" className="link-btn" onClick={() => void makeBrief()} disabled={briefing || (!title.trim() && !body.trim())} title="Zubi rewrites your line as a clear brief (goal, steps, done when, limits). You check it before adding.">{briefing ? 'Writing the brief…' : 'Make it a brief'}</button>}</span>
             <textarea className="text-input cfg-textarea" rows={3} value={body} maxLength={20_000} onChange={(e) => setBody(e.target.value)}
               placeholder="The brief for the bot: what done looks like, links, limits." />
           </label>

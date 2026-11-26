@@ -202,6 +202,10 @@ def main():
         if not hit:
             return
         why = m.get("why") or "a run that wasn't the owner's own words"
+        # HeyZubi's own guards (the owner blocked actions, the circuit breaker, outside content) say why themselves.
+        if str(m.get("kind", "")).startswith("guard-") and isinstance(m.get("message"), str) and m["message"].strip():
+            block(f"{m['message'].strip()} ({hit})", why, hit)
+            return
     block(f"Not done: this run started from {why}, not from Murtaza's own words, so it can't send, share, post, "
           f"publish or delete anything ({hit}). Prepare it as a draft instead and tell him it's ready for his OK.", why, hit)
 

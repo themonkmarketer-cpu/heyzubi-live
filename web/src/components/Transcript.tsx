@@ -37,7 +37,7 @@ function buildItems(rows: Row[]): Item[] {
     if (last?.kind === 'steps' && last.endTs === null) last.endTs = row.createdAt;
     if (b.type === 'message') {
       if (!b.text && !b.streaming) continue;
-      const side = b.role === 'user' && (!b.from || b.from.kind === 'voice') ? 'right' : 'left';
+      const side = b.role === 'user' && (!b.from || b.from.kind === 'voice' || b.from.kind === 'steer') ? 'right' : 'left';
       const sender = b.from ? `${b.from.kind}:${b.from.id}` : b.role;
       const lastRow = last?.kind === 'group' ? last.rows[last.rows.length - 1] : null;
       const lastBody = lastRow?.body as MessageBody | undefined;
@@ -121,8 +121,8 @@ function SenderLabel({ from }: { from: NonNullable<MessageBody['from']> }) {
   const bot = useStore((s) => (from.kind === 'bot' ? s.bots.find((b) => b.id === from.id) : undefined));
   return (
     <div className="sender-label">
-      {bot ? <BotAvatarFor bot={bot} size={16} /> : from.kind === 'routine' ? <Icon name="clock" size={12} opacity={0.56} /> : from.kind === 'voice' ? <Icon name="voice_a" size={12} opacity={0.56} /> : <BotAvatar shape="blob" color="gray" size={16} />}
-      <span>{from.kind === 'routine' ? `Routine · ${from.name}` : from.kind === 'voice' ? (from.id === 'voice-message' ? 'Voice message' : 'Asked on a voice call') : from.kind === 'program' ? `Outside program · ${from.name}` : `From ${from.name}`}</span>
+      {bot ? <BotAvatarFor bot={bot} size={16} /> : from.kind === 'routine' ? <Icon name="clock" size={12} opacity={0.56} /> : from.kind === 'voice' ? <Icon name="voice_a" size={12} opacity={0.56} /> : from.kind === 'steer' ? <Icon name="arrow_up" size={12} opacity={0.56} /> : <BotAvatar shape="blob" color="gray" size={16} />}
+      <span>{from.kind === 'routine' ? `Routine · ${from.name}` : from.kind === 'voice' ? (from.id === 'voice-message' ? 'Voice message' : 'Asked on a voice call') : from.kind === 'program' ? `Outside program · ${from.name}` : from.kind === 'steer' ? 'Steer: read after the step it was on' : `From ${from.name}`}</span>
     </div>
   );
 }

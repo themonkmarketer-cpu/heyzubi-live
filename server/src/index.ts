@@ -23,6 +23,7 @@ import { roomsApi } from './routes-rooms.js';
 import { enqueue, expireStaleApprovals, resumeInterrupted } from './agent/loop.js';
 import { desSelfTest } from './lib/des.js';
 import { configApi } from './routes-config.js';
+import { hireApi } from './hire.js';
 import { startIdleWatcher } from './idle.js';
 import { mcpApi } from './mcp.js';
 import { initEngines } from './engine.js';
@@ -43,6 +44,7 @@ resumeReels();
 void import('./reels/flow.js').then((f) => f.initStatusPosts());
 void import('./reels/jobs.js').then((j) => j.initJobs());
 void import('./reels/handoff.js').then((h) => h.initHandoffs()); // finished episodes go to the PC for their landing page
+void import('./kanban-watch.js').then((k) => k.initKanbanWatch()); // reminders for cards waiting on the owner; Zubi re-engages stuck work
 // A message in an episode's session that was being answered when the last process stopped still gets its answer.
 setTimeout(resumeChats, 8000);
 
@@ -72,6 +74,8 @@ app.route('/api/checkins', checkinsApi);
 app.route('/api/rooms', roomsApi);
 // The Board view: Hermes's own Kanban (routes-kanban.ts).
 app.route('/api/kanban', kanbanApi);
+// Hire files: a team member as one portable file, and role bundles (hire.ts).
+app.route('/api/hire', hireApi);
 app.route('/api', api);
 app.route('/api', configApi);
 

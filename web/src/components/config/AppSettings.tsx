@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import type { Toolkit } from '@shared/types';
 import { BotAvatarFor } from '../../avatar/BotAvatar';
 import { configApi, type ComputerDetails } from '../../lib/configApi';
-import { api } from '../../lib/api';
+import { api, type Webhook, type WebhookInput } from '../../lib/api';
 import { relativeShort } from '../../lib/time';
 import { notifyEnabled, notifySupported, setNotify } from '../../lib/notify';
 import { backgroundOf, byId, customUrl, useWallpaper } from '../../lib/wallpapers';
@@ -396,6 +396,107 @@ function ApiKeysSection() {
         )}
       </section>
       {msg && <div className="cfg-field__hint" role="status">{msg}</div>}
+      <WebhooksSection />
+    </>
+  );
+}
+
+const EMPTY_HOOK: WebhookInput & { auth: 'bearer' | 'hmac' } = { name: '', bot: null, trust: 'approve', required: [], prompt: '', auth: 'bearer' };
+
+/** Webhooks: an outside system hands work to a team member; every call becomes a card on the Kanban. */
+function WebhooksSection() {
+  const bots = useStore((s) => s.bots);
+  const team = bots.filter((b) => b.hermesProfile);
+  const [hooks, setHooks] = useState<Webhook[] | null>(null);
+  const [form, setForm] = useState<(WebhookInput & { auth: 'bearer' | 'hmac' }) | null>(null);
+  const [fields, setFields] = useState('');
+  const [fresh, setFresh] = useState<{ hook: Webhook; secret: string } | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const load = useCallback(() => { api.webhooks().then((r) => setHooks(r.hooks)).catch((e) => setMsg((e as Error).message)); }, []);
+  useEffect(load, [load]);
+  const who = (p: string | null) => (p ? team.find((b) => b.hermesProfile === p)?.name ?? p : 'Nobody yet (Triage)');
+  const create = async () => {
+    if (!form) return;
+    setMsg(null);
+    try {
+      const r = await api.createWebhook({ ...form, name: form.name.trim() || 'Webhook', required: fields.split(/[\s,]+/).filter(Boolean) });
+      setFresh(r); setForm(null); setFields(''); load();
+    } catch (e) { setMsg((e as Error).message); }
+  };
+  const setTrust = async (h: Webhook, trust: 'approve' | 'allow') => { try { await api.patchWebhook(h.id, { trust }); load(); } catch (e) { setMsg((e as Error).message); } };
+  const url = (h: Webhook) => `${location.origin}${h.path}`;
+  const sample = '{"name":"Jane Doe","email":"jane@example.com","message":"I’d like a quote"}';
+  const example = !fresh ? '' : fresh.hook.auth === 'bearer'
+    ? `curl -X POST ${url(fresh.hook)} \\\n  -H "Authorization: Bearer ${fresh.secret}" \\\n  -H "Content-Type: application/json" \\\n  -d '${sample}'`
+    : `BODY='${sample}'\nSIG=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac '${fresh.secret}' | sed 's/^.* //')\ncurl -X POST ${url(fresh.hook)} \\\n  -H "X-Hub-Signature-256: sha256=$SIG" \\\n  -H "Content-Type: application/json" \\\n  -d "$BODY"`;
+  return (
+    <>
+      <section className="cfg-section">
+        <div className="cfg-section__label">Webhooks</div>
+        <div className="cfg-field__hint">
+          A website form, Stripe, Zapier or a CRM can hand work to a team member. Each webhook has its own address and secret, the fields its data must have, and a standing instruction. Every call becomes a card on the Kanban: with “Approve first” it waits in Triage for you; with “Start at once” it goes straight to Ready. The data is treated as information only, and nothing is sent, posted or deleted without you.
+        </div>
+        {!form && !fresh && <button type="button" className="cfg-btn cfg-btn--primary" style={{ marginTop: 10 }} onClick={() => setForm({ ...EMPTY_HOOK, bot: team.find((b) => b.hermesProfile !== 'default')?.hermesProfile ?? null })}>New webhook</button>}
+        {form && (
+          <div className="cfg-card hook-form">
+            <label className="hook-form__row"><span>Name</span><input className="text-input" value={form.name} maxLength={40} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Website contact form" /></label>
+            <label className="hook-form__row"><span>Goes to</span>
+              <select className="text-input" value={form.bot ?? ''} onChange={(e) => setForm({ ...form, bot: e.target.value || null })}>
+                <option value="">Nobody yet (Triage)</option>
+                {team.map((b) => <option key={b.id} value={b.hermesProfile as string}>{b.name}</option>)}
+              </select>
+            </label>
+            <div className="hook-form__row"><span>Trust</span>
+              <div className="hook-form__seg" role="radiogroup" aria-label="Trust">
+                <button type="button" role="radio" aria-checked={form.trust === 'approve'} className={form.trust === 'approve' ? 'is-active' : ''} onClick={() => setForm({ ...form, trust: 'approve' })}>Approve first</button>
+                <button type="button" role="radio" aria-checked={form.trust === 'allow'} className={form.trust === 'allow' ? 'is-active' : ''} onClick={() => setForm({ ...form, trust: 'allow' })}>Start at once</button>
+              </div>
+            </div>
+            <div className="hook-form__row"><span>Secret</span>
+              <div className="hook-form__seg" role="radiogroup" aria-label="How calls prove who they are">
+                <button type="button" role="radio" aria-checked={form.auth === 'bearer'} className={form.auth === 'bearer' ? 'is-active' : ''} onClick={() => setForm({ ...form, auth: 'bearer' })}>Bearer secret</button>
+                <button type="button" role="radio" aria-checked={form.auth === 'hmac'} className={form.auth === 'hmac' ? 'is-active' : ''} onClick={() => setForm({ ...form, auth: 'hmac' })}>Signed body (HMAC)</button>
+              </div>
+            </div>
+            <label className="hook-form__row"><span>Must have</span><input className="text-input" value={fields} onChange={(e) => setFields(e.target.value)} placeholder="email, message (leave empty for none)" /></label>
+            <label className="hook-form__row is-top"><span>What to do</span><textarea className="text-input" rows={3} maxLength={4000} value={form.prompt} onChange={(e) => setForm({ ...form, prompt: e.target.value })} placeholder="Qualify the lead and draft a reply for me to check." /></label>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button type="button" className="cfg-btn cfg-btn--secondary" onClick={() => setForm(null)}>Cancel</button>
+              <button type="button" className="cfg-btn cfg-btn--primary" onClick={() => void create()}>Create webhook</button>
+            </div>
+          </div>
+        )}
+        {fresh && (
+          <div className="cfg-card" style={{ marginTop: 10, padding: 12 }}>
+            <div className="cfg-row__title">Copy the secret now: it won’t be shown again.</div>
+            <div className="cfg-row__sub">Address</div>
+            <pre className="cfg-skill-view" style={{ margin: '6px 0', userSelect: 'all' }}>{url(fresh.hook)}</pre>
+            <div className="cfg-row__sub">Secret</div>
+            <pre className="cfg-skill-view" style={{ margin: '6px 0', userSelect: 'all' }}>{fresh.secret}</pre>
+            <div className="cfg-row__sub">Try it (the answer has a result address to check the card’s progress):</div>
+            <pre className="cfg-skill-view" style={{ margin: '6px 0' }}>{example}</pre>
+            <button type="button" className="cfg-btn cfg-btn--secondary" onClick={() => setFresh(null)}>Done</button>
+          </div>
+        )}
+      </section>
+      <section className="cfg-section">
+        {!hooks ? <div className="cfg-empty">Loading…</div> : hooks.length === 0 ? <div className="cfg-empty">No webhooks yet.</div> : (
+          <div className="cfg-card">
+            {hooks.map((h) => (
+              <div key={h.id} className="cfg-row">
+                <div className="cfg-row__text">
+                  <div className="cfg-row__title">{h.name} <span className={`hook-pill${h.trust === 'allow' ? ' is-allow' : ''}`}>{h.trust === 'allow' ? 'Starts at once' : 'Approve first'}</span></div>
+                  <div className="cfg-row__sub">To {who(h.bot)} · {h.auth === 'hmac' ? 'signed body' : 'bearer secret'}{h.required.length ? ` · needs ${h.required.join(', ')}` : ''} · {h.lastUsedAt ? `last call ${relativeShort(h.lastUsedAt)} ago` : 'no calls yet'}</div>
+                  <div className="cfg-row__sub" style={{ userSelect: 'all' }}>{url(h)}</div>
+                </div>
+                <button type="button" className="cfg-btn cfg-btn--secondary" onClick={() => void setTrust(h, h.trust === 'allow' ? 'approve' : 'allow')}>{h.trust === 'allow' ? 'Approve first' : 'Start at once'}</button>
+                <ConfirmButton className="cfg-btn cfg-btn--secondary" confirmLabel="Remove webhook" onConfirm={async () => { await api.deleteWebhook(h.id); load(); }}>Remove</ConfirmButton>
+              </div>
+            ))}
+          </div>
+        )}
+        {msg && <div className="cfg-field__hint" role="status">{msg}</div>}
+      </section>
     </>
   );
 }

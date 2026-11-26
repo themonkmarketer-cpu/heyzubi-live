@@ -56,6 +56,8 @@ export function agentState(card: KanbanCard, who: (p: string) => string): { tone
 
 interface CardProps {
   card: KanbanCard;
+  /** How many cards wait on this one (shown on cards waiting on the owner). */
+  blocking?: number;
   bots: Map<string, Bot>;
   workflow: KanbanWorkflow;
   who: (p: string) => string;
@@ -67,7 +69,7 @@ interface CardProps {
   onDragEnd: () => void;
 }
 
-export function TaskCard({ card, bots, workflow, who, dragging, open, onOpen, onMove, onDragStart, onDragEnd }: CardProps) {
+export function TaskCard({ card, blocking = 0, bots, workflow, who, dragging, open, onOpen, onMove, onDragStart, onDragEnd }: CardProps) {
   const [menu, setMenu] = useState(false);
   const menuBtn = useRef<HTMLButtonElement>(null);
   const text = preview(card.body || (card.status === 'done' || card.status === 'review' ? card.latest_summary : '') || '');
@@ -92,6 +94,7 @@ export function TaskCard({ card, bots, workflow, who, dragging, open, onOpen, on
       </button>
       {text && <p className="kb-card__body">{text}</p>}
       {card.status === 'blocked' && card.block_reason && <p className="kb-card__why"><b>Waiting on:</b> {card.block_reason}</p>}
+      {blocking > 0 && (isOwner(card.assignee) || card.status === 'blocked') && <p className="kb-card__blocking" title="Tasks that can’t start until this one is done">Blocking {blocking} task{blocking === 1 ? '' : 's'}</p>}
       {prog && (
         <div className="kb-prog" title={`${prog.done} of ${prog.total} sub-tasks done (Hermes)`}>
           <span className="kb-prog__bar"><i style={{ width: `${Math.round((prog.done / prog.total) * 100)}%` }} /></span>

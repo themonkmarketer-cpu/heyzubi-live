@@ -5,6 +5,7 @@ import { env } from './env.js';
 import type { AuthVars } from './lib/auth.js';
 import { hub } from './lib/hub.js';
 import { dropLinkedInExport, EXPORT_MAX, ExportError, linkedInExport, saveLinkedInExport } from './linkedin-export.js';
+import { getPrefs } from './prefs.js';
 import type { PanelName } from './types.js';
 
 /**
@@ -166,6 +167,79 @@ panelsApi.get('/gmail', async (c) => {
   } catch (e) {
     console.warn('[panels] gmail failed:', (e as Error)?.message ?? e);
     return c.json({ connected: true, emails: [], error: why(e) }, 502);
+  }
+});
+
+// ---------- email triage and "who's waiting on you" ----------
+
+const ADDR = /[\w.+-]+@[\w-]+(\.[\w-]+)+/g;
+const addrs = (v: unknown) => (str(Array.isArray(v) ? v.join(',') : v).match(ADDR) ?? []).map((a) => a.toLowerCase());
+const AUTOMATED = /(no-?reply|do-?not-?reply|notifications?|newsletter|mailer|updates?|alerts?|news|marketing|hello|info|support|billing|receipts?)@|@(mail|e|email|news|notify|m)\./i;
+const CATEGORY = new Set(['CATEGORY_PROMOTIONS', 'CATEGORY_SOCIAL', 'CATEGORY_UPDATES', 'CATEGORY_FORUMS']);
+
+interface TriageMail { id: string; thread: string; from: string; email: string; subject: string; snippet: string; at: number; score: number; why: string[]; link: string }
+
+/**
+ * The inbox sorted by who matters, each email with the reasons it surfaced (explicit signals only: the owner's VIPs,
+ * people the owner has written to, Gmail's important, starred and unread marks; automated senders sink), and the real
+ * people still waiting on the owner's reply (their message is the last in the thread, a day or more old).
+ */
+panelsApi.get('/gmail/triage', async (c) => {
+  const fresh = c.req.query('fresh') === '1';
+  const user = c.get('user').id;
+  const vips = getPrefs(user).vips.map((v) => v.toLowerCase());
+  try {
+    const body = await cached(`gmail-triage:${vips.join(',')}`, fresh, async () => {
+      const accts = active(await zubiGoogleAccounts(fresh), 'gmail');
+      if (!accts.length) return { connected: false, top: [], waiting: [] };
+      const a = accts.find((x) => x.isDefault) ?? accts[0];
+      const me = a.label.toLowerCase();
+      const fetch = (query: string, n: number) => wtool('GMAIL_FETCH_EMAILS', { query, max_results: n, verbose: false, include_payload: false }, a.id).then((d) => (d.messages ?? []) as any[]);
+      const [inbox, sent] = await Promise.all([fetch('in:inbox newer_than:14d', 40), fetch('in:sent newer_than:90d', 60)]);
+      const written = new Set(sent.flatMap((m) => addrs(m.to ?? m.recipients ?? m.messageTo)));
+      const lastSent = new Map<string, number>();
+      for (const m of sent) { const t = Date.parse(str(m.messageTimestamp)) || 0; const th = str(m.threadId); if (th && t > (lastSent.get(th) ?? 0)) lastSent.set(th, t); }
+      const seen = new Set<string>();
+      const mails: TriageMail[] = [];
+      for (const m of inbox) {
+        const id = str(m.messageId);
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        const email = addrs(m.sender)[0] ?? '';
+        if (!email || email === me) continue;
+        const labels: string[] = Array.isArray(m.labelIds) ? m.labelIds : [];
+        const why: string[] = [];
+        let score = 0;
+        if (vips.some((v) => (v.includes('@') ? email === v : email.endsWith(`@${v.replace(/^@/, '')}`)))) { score += 5; why.push('VIP'); }
+        if (written.has(email)) { score += 3; why.push('You’ve written to them'); }
+        if (labels.includes('IMPORTANT')) { score += 2; why.push('Gmail: important'); }
+        if (labels.includes('STARRED')) { score += 2; why.push('Starred'); }
+        if (labels.includes('UNREAD')) { score += 1; why.push('Unread'); }
+        const automated = AUTOMATED.test(email) || labels.some((l) => CATEGORY.has(l));
+        if (automated) { score -= 3; why.push('Looks automated'); }
+        const pv = m.preview;
+        mails.push({
+          id, thread: str(m.threadId), from: clip(who(str(m.sender)), 60), email, subject: clip(unescape(str(m.subject) || '(no subject)'), 120),
+          snippet: clip(unescape(str((typeof pv === 'object' ? pv?.body : pv) ?? m.messageText)).replace(/\s+/g, ' ').trim(), 160),
+          at: Date.parse(str(m.messageTimestamp)) || 0, score, why,
+          link: /^[\w-]{6,40}$/.test(str(m.threadId)) ? `https://mail.google.com/mail/u/0/#inbox/${str(m.threadId)}` : 'https://mail.google.com/mail/u/0/#inbox',
+        });
+      }
+      const top = mails.filter((x) => x.score > 0).sort((x, y) => y.score - x.score || y.at - x.at).slice(0, 8);
+      // Waiting on you: the newest message of each thread, from a real person, a day or more old, not answered since.
+      const newest = new Map<string, TriageMail>();
+      for (const x of mails) if (x.thread && x.at > (newest.get(x.thread)?.at ?? 0)) newest.set(x.thread, x);
+      const dayAgo = Date.now() - 86_400_000;
+      const waiting = [...newest.values()]
+        .filter((x) => !x.why.includes('Looks automated') && x.at && x.at < dayAgo && (lastSent.get(x.thread) ?? 0) < x.at)
+        .sort((x, y) => (y.score - x.score) || (x.at - y.at)).slice(0, 8)
+        .map((x) => ({ ...x, waitingFor: Date.now() - x.at }));
+      return { connected: true, account: a.label, vips, top, waiting };
+    });
+    return c.json(body);
+  } catch (e) {
+    console.warn('[panels] gmail triage failed:', (e as Error)?.message ?? e);
+    return c.json({ connected: true, top: [], waiting: [], error: why(e) }, 502);
   }
 });
 

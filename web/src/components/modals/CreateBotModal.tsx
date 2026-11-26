@@ -6,6 +6,7 @@ import { COLOR_ORDER, palette } from '../../lib/colors';
 import { useStore } from '../../store';
 import { Icon } from '../Icon';
 import { Modal } from './Modal';
+import { HirePanel } from './HirePanel';
 
 const ROWS = [PICKER_SHAPES.slice(0, 5), PICKER_SHAPES.slice(5, 10), PICKER_SHAPES.slice(10)];
 const COLOR_ROWS = [COLOR_ORDER.slice(0, 6), COLOR_ORDER.slice(6)];
@@ -18,6 +19,7 @@ export function CreateBotModal() {
   const [mode, setMode] = useState<Bot['mode']>('personal');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hire, setHire] = useState(false);
   const close = useCallback(() => setModal(null), [setModal]);
   const canCreate = name.trim().length > 0 && !busy;
 
@@ -35,6 +37,18 @@ export function CreateBotModal() {
       setBusy(false);
     }
   };
+
+  if (hire) {
+    return (
+      <Modal onClose={close} className="create-modal" label="Hire a team member">
+        <div className="modal__header">
+          <div className="modal__title">Hire a team member</div>
+          <button type="button" className="modal__close" onClick={close} aria-label="Close"><Icon name="close" size={14} opacity={0.68} /></button>
+        </div>
+        <HirePanel onDone={close} onBack={() => setHire(false)} />
+      </Modal>
+    );
+  }
 
   return (
     <Modal onClose={close} className="create-modal" label="Add to your team">
@@ -90,6 +104,7 @@ export function CreateBotModal() {
         </div>
         <div className="modal__footer">
           <button type="button" className="link-btn link-btn--small" style={{ marginRight: 'auto' }} onClick={() => setModal('group')}>New group chat instead</button>
+          <button type="button" className="link-btn link-btn--small" onClick={() => setHire(true)}>Hire from a role or file</button>
           <button type="button" className="btn btn--secondary btn--sm" onClick={close}>Cancel</button>
           <button type="submit" className="btn btn--primary btn--sm" disabled={!canCreate}>{busy ? 'Creating…' : 'Create'}</button>
         </div>

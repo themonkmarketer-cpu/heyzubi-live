@@ -32,7 +32,7 @@ export const OWNER = 'owner';
 export const isOwner = (p?: string | null) => p === OWNER;
 
 /** Added to every bot card made from the Add task dialog: finish with a result, and leave the irreversible to review. */
-export const BOT_RULES = 'Board rules: finish with a short summary of what you did; the next step reads it. Don’t do anything that can’t be undone (send, post, publish, pay, delete). Prepare it and leave it for review.';
+export const BOT_RULES = 'Board rules: finish with a short summary of what you did; the next step reads it. Don’t do anything that can’t be undone (send, post, publish, pay, delete). Prepare it and leave it for review. If you need Murtaza, block the card with one short question: one bold sentence, then the options as bullets (700 characters at most).';
 
 /** Columns a new card can start in: Hermes creates in Ready, in Triage when asked, and Todo is one move from Ready. */
 export const ADDABLE = ['ready', 'triage', 'todo'];

@@ -27,6 +27,14 @@ export interface Prefs {
   products: { pointer: boolean; dictation: boolean | null };
   pointer: PointerPrefs;
   dictation: DictationPrefs;
+  /**
+   * Guards on the team's runs (both on unless switched off): the circuit breaker (a run that loops gets its actions
+   * blocked, then stopped) and the outside-content guard (after the owner's run reads a web page, an email or someone's
+   * message, its actions are off for the rest of that run).
+   */
+  safety: { breaker: boolean; injectionGuard: boolean };
+  /** Email triage: people (an address) or companies (a domain) whose mail always comes first. */
+  vips: string[];
 }
 
 /** The hold-to-talk key combinations the Windows app knows (desktop/KeyboardHook.cs has the same ids). */
@@ -59,6 +67,8 @@ const DICTATION: DictationPrefs = { chord: 'ctrlAlt', mic: '', recognizer: 'auto
 const DEFAULTS: Prefs = {
   dictionary: [], tidyDictation: true, wallpaper: null, wallpaperDim: 0.2, wallpaperFile: null, displayName: null,
   products: { pointer: true, dictation: null }, pointer: POINTER, dictation: DICTATION,
+  safety: { breaker: true, injectionGuard: true },
+  vips: [],
 };
 /** The built-in wallpapers (drawn by the web app; web/src/lib/wallpapers.ts has the same ids). */
 export const WALLPAPERS = ['aurora', 'sunset', 'ocean', 'mesh', 'midnight', 'graphite', 'zubi', 'dots', 'waves', 'paper'];
@@ -67,7 +77,7 @@ export function getPrefs(userId: string): Prefs {
   const r = db.prepare('SELECT data FROM user_prefs WHERE user_id=?').get(userId) as { data: string } | undefined;
   try {
     const p = r ? JSON.parse(r.data) : {};
-    return { ...DEFAULTS, ...p, products: { ...DEFAULTS.products, ...p.products }, pointer: { ...POINTER, ...p.pointer }, dictation: { ...DICTATION, ...p.dictation } };
+    return { ...DEFAULTS, ...p, products: { ...DEFAULTS.products, ...p.products }, pointer: { ...POINTER, ...p.pointer }, dictation: { ...DICTATION, ...p.dictation }, safety: { ...DEFAULTS.safety, ...p.safety } };
   } catch { return { ...DEFAULTS }; }
 }
 
@@ -147,6 +157,11 @@ prefsApi.patch('/', async (c) => {
     wallpaper,
     wallpaperDim: p.wallpaperDim !== undefined ? clampDim(p.wallpaperDim, cur.wallpaperDim) : cur.wallpaperDim,
     displayName: p.displayName !== undefined ? (String(p.displayName ?? '').replace(/\s+/g, ' ').trim().slice(0, 40) || null) : cur.displayName,
+    vips: p.vips !== undefined ? cleanWords(p.vips).map((v) => v.toLowerCase()).filter((v) => /^@?[\w.+-]+(@[\w-]+(\.[\w-]+)+)?$/.test(v) && /[.@]/.test(v)).slice(0, 50) : cur.vips,
+    safety: {
+      breaker: typeof p.safety?.breaker === 'boolean' ? p.safety.breaker : cur.safety.breaker,
+      injectionGuard: typeof p.safety?.injectionGuard === 'boolean' ? p.safety.injectionGuard : cur.safety.injectionGuard,
+    },
   }));
 });
 

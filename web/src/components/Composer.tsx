@@ -8,7 +8,7 @@ import { Menu } from './Menu';
 import { endCall, isCallActive, startCall, useVoice } from '../voice/call';
 import { useDictation } from '../voice/dictation';
 import { speakReply, stopSpeaking, useSpeak } from '../voice/speak';
-import { AudioLines, Camera, ImagePlus, LayoutGrid, PhoneOff, Speech, SquarePen } from 'lucide-react';
+import { AudioLines, Camera, Hand, ImagePlus, LayoutGrid, Pause, PhoneOff, ShieldAlert, ShieldCheck, Speech, SquarePen } from 'lucide-react';
 import { toggleCamera, useCamera } from './CameraBubble';
 import { PromptChips, usePrompts } from './PromptChips';
 import { lsGet, lsSet } from '../lib/storage';
@@ -130,7 +130,10 @@ export function Composer({ bot, running, target }: { bot: Bot; running: boolean;
     const t = [typed || (pics.length ? 'Here is a picture.' : ''), note].filter(Boolean).join('\n\n');
     setSending(true); setError(null);
     try {
-      if (target) await target.send(t); else await api.send(bot.id, t);
+      if (target) await target.send(t);
+      // While it works, a message is a steer: it finishes the step it is on, then carries on with the note.
+      else if (running) await api.control(bot.id, 'steer', t);
+      else await api.send(bot.id, t);
       if (own && picked.current) { void api.usedPrompt(bot.id, picked.current).catch(() => { /* only a count */ }); picked.current = null; }
       setText(''); setPics([]);
       drafts.delete(key); if (!own) lsSet(key, '');
@@ -143,6 +146,8 @@ export function Composer({ bot, running, target }: { bot: Bot; running: boolean;
   };
 
   const stop = () => (target ? target.stop?.() ?? Promise.resolve() : api.interrupt(bot.id)).catch((e: Error) => setError(e.message));
+  const pause = () => api.control(bot.id, 'pause').catch((e: Error) => setError(e.message));
+  const setBlock = (on: boolean) => api.control(bot.id, on ? 'block' : 'allow').catch((e: Error) => setError(e.message));
   const fresh = () => api.fresh(bot.id).catch((e) => setError(e.message));
 
   // Dictation: insert the transcript at the cursor.
@@ -235,6 +240,15 @@ export function Composer({ bot, running, target }: { bot: Bot; running: boolean;
           : 'Transcribing and sending your voice message…'}</div>}
       {own && <PromptChips bot={bot} prompts={prompts} text={text} onPick={pickPrompt} />}
       {target?.hint && <div className="composer__hint">{target.hint}</div>}
+      {own && (liveState?.blocked || liveState?.guard || liveState?.pausing) && (
+        <div className="composer__guards" role="status">
+          {liveState?.pausing && <span className="composer__guard is-pause"><Pause size={12} aria-hidden /> Pausing after the step it is on…</span>}
+          {liveState?.blocked && <span className="composer__guard is-block"><Hand size={12} aria-hidden /> Actions blocked: it can talk and look things up, not send, post or delete <button type="button" className="link-btn" onClick={() => void setBlock(false)}>Allow</button></span>}
+          {liveState?.guard === 'breaker' && <span className="composer__guard is-warn"><ShieldAlert size={12} aria-hidden /> Looked stuck: actions blocked for the rest of this run</span>}
+          {liveState?.guard === 'stopped' && <span className="composer__guard is-warn"><ShieldAlert size={12} aria-hidden /> Stopped: it kept looping. Send a message to carry on</span>}
+          {liveState?.guard === 'outside' && <span className="composer__guard is-info"><ShieldCheck size={12} aria-hidden /> Read outside content: sending, posting and deleting are off for this run</span>}
+        </div>
+      )}
       <div className={`composer${multiline ? ' is-multiline' : ''}`}>
         <div className="composer__left">
           <span className="composer__plus-anchor">
@@ -249,6 +263,9 @@ export function Composer({ bot, running, target }: { bot: Bot; running: boolean;
                   { label: 'Attach a picture', icon: <ImagePlus size={16} strokeWidth={1.8} />, onSelect: () => picRef.current?.click() },
                   ...(own ? [{ label: 'New conversation', icon: <SquarePen size={16} strokeWidth={1.8} />, onSelect: fresh }] : []),
                   { label: 'Connect apps', icon: <LayoutGrid size={16} strokeWidth={1.8} />, onSelect: () => setModal('apps') },
+                  ...(own ? [liveState?.blocked
+                    ? { label: 'Allow its actions again', icon: <ShieldCheck size={16} strokeWidth={1.8} />, onSelect: () => void setBlock(false) }
+                    : { label: 'Block its actions (it can still talk)', icon: <Hand size={16} strokeWidth={1.8} />, onSelect: () => void setBlock(true) }] : []),
                 ]}
               />
             )}
@@ -317,11 +334,16 @@ export function Composer({ bot, running, target }: { bot: Bot; running: boolean;
               <PhoneOff size={16} strokeWidth={2} aria-hidden />
             </button>
           ) : running && !hasText ? (
-            <button type="button" className="composer__cta" onClick={stop} aria-label="Stop" title="Stop">
-              <Icon name="stop" size={14} />
-            </button>
+            <>
+              {own && <button type="button" className={`composer__btn${liveState?.pausing ? ' is-on' : ''}`} onClick={pause} disabled={liveState?.pausing} aria-label="Pause after this step" title="Pause after the step it is on (its work so far is kept; send a message to carry on)">
+                <Pause size={17} strokeWidth={2} aria-hidden />
+              </button>}
+              <button type="button" className="composer__cta" onClick={stop} aria-label="Stop" title="Stop now">
+                <Icon name="stop" size={14} />
+              </button>
+            </>
           ) : hasText ? (
-            <button type="button" className="composer__cta" onClick={send} disabled={sending} aria-label="Send" title="Send (Enter)">
+            <button type="button" className="composer__cta" onClick={send} disabled={sending} aria-label={running && own ? 'Steer' : 'Send'} title={running && own ? 'Steer (Enter): it finishes the step it is on, then carries on with your note' : 'Send (Enter)'}>
               <Icon name="arrow_up" size={16} />
             </button>
           ) : (

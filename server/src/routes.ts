@@ -9,7 +9,8 @@ import { newId } from './lib/ids.js';
 import { hub } from './lib/hub.js';
 import { createSession, destroySession, isLocalRequest, isOwnerKey, peerAddress, rateLimit, requireUser, userFromCookieHeader, type AuthVars } from './lib/auth.js';
 import { allLive, appendRow, clearConversation, emitBot, getBot, getBotRow, getRow, listBots, listRoutines, listRows, listTasks, toRoutine, updateRow } from './store.js';
-import { enqueue, interrupt, resolveApproval } from './agent/loop.js';
+import { applyBlock, enqueue, interrupt, pauseAfterStep, resolveApproval } from './agent/loop.js';
+import { setBlocked } from './agent/controls.js';
 import { computerState, ensureComputer, forgetBotFiles, readyScreen, refreshComputer, releaseScreen, suspendComputer } from './computer.js';
 import { removeEngine, syncPersona } from './engine.js';
 import { agentCount, createBot, UserError } from './team.js';
@@ -36,6 +37,7 @@ import { isGeminiVoice } from './voice-gemini.js';
 import { isSarvamVoice } from './sarvam.js';
 import { prefsApi, getPrefs } from './prefs.js';
 import { apiKeysApi, inboundApi } from './inbound.js';
+import { hooksInbound, webhooksApi } from './webhooks.js';
 import { codingApi } from './coding.js';
 import { promptsApi } from './prompts.js';
 import { socialApi } from './reels/routes.js';
@@ -388,6 +390,33 @@ api.post('/bots/:id/messages', async (c) => {
   return c.json({ row });
 });
 
+/**
+ * The owner's live controls (agent/controls.ts): pause after the current step; steer (pause, then carry on with a
+ * note; sent as an ordinary message when nothing is running); block or allow the bot's actions.
+ */
+api.post('/bots/:id/control', async (c) => {
+  const b = ownBot(c.get('user').id, c.req.param('id'));
+  if (!b || getBotRow(b.id).kind === 'room') return c.json({ error: 'not found' }, 404);
+  const p = await c.req.json<{ action?: string; text?: string }>().catch(() => ({} as { action?: string; text?: string }));
+  const text = String(p.text ?? '').trim().slice(0, 4000);
+  switch (p.action) {
+    case 'pause': return c.json({ ok: true, running: pauseAfterStep(b.id) });
+    case 'steer': {
+      if (!text) return c.json({ error: 'The note is empty.' }, 400);
+      const row = appendRow(b.id, 'message', { type: 'message', role: 'user', text, from: { kind: 'steer', id: 'steer', name: 'Note while it worked' } });
+      emitBot(b.id);
+      const running = pauseAfterStep(b.id, text);
+      if (!running) enqueue(b.id, { type: 'user', text });
+      return c.json({ ok: true, running, row });
+    }
+    case 'block': case 'allow':
+      setBlocked(b.id, p.action === 'block');
+      applyBlock(b.id, p.action === 'block');
+      return c.json({ ok: true, blocked: p.action === 'block' });
+    default: return c.json({ error: 'Unknown control.' }, 400);
+  }
+});
+
 api.post('/bots/:id/interrupt', (c) => {
   const b = ownBot(c.get('user').id, c.req.param('id'));
   if (!b) return c.json({ error: 'not found' }, 404);
@@ -612,7 +641,9 @@ api.route('/social', socialApi);
 api.route('/status', statusApi);
 api.route('/prefs', prefsApi);
 api.route('/keys', apiKeysApi);
+api.route('/inbound/hooks', hooksInbound);
 api.route('/inbound', inboundApi);
+api.route('/webhooks', webhooksApi);
 api.route('/coding-runs', codingApi);
 api.route('/desktop-devices', desktopDevicesApi);
 api.route('/desktop', desktopApi);

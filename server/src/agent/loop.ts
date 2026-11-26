@@ -9,6 +9,8 @@ import { batchActions, toolkitInfo } from '../composio.js';
 import { screenForWork } from '../computer.js';
 import { engineFor, primaryBotId } from '../engine.js';
 import { chatHeaders, chatSessionId, noteChat } from '../engine-sessions.js';
+import { getPrefs } from '../prefs.js';
+import { BREAKER, breakerCall, breakerResult, GUARD_MESSAGES, isBlocked, newBreaker, OUTSIDE_NOTICE, readsOutside, type BreakerState, type GuardKind } from './controls.js';
 import { instructionsFor } from './prompt.js';
 import { activityFor, appToolName, humanizeSlug, policyFor, type Policy } from './tools.js';
 
@@ -24,7 +26,8 @@ import { activityFor, appToolName, humanizeSlug, policyFor, type Policy } from '
  */
 
 export type Trigger =
-  | { type: 'user'; text: string }
+  /** steer: a note the owner sent while the bot was working (it carries on with it; waiting approvals stay). */
+  | { type: 'user'; text: string; steer?: boolean }
   | { type: 'routine'; routineId: string; name: string; prompt: string }
   | { type: 'bot'; fromBotId: string; fromName: string; text: string; depth: number; reply?: boolean }
   /** An outside program (n8n, a script) through the API: never the owner's own words. */
@@ -62,8 +65,8 @@ export function resumeInterrupted() {
 }
 
 export function enqueue(botId: string, trigger: Trigger) {
-  // A new message from the user supersedes whatever is waiting for their approval.
-  if (trigger.type === 'user') expireApprovals(botId);
+  // A new message from the user supersedes whatever is waiting for their approval (a steer note doesn't).
+  if (trigger.type === 'user' && !trigger.steer) expireApprovals(botId);
   const prev = queues.get(botId) ?? Promise.resolve();
   const next = prev.then(() => runTurn(botId, trigger)).catch((e) => console.error('[agent] turn failed', botId, e));
   queues.set(botId, next);
@@ -103,7 +106,9 @@ const notOwnerWhy = (t: Trigger) => (t.type === 'routine' ? `a routine ("${t.nam
 
 function triggerText(t: Trigger): string {
   switch (t.type) {
-    case 'user': return t.text;
+    case 'user': return t.steer
+      ? `[A note from the owner, sent while you were working: your last run was paused after the step it was on so you could read it. Take it into account and carry on with the work.]\n${t.text}`
+      : t.text;
     case 'routine': return `[Routine "${t.name}" is running now. Do this:]\n${t.prompt}\n\n${NOT_OWNER_RULE}`;
     case 'bot': return t.reply
       ? `[Reply from ${t.fromName}, a member of the team, to your message. Carry on with what you were doing; there is no need to answer it.]\n${t.text}\n\n${NOT_OWNER_RULE}`
@@ -129,14 +134,18 @@ function elsewhere(botId: string): string {
   } catch { return ''; } // Reels Factory isn't set up here
 }
 
-/** While a turn that isn't the owner's words runs, tell the engine's hook (see deploy/hermes-box/agent-hooks). */
-function markNotOwner(home: string, conversation: string, why: string, session: string | null): () => void {
+/**
+ * While a turn that isn't the owner's words runs, tell the engine's hook (see deploy/hermes-box/agent-hooks): it then
+ * refuses outward actions in this conversation. The owner's controls and the guards use the same marker under their
+ * own name (`kind`), with the message the hook gives the agent.
+ */
+function markNotOwner(home: string, conversation: string, why: string, session: string | null, kind?: GuardKind): () => void {
   const dir = path.join(home, 'hq-guard');
-  const file = path.join(dir, `${conversation.replace(/[^\w.-]/g, '_')}.json`);
+  const file = path.join(dir, `${conversation.replace(/[^\w.-]/g, '_')}${kind ? `--${kind}` : ''}.json`);
   try {
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(file, JSON.stringify({ conversation, ...(session ? { session } : {}), why, since: Date.now(), until: Date.now() + 2 * 3600_000 }));
-  } catch (e) { console.warn('[agent] not-owner marker not written:', (e as Error).message); }
+    fs.writeFileSync(file, JSON.stringify({ conversation, ...(session ? { session } : {}), why, ...(kind ? { kind: `guard-${kind}`, message: GUARD_MESSAGES[kind] } : {}), since: Date.now(), until: Date.now() + 2 * 3600_000 }));
+  } catch (e) { console.warn('[agent] guard marker not written:', (e as Error).message); }
   return () => { try { fs.unlinkSync(file); } catch { /* already gone */ } };
 }
 
@@ -157,14 +166,51 @@ interface Turn {
   outcomes: Map<number, Outcome>;
   /** The turn came from the owner's own words (not a routine, another bot, an outside program). */
   owner: boolean;
+  /** Where the engine's guard markers for this turn go, once the engine is known. */
+  where: { home: string; conversation: string; session: string | null } | null;
+  /** Guards on for the rest of this turn (each a marker the engine's hook reads), and how to take each off. */
+  marks: Map<GuardKind, () => void>;
+  breaker: BreakerState;
+  /** The owner asked to pause when the current step finishes (with a note to carry on with, for a steer). */
+  pause: { note: string } | null;
+  paused: boolean;
 }
 
 const turns = new Map<string, Turn>();
 
 export const turnDepth = (botId: string) => turns.get(botId)?.depth ?? 0;
 
-/** True only while a turn started here from the owner's own words is running for this bot. */
-export const turnIsOwner = (botId: string) => turns.get(botId)?.owner === true;
+/** True only while a turn started here from the owner's own words is running for this bot, with no guard on. */
+export const turnIsOwner = (botId: string) => { const t = turns.get(botId); return t?.owner === true && t.marks.size === 0; };
+
+function guardOn(turn: Turn, kind: GuardKind, why: string) {
+  if (turn.marks.has(kind) || !turn.where) return;
+  turn.marks.set(kind, markNotOwner(turn.where.home, turn.where.conversation, why, turn.where.session, kind));
+}
+function guardOff(turn: Turn, kind: GuardKind) {
+  turn.marks.get(kind)?.();
+  turn.marks.delete(kind);
+}
+
+/**
+ * Pause the bot when the step it is on finishes (its work so far is kept); with a note, it then carries on with the
+ * note as the owner's next message (a steer). Returns false when nothing is running.
+ */
+export function pauseAfterStep(botId: string, note = ''): boolean {
+  const t = turns.get(botId);
+  if (!t) return false;
+  t.pause = { note: [t.pause?.note, note.trim()].filter(Boolean).join('\n\n') };
+  setLive(botId, { pausing: true });
+  return true;
+}
+
+/** Block or allow the bot's actions now (the stored switch is set by the caller), also inside a running turn. */
+export function applyBlock(botId: string, on: boolean) {
+  const t = turns.get(botId);
+  if (t) { if (on) guardOn(t, 'block', 'Murtaza blocking its actions for now'); else guardOff(t, 'block'); }
+  setLive(botId, { blocked: on });
+  emitBot(botId);
+}
 
 export function markSilent(botId: string) {
   const t = turns.get(botId);
@@ -392,9 +438,30 @@ async function runTurn(botId: string, trigger: Trigger) {
   const userId: string = bot.user_id;
   const ctrl = new AbortController();
   aborts.set(botId, ctrl);
-  const turn: Turn = { botId, userId, depth: trigger.type === 'bot' ? trigger.depth : 0, silent: false, tools: [], outcomes: new Map(), owner: notOwnerWhy(trigger) === null };
+  const turn: Turn = {
+    botId, userId, depth: trigger.type === 'bot' ? trigger.depth : 0, silent: false, tools: [], outcomes: new Map(), owner: notOwnerWhy(trigger) === null,
+    where: null, marks: new Map(), breaker: newBreaker(), pause: null, paused: false,
+  };
   turns.set(botId, turn);
-  setLive(botId, { isRunning: true, activity: { kind: 'thinking', since: now() }, awaiting: null, startedAt: now(), caption: null, steps: 0 });
+  const safety = getPrefs(userId).safety;
+  setLive(botId, { isRunning: true, activity: { kind: 'thinking', since: now() }, awaiting: null, startedAt: now(), caption: null, steps: 0, pausing: false, guard: null, blocked: isBlocked(botId) });
+  /** Why the circuit breaker stopped this turn (it kept going after its actions were blocked). */
+  let loopStop: string | null = null;
+  const trip = (why: string) => {
+    if (turn.breaker.level === 0) {
+      turn.breaker.level = 1;
+      guardOn(turn, 'breaker', `a safety stop (it looked stuck: ${why})`);
+      closeMessage();
+      appendRow(botId, 'notice', { type: 'notice', text: `${bot.name} looked stuck (${why}), so its actions are blocked for the rest of this run. It can still look things up and answer. If it keeps going it will be stopped (${BREAKER[1].same} of the same step, ${BREAKER[1].errorsInRow} failures in a row).`, tone: 'error' });
+      setLive(botId, { guard: 'breaker' });
+      emitBot(botId);
+    } else if (turn.breaker.level === 1) {
+      turn.breaker.level = 2;
+      loopStop = why;
+      setLive(botId, { guard: 'stopped' });
+      ctrl.abort();
+    }
+  };
 
   // The assistant message being written right now.
   let msgSeq: number | null = null;
@@ -450,6 +517,8 @@ async function runTurn(botId: string, trigger: Trigger) {
     const room = trigger.type === 'system' ? trigger.room : undefined, roomRow = room ? getBotRow(room) : null;
     const conversation = room && roomRow ? `hq-${botId}-room-${room}-g${roomRow.generation}` : `hq-${botId}-g${bot.generation}`;
     if (why) unmark = markNotOwner(engine.home, conversation, why, chatSessionId(botId, room));
+    turn.where = { home: engine.home, conversation, session: chatSessionId(botId, room) };
+    if (isBlocked(botId)) guardOn(turn, 'block', 'Murtaza blocking its actions for now');
 
     let input = triggerText(trigger);
     if (bot.handback_at) {
@@ -527,6 +596,7 @@ async function runTurn(botId: string, trigger: Trigger) {
             const row = appendRow(botId, 'tool-call', { type: 'tool-call', callId: String(item.call_id ?? item.id ?? ''), name, label: act.label, status: 'running', args } satisfies ToolCallBody);
             turn.tools.push({ seq: row.seq, callId: String(item.call_id ?? item.id ?? ''), name, claimed: false, done: false });
             steps++;
+            if (safety.breaker) { const stuck = breakerCall(turn.breaker, name, args); if (stuck) trip(stuck); }
             const kind: ActivityKind = name === 'send_to_bot' ? 'messaging_named' : act.kind;
             const detail = name === 'send_to_bot' ? String(args?.bot_name ?? '') || undefined : act.detail;
             // A call that is waiting for the user keeps its "waiting for you" state.
@@ -571,8 +641,21 @@ async function runTurn(botId: string, trigger: Trigger) {
           ref.done = true;
           const told = turn.outcomes.get(ref.seq);
           const guess = readOutcome(item);
-          patchToolRow(botId, ref.seq, told?.status && told.status !== 'running' ? told : { status: guess.status, summary: told?.summary ?? guess.summary });
+          const outcome = told?.status && told.status !== 'running' ? told : { status: guess.status, summary: told?.summary ?? guess.summary };
+          patchToolRow(botId, ref.seq, outcome);
           if (!getLive(botId).awaiting) setLive(botId, { activity: { kind: 'thinking', since: now() } });
+          if (safety.breaker) { const stuck = breakerResult(turn.breaker, outcome.status === 'error'); if (stuck) trip(stuck); }
+          // The owner's own run read something from outside: its actions are off for the rest of the run.
+          const called = getRow(botId, ref.seq);
+          if (safety.injectionGuard && turn.owner && !turn.marks.has('taint') && called?.body.type === 'tool-call' && readsOutside(ref.name, called.body.args)) {
+            guardOn(turn, 'taint', 'content it read from outside in this run (a web page, an email, or someone’s message)');
+            closeMessage();
+            appendRow(botId, 'notice', { type: 'notice', text: OUTSIDE_NOTICE, tone: 'info' });
+            setLive(botId, { guard: getLive(botId).guard ?? 'outside' });
+            emitBot(botId);
+          }
+          // The owner asked to pause after this step.
+          if (turn.pause && !turn.paused) { turn.paused = true; ctrl.abort(); }
         }
       }
     }
@@ -583,13 +666,18 @@ async function runTurn(botId: string, trigger: Trigger) {
     const raw = String(e?.message ?? e);
     // Hermes' own wording points at its command line; say what to click in the app instead.
     const signedOut = /No Anthropic credentials|anthropic.*(sign in|credential|unauthori[sz]ed|invalid.*token)/i.test(raw);
-    const text = stopped ? 'Stopped.'
+    const note = turn.pause?.note ?? '';
+    const text = turn.paused ? `Paused after step ${steps}.${note ? ' Carrying on with your note.' : ' Send a message to carry on; what it did so far is kept.'}`
+      : loopStop ? `Stopped: ${bot.name} kept going after its actions were blocked (${loopStop}). Nothing more runs until you send a message.`
+      : stopped ? 'Stopped.'
       : signedOut ? `${bot.name} isn't signed in to Claude any more, so it couldn't answer. In the panel on the right, scroll down to Engine and click “Sign in to Claude (Anthropic)…”, finish the sign-in on ${bot.name}'s screen (top of that panel), then send your message again.`
         : `Something went wrong: ${raw}`;
-    appendRow(botId, 'notice', { type: 'notice', text, tone: stopped ? 'info' : 'error' });
+    appendRow(botId, 'notice', { type: 'notice', text, tone: stopped && !loopStop ? 'info' : 'error' });
     if (!stopped) console.error('[agent]', botId, e);
   } finally {
     unmark?.();
+    for (const off of turn.marks.values()) off();
+    turn.marks.clear();
     closeMessage();
     for (const ref of turn.tools) {
       if (ref.done) continue;
@@ -600,9 +688,12 @@ async function runTurn(botId: string, trigger: Trigger) {
     if (aborts.get(botId) === ctrl) aborts.delete(botId);
     if (turns.get(botId) === turn) turns.delete(botId);
     // An approval asked for outside this turn may still be waiting; leave its state alone.
-    if (!pendingApprovals(botId).length) setLive(botId, { isRunning: false, activity: null, awaiting: null, startedAt: null, caption: null });
-    else setLive(botId, { isRunning: false, caption: null });
+    const after = { pausing: false, guard: loopStop ? 'stopped' as const : null };
+    if (!pendingApprovals(botId).length) setLive(botId, { isRunning: false, activity: null, awaiting: null, startedAt: null, caption: null, ...after });
+    else setLive(botId, { isRunning: false, caption: null, ...after });
     emitBot(botId);
+    // A steer: carry on with the owner's note (the engine kept the work so far).
+    if (turn.paused && turn.pause?.note) enqueue(botId, { type: 'user', text: turn.pause.note, steer: true });
     // Another bot asked: HeyZubi passes the answer back as a message from this bot (inside the app, so the engine's
     // owner's-words hook, which refuses send_to_bot on such turns, never has to let a "send" through).
     if (trigger.type === 'bot' && !trigger.reply && !failed && !turn.silent && spoken.length && getBotRow(trigger.fromBotId)) {

@@ -212,6 +212,15 @@ function GeneralTab({ bot, onClose }: { bot: Bot; onClose: () => void }) {
               <button type="button" className="cfg-btn cfg-btn--secondary" onClick={() => configApi.makePrimary(bot.id).then(() => flash(`${bot.name} is now your primary Bot`)).catch((e) => flash(e.message, 'error'))}>Make primary</button>
             </div>
           )}
+          {bot.kind !== 'room' && (
+            <div className="cfg-row">
+              <div className="cfg-row__text">
+                <div className="cfg-row__title">Hire file</div>
+                <div className="cfg-row__sub">One file with {bot.name}’s role, character, model, skills and the tools it may use. Hire the same employee again from it, here or on another HeyZubi. It never holds keys or connected accounts.</div>
+              </div>
+              <a className="cfg-btn cfg-btn--secondary" href={`/api/hire/export/${bot.id}`} download>Export</a>
+            </div>
+          )}
         </div>
       </section>
 
