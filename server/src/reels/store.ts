@@ -35,6 +35,8 @@ export interface Series {
   name: string; handle: string; style: string; audio: string; sheetStyle: string; theme: string; refVideoAsset: string; refVideoNote: string;
   closing: string; courseLine: string; courseLineFacebook: string; hashtags: string; commentBase: string; commentBaseFacebook: string; youtubeLink: string;
   slots: { id: string; time: string; us: string }[]; cast: SeriesCast[]; voices: SeriesVoice[]; history: PastEpisode[]; assetsExpire: string; hookTypes: string[]; styleRefAsset: string; updatedAt: string; youtubePlaylist?: string;
+  /** Landing pages of episodes made in HeyZubi, by episode number: the page and a small picture of it (series/pages/…). */
+  pages?: Record<string, { url: string; preview?: string }>;
 }
 export function series(): Series {
   const s = readJson<Series | null>(path.join(seriesDir(), 'series.json'), null);
