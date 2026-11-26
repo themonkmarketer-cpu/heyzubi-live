@@ -7,7 +7,10 @@ import { appendRow, emitBot, getBotRow, getLive, getRow, setLive, updateRow } fr
 import type { ActivityKind, MessageBody, ToolCallBody } from '../types.js';
 import { batchActions, toolkitInfo } from '../composio.js';
 import { screenForWork } from '../computer.js';
-import { engineFor, primaryBotId } from '../engine.js';
+import { engineFor, engineHome, primaryBotId } from '../engine.js';
+import { DAMAGED_IMAGE_ERROR, repairDamagedImages } from './image-repair.js';
+/** When a bot last got its conversation's damaged pictures repaired and its turn retried (one retry per 10 minutes). */
+const imageRetryAt = new Map<string, number>();
 import { chatHeaders, chatSessionId, noteChat } from '../engine-sessions.js';
 import { getPrefs } from '../prefs.js';
 import { BREAKER, breakerCall, breakerResult, GUARD_MESSAGES, isBlocked, newBreaker, OUTSIDE_NOTICE, readsOutside, type BreakerState, type GuardKind } from './controls.js';
@@ -506,6 +509,7 @@ async function runTurn(botId: string, trigger: Trigger) {
   const outputsSeen = new Set<string>();
   let steps = 0;
   let failed = false;
+  let retryAfterRepair = false;
   let unmark: (() => void) | null = null;
 
   try {
@@ -667,12 +671,19 @@ async function runTurn(botId: string, trigger: Trigger) {
     // Hermes' own wording points at its command line; say what to click in the app instead.
     const signedOut = /No Anthropic credentials|anthropic.*(sign in|credential|unauthori[sz]ed|invalid.*token)/i.test(raw);
     const note = turn.pause?.note ?? '';
-    const text = turn.paused ? `Paused after step ${steps}.${note ? ' Carrying on with your note.' : ' Send a message to carry on; what it did so far is kept.'}`
+    // A damaged screenshot in the stored conversation makes the model refuse every later turn: repair it, try once more.
+    let repaired = 0;
+    if (!stopped && DAMAGED_IMAGE_ERROR.test(raw) && Date.now() - (imageRetryAt.get(botId) ?? 0) > 10 * 60_000) {
+      try { repaired = repairDamagedImages(engineHome(botId)); } catch (err) { console.warn('[agent] picture repair failed:', (err as Error).message); }
+      if (repaired) { imageRetryAt.set(botId, Date.now()); retryAfterRepair = true; }
+    }
+    const text = repaired ? `A damaged screenshot in this chat’s history made the model refuse to answer. HeyZubi removed ${repaired === 1 ? 'it' : `${repaired} damaged pictures`} and is trying again.`
+      : turn.paused ? `Paused after step ${steps}.${note ? ' Carrying on with your note.' : ' Send a message to carry on; what it did so far is kept.'}`
       : loopStop ? `Stopped: ${bot.name} kept going after its actions were blocked (${loopStop}). Nothing more runs until you send a message.`
       : stopped ? 'Stopped.'
       : signedOut ? `${bot.name} isn't signed in to Claude any more, so it couldn't answer. In the panel on the right, scroll down to Engine and click “Sign in to Claude (Anthropic)…”, finish the sign-in on ${bot.name}'s screen (top of that panel), then send your message again.`
         : `Something went wrong: ${raw}`;
-    appendRow(botId, 'notice', { type: 'notice', text, tone: stopped && !loopStop ? 'info' : 'error' });
+    appendRow(botId, 'notice', { type: 'notice', text, tone: (stopped && !loopStop) || repaired ? 'info' : 'error' });
     if (!stopped) console.error('[agent]', botId, e);
   } finally {
     unmark?.();
@@ -694,6 +705,8 @@ async function runTurn(botId: string, trigger: Trigger) {
     emitBot(botId);
     // A steer: carry on with the owner's note (the engine kept the work so far).
     if (turn.paused && turn.pause?.note) enqueue(botId, { type: 'user', text: turn.pause.note, steer: true });
+    // The conversation's damaged pictures were repaired: run the same turn again.
+    if (retryAfterRepair) enqueue(botId, trigger);
     // Another bot asked: HeyZubi passes the answer back as a message from this bot (inside the app, so the engine's
     // owner's-words hook, which refuses send_to_bot on such turns, never has to let a "send" through).
     if (trigger.type === 'bot' && !trigger.reply && !failed && !turn.silent && spoken.length && getBotRow(trigger.fromBotId)) {
