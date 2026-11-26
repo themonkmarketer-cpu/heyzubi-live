@@ -133,6 +133,14 @@ function plan(ep: Episode, part: number) {
   return { segs, seconds: at, to, st, end, shots, fps, kept };
 }
 
+/** Where each kept shot sits in the cut (and in edit/clean.mp4, which has the same timing). */
+export function cleanShots(ep: Episode): { part: number; shot: number; at: number; dur: number }[] {
+  try {
+    const P = [plan(ep, 1), plan(ep, 2)];
+    return P.flatMap((pl, i) => [...pl.kept.entries()].map(([n, k]) => ({ part: i + 1, shot: n, at: (i ? P[0].seconds : 0) + k.at, dur: k.b - k.a })));
+  } catch { return []; }
+}
+
 async function join(ep: Episode, part: number, segs: Seg[], o: RunOpts): Promise<string> {
   const out = epFile(ep, `edit/p${part}.mov`);
   ensureDir(out);
@@ -300,7 +308,8 @@ export async function buildEdit(ep: Episode, o: RunOpts & { say: (t: string) => 
     ins.push('-framerate', '24', '-i', `overlays/${x.name}/${x.name}_%03d.png`);
     vc.push(`[${n0 + k}:v]format=rgba,setpts=PTS-STARTPTS+${(x.at + 0.5 / 24).toFixed(4)}/TB[o${k}]`, `[${last}][o${k}]overlay=0:0:eof_action=pass[v${k + 1}]`); last = `v${k + 1}`;
   });
-  vc.push(`color=c=white:s=1080x1920:r=24:d=${END.toFixed(3)},format=rgba,fade=t=in:st=${(p1 - 0.25).toFixed(3)}:d=0.25:alpha=1,fade=t=out:st=${p1.toFixed(3)}:d=0.5:alpha=1,colorchannelmixer=aa=0.6[dip]`, `[${last}][dip]overlay=0:0:eof_action=pass[vd]`, `[vd]${v.join(',')}[v]`);
+  // The picture with its screens but no flash, captions or clock goes to edit/clean.mp4 too (shots for the landing page).
+  vc.push(`[${last}]split=2[vm][vclean]`, `color=c=white:s=1080x1920:r=24:d=${END.toFixed(3)},format=rgba,fade=t=in:st=${(p1 - 0.25).toFixed(3)}:d=0.25:alpha=1,fade=t=out:st=${p1.toFixed(3)}:d=0.5:alpha=1,colorchannelmixer=aa=0.6[dip]`, `[vm][dip]overlay=0:0:eof_action=pass[vd]`, `[vd]${v.join(',')}[v]`);
   fs.writeFileSync(path.join(dir, 'pass1.txt'), `${a.join(';\n')};\n[mix]loudnorm=I=-14:TP=-1.5:LRA=9:print_format=json[a]`);
   o.say('Mixing the sound (1 of 2)');
   const m1 = await ffmpeg([...ins, '-/filter_complex', 'pass1.txt', '-map', '[a]', '-f', 'null', '-'], { ...o, cwd: dir });
@@ -309,7 +318,8 @@ export async function buildEdit(ep: Episode, o: RunOpts & { say: (t: string) => 
   fs.writeFileSync(path.join(dir, 'final.txt'), `${vc.join(';\n')};\n${a.join(';\n')};\n[mix]loudnorm=I=-14:TP=-1.5:LRA=9:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true,aresample=48000[a]`);
   const version = ep.edit.version + 1, rel = `edit/ep${String(ep.num).padStart(2, '0')}-final-v${version}.mp4`;
   o.say('Rendering the cut');
-  await ffmpeg([...ins, '-/filter_complex', 'final.txt', '-map', '[v]', '-map', '[a]', '-t', END.toFixed(3), '-c:v', 'libx264', '-crf', '18', '-preset', 'medium', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', path.basename(rel)], { ...o, cwd: dir, minutes: 40 });
+  await ffmpeg([...ins, '-/filter_complex', 'final.txt', '-map', '[v]', '-map', '[a]', '-t', END.toFixed(3), '-c:v', 'libx264', '-crf', '18', '-preset', 'medium', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', path.basename(rel),
+    '-map', '[vclean]', '-an', '-t', END.toFixed(3), '-c:v', 'libx264', '-crf', '18', '-preset', 'medium', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', 'clean.mp4'], { ...o, cwd: dir, minutes: 40 });
   o.say('Checking the cut');
   const L = await loudness(epFile(ep, rel)), pr = await probe(epFile(ep, rel));
   const checks: Check[] = [

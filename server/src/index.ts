@@ -42,6 +42,7 @@ initSessionTidy();
 resumeReels();
 void import('./reels/flow.js').then((f) => f.initStatusPosts());
 void import('./reels/jobs.js').then((j) => j.initJobs());
+void import('./reels/handoff.js').then((h) => h.initHandoffs()); // finished episodes go to the PC for their landing page
 // A message in an episode's session that was being answered when the last process stopped still gets its answer.
 setTimeout(resumeChats, 8000);
 

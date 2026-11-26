@@ -27,6 +27,11 @@ export const projectName = (ep: Episode) => `ep${String(ep.num).padStart(2, '0')
 export const projectDir = (ep: Episode) => epFile(ep, `studio/${projectName(ep)}`);
 const htmlFile = (ep: Episode) => path.join(projectDir(ep), 'index.html');
 export const hasProject = (ep: Episode) => fs.existsSync(htmlFile(ep));
+/** Where each shot sits in the editor's cut (and in edit/joined.mov, which is joined from the same clips, screens on). */
+export function studioShots(ep: Episode): { part: number; shot: number; at: number; dur: number }[] {
+  if (!hasProject(ep)) return [];
+  return clips(read(htmlFile(ep))).filter((c) => !c.hidden && c.dur > 0.02).map((c) => ({ part: c.part, shot: c.shot, at: c.start, dur: c.dur }));
+}
 const read = (f: string) => fs.readFileSync(f, 'utf8');
 function write(f: string, s: string) { if (fs.existsSync(f) && read(f) === s) return; ensureDir(f); fs.writeFileSync(`${f}.tmp`, s); fs.renameSync(`${f}.tmp`, f); }
 const R = (n: number) => String(Math.floor(n * 1e4 + 1e-3) / 1e4);
