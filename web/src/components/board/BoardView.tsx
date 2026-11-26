@@ -2,11 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { useStore } from '../../store';
 import { kanbanApi, type KanbanBoardData, type KanbanBoardMeta, type KanbanCard, type KanbanWorkflow } from '../../lib/kanbanApi';
 import { Icon } from '../Icon';
-import { CreateDialog, MoveDialog } from './BoardDialogs';
+import { CreateDialog, MoveDialog, type NewCard } from './BoardDialogs';
 import { TaskCard } from './TaskCard';
 import { TaskDrawer } from './TaskDrawer';
 import {
-  ADDABLE, canMove, COLUMN_HINT, isFiltering, landingIndex, matches, newKey, NO_FILTERS, orderCards, planMove, PRIORITISED, UNASSIGNED,
+  ADDABLE, BOT_RULES, canMove, COLUMN_HINT, isFiltering, isOwner, landingIndex, matches, newKey, NO_FILTERS, orderCards, planMove, PRIORITISED, UNASSIGNED,
   type CardOrder, type Filters, type MovePlan,
 } from './boardModel';
 import { lsGet, lsSet } from '../../lib/storage';
@@ -25,7 +25,7 @@ const POLL_MS = 4000;
 function useWho() {
   const bots = useStore((s) => s.bots);
   const byProfile = useMemo(() => new Map(bots.filter((b) => b.hermesProfile).map((b) => [b.hermesProfile as string, b])), [bots]);
-  const who = useCallback((p: string) => byProfile.get(p)?.name ?? p, [byProfile]);
+  const who = useCallback((p: string) => (isOwner(p) ? 'You' : byProfile.get(p)?.name ?? p), [byProfile]);
   return { bots: byProfile, who };
 }
 
@@ -231,6 +231,48 @@ export function BoardView() {
     }
   }, [slug, reload, say]);
 
+  /**
+   * A card from the Add task dialog, and its chain: each step is its own card, linked to the one before, so Hermes keeps
+   * it in Todo until that card is done and then hands it to its bot with the earlier result. Keys follow the dialog's
+   * key, so sending again after a failure picks up the cards already made instead of adding them twice.
+   */
+  const addChain = useCallback(async (n: NewCard): Promise<string | null> => {
+    const total = n.steps.length + 1;
+    const bodyFor = (who: string, text: string) => (isOwner(who) ? text : [text, BOT_RULES].filter(Boolean).join('\n\n'));
+    let made = 0;
+    try {
+      const first = await kanbanApi.create(slug, {
+        title: n.title, key: n.key, body: n.assignee ? bodyFor(n.assignee, n.body) : n.body || undefined,
+        ...(n.assignee ? { assignee: n.assignee } : {}), ...(n.column === 'triage' ? { triage: true } : {}),
+      });
+      if (!first.task) throw new Error('no card came back');
+      made = 1;
+      if (n.column === 'todo' && first.task.status === 'ready') await kanbanApi.update(slug, first.task.id, { status: 'todo' });
+      if (first.warning) say(first.warning);
+      let prev = first.task.id;
+      for (const [i, s] of n.steps.entries()) {
+        const name = who(s.who);
+        const what = s.what.trim() || (isOwner(s.who)
+          ? 'Check the result of the step before. Move this card to Done to let the chain go on; to send it back, comment and move the earlier card to Ready.'
+          : 'Carry on from the step before: read its result and do your part.');
+        const r = await kanbanApi.create(slug, {
+          title: `${n.title} · step ${i + 2} of ${total}: ${isOwner(s.who) ? 'your review' : name}`,
+          key: `${n.key}-s${i + 2}`, assignee: s.who, parents: [prev], body: bodyFor(s.who, what),
+        });
+        if (!r.task) throw new Error('no card came back');
+        prev = r.task.id;
+        made += 1;
+      }
+      await reload();
+      return null;
+    } catch (e) {
+      await reload();
+      return made
+        ? `Hermes added ${made} of ${total} cards, then stopped: ${(e as Error).message}. Add task again to finish (the ${made} already made aren’t repeated).`
+        : `Hermes didn’t add it: ${(e as Error).message}`;
+    }
+  }, [slug, reload, say, who]);
+
   // ---------- drag and drop ----------
   const dragStart = (card: KanbanCard) => (e: DragEvent) => {
     e.dataTransfer.setData('text/plain', card.id);
@@ -304,6 +346,10 @@ export function BoardView() {
             </button>
           </div>
         </header>
+        <p className="kb-how">
+          The column is the signal: a card in <b>Ready</b> goes to its bot, which works it and finishes in <b>Done</b> or <b>Review</b>.
+          A card can hand on to a next step (another bot, or <b>You</b> to check it first), which starts once the card before it is done.
+        </p>
 
         <div className="kb-tools" role="search">
           <label className="kb-search">
@@ -425,7 +471,7 @@ export function BoardView() {
         <TaskDrawer board={slug} id={openId} version={data?.latest_event_id ?? 0} workflow={workflow} bots={bots} who={who} assignees={data?.assignees ?? []}
           onClose={closeDrawer} onChanged={() => void reload()} onMove={(card, to) => requestMove(card, to)} />
       )}
-      {creating && workflow && <CreateDialog workflow={workflow} column={creating} onCreate={add} onClose={() => setCreating(null)} />}
+      {creating && workflow && <CreateDialog workflow={workflow} column={creating} people={people} who={who} onCreate={addChain} onClose={() => setCreating(null)} />}
       {pending && (
         <MoveDialog card={pending.card} toLabel={workflow?.columns.find((c) => c.key === pending.to)?.label ?? pending.to} plan={pending.plan}
           onCancel={() => setPending(null)} onConfirm={(extra) => { const p = pending; setPending(null); void doMove(p.card, p.to, extra); }} />

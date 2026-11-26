@@ -64,6 +64,14 @@ kanbanApi.post('/tasks', async (c) => {
   if (p.assignee !== undefined) payload.assignee = str(p.assignee, 120) || null;
   if (p.priority !== undefined) payload.priority = int(p.priority) ?? 0;
   if (p.triage === true) payload.triage = true;
+  // A step in a chain: Hermes parks it in Todo until these cards are done, then moves it to Ready for its bot,
+  // and gives that bot the earlier cards' results.
+  if (p.parents !== undefined) {
+    if (!Array.isArray(p.parents) || p.parents.length > 10 || !p.parents.every((x: unknown) => typeof x === 'string' && TASK_ID.test(x))) {
+      return c.json({ error: 'bad parents' }, 400);
+    }
+    if (p.parents.length) payload.parents = p.parents;
+  }
   // Hermes's own duplicate guard: a second create with the same key returns the first card instead of a new one.
   const key = str(p.key, 80);
   if (key && /^[A-Za-z0-9_-]{8,80}$/.test(key)) payload.idempotency_key = `heyzubi-${key}`;

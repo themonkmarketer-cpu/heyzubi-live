@@ -12,14 +12,27 @@ import type { KanbanCard, KanbanWorkflow } from '../../lib/kanbanApi';
 /** What each of Hermes's columns means (header tooltip and empty state). */
 export const COLUMN_HINT: Record<string, string> = {
   triage: 'New ideas to sort out before they’re ready.',
-  todo: 'Waiting on other tasks. Hermes moves a card to Ready once what it waits on is done.',
+  todo: 'Waiting: for you to move it to Ready, or for the step before it in a chain. Hermes moves it to Ready once that step is done.',
   scheduled: 'Starts at its set time. Hermes moves cards here.',
-  ready: 'Ready to start. A card with someone assigned is picked up by their agent.',
+  ready: 'Ready to start. Each bot picks up the cards assigned to it; cards for You wait for your OK.',
   running: 'An agent is working on these. Hermes moves cards here when a run starts.',
   blocked: 'Needs something before it can go on.',
   review: 'Finished work waiting for a check. Hermes moves cards here.',
   done: 'Finished.',
 };
+
+/**
+ * The board as a task queue for the bots: the column is the signal. A card in Ready goes to the bot it is assigned to
+ * (Hermes's dispatcher claims it, so two bots never take the same card). A card can hand on to a next step: that step
+ * is its own card, linked to the one before, which Hermes keeps in Todo until the earlier card is done and then moves
+ * to Ready for its bot, with the earlier card's result. A step for You is a card on a lane no bot works (Hermes skips
+ * it), so the chain stops there until you move it to Done.
+ */
+export const OWNER = 'owner';
+export const isOwner = (p?: string | null) => p === OWNER;
+
+/** Added to every bot card made from the Add task dialog: finish with a result, and leave the irreversible to review. */
+export const BOT_RULES = 'Board rules: finish with a short summary of what you did; the next step reads it. Don’t do anything that can’t be undone (send, post, publish, pay, delete). Prepare it and leave it for review.';
 
 /** Columns a new card can start in: Hermes creates in Ready, in Triage when asked, and Todo is one move from Ready. */
 export const ADDABLE = ['ready', 'triage', 'todo'];
@@ -100,13 +113,16 @@ export interface MovePlan {
 
 export function planMove(card: KanbanCard, to: string, who: (profile: string) => string): MovePlan {
   const effects: string[] = [];
-  const agent = card.assignee ? who(card.assignee) : null;
+  const agent = card.assignee && !isOwner(card.assignee) ? who(card.assignee) : null;
   if (card.status === 'running') {
     effects.push(to === 'ready'
       ? `${agent ?? 'The agent'}’s current run stops, and the card goes back in the queue to be picked up again.`
       : `${agent ?? 'The agent'}’s current run stops. Hermes ends it as “reclaimed”.`);
   } else if (to === 'ready' && agent) {
     effects.push(`In Ready, ${agent}’s agent picks this card up and starts working on it.`);
+  }
+  if (to === 'done' && card.status !== 'done' && (card.link_counts?.children ?? 0) > 0) {
+    effects.push('The next step in its chain starts: Hermes moves the cards waiting on it to Ready.');
   }
   if (card.status === 'done' && (card.link_counts?.children ?? 0) > 0) {
     effects.push('Reopening it sends the tasks that depend on it back to wait for it.');
@@ -116,7 +132,7 @@ export function planMove(card: KanbanCard, to: string, who: (profile: string) =>
 
 /** A new assignee on a Ready card is handed to that agent at once (Hermes's dispatcher). */
 export function assignEffect(card: KanbanCard, assignee: string, who: (profile: string) => string) {
-  if (!assignee || card.status !== 'ready' || assignee === card.assignee) return null;
+  if (!assignee || isOwner(assignee) || card.status !== 'ready' || assignee === card.assignee) return null;
   return `${who(assignee)}’s agent picks this card up from Ready and starts working on it.`;
 }
 

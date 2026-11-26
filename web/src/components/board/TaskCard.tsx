@@ -4,7 +4,7 @@ import type { Bot } from '@shared/types';
 import { BotAvatarFor } from '../../avatar/BotAvatar';
 import type { KanbanCard, KanbanWorkflow } from '../../lib/kanbanApi';
 import { Icon } from '../Icon';
-import { duration, moveTargets, preview, shortId } from './boardModel';
+import { duration, isOwner, moveTargets, preview, shortId } from './boardModel';
 
 /**
  * One card on the Board. The column says where the task is in Hermes's workflow; the small "agent" line says what an
@@ -21,6 +21,14 @@ export function Grip() {
 
 export function Who({ name, bots, size = 18, showName = true }: { name?: string | null; bots: Map<string, Bot>; size?: number; showName?: boolean }) {
   if (!name) return null;
+  if (isOwner(name)) {
+    return (
+      <span className="kb-who" title="Your step: the chain waits until you move this card to Done">
+        <span className="kb-who__dot is-you" style={{ width: size, height: size }} aria-hidden>Y</span>
+        {showName && <span className="kb-who__name">You</span>}
+      </span>
+    );
+  }
   const bot = bots.get(name);
   return (
     <span className="kb-who" title={bot ? `${bot.name} (Hermes profile ${name})` : `Hermes profile ${name}`}>
@@ -38,6 +46,7 @@ export function agentState(card: KanbanCard, who: (p: string) => string): { tone
   if (card.consecutive_failures) {
     return { tone: 'fail', text: `Last run failed${card.consecutive_failures > 1 ? ` ×${card.consecutive_failures}` : ''}`, title: card.last_failure_error || 'The last agent run failed' };
   }
+  if (card.status === 'ready' && isOwner(card.assignee)) return { tone: 'warn', text: 'Waiting for your OK', title: 'Move it to Done to let the next step start' };
   if (card.status === 'ready' && card.assignee) return { tone: 'queued', text: `Queued for ${who(card.assignee)}`, title: 'Hermes hands Ready cards to their agent' };
   if (card.diagnostics?.length) {
     return { tone: 'warn', text: 'Needs a look', title: card.diagnostics.map((d) => d.message).filter(Boolean).join('\n') || 'Hermes flagged this task' };

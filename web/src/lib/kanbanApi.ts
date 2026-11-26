@@ -116,7 +116,7 @@ export const kanbanApi = {
   cursor: (board: string) => req<{ latest_event_id: number }>('GET', `/cursor${q(board)}`),
   task: (board: string, id: string) => req<KanbanTaskDetail>('GET', `/tasks/${encodeURIComponent(id)}${q(board)}`),
   /** `key` is Hermes's idempotency key: the same key never makes a second card, so a repeated submit is harmless. */
-  create: (board: string, p: { title: string; body?: string; assignee?: string; priority?: number; triage?: boolean; key?: string }) =>
+  create: (board: string, p: { title: string; body?: string; assignee?: string; priority?: number; triage?: boolean; key?: string; parents?: string[] }) =>
     req<{ task: KanbanCard | null; warning?: string }>('POST', `/tasks${q(board)}`, p),
   update: (board: string, id: string, p: KanbanCardPatch) => req<{ task: KanbanCard | null }>('PATCH', `/tasks/${encodeURIComponent(id)}${q(board)}`, p),
   comment: (board: string, id: string, body: string) => req<unknown>('POST', `/tasks/${encodeURIComponent(id)}/comments${q(board)}`, { body }),
