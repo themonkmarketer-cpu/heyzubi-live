@@ -23,7 +23,7 @@ It reads `server/src` to list every route (following each `app.route(...)` mount
 | 7 | Nothing outside can make a bot act on its own | Webhooks and outside programs are marked as not the owner's words; the owner's-words hook refuses sends, posts and deletes in those runs |
 | 8 | Files are served sealed | Library files and share links: `Content-Security-Policy` sandbox for HTML/SVG, `nosniff`, `no-referrer`; share links add `no-store` and `noindex` |
 | 9 | Secrets never leave the server | Keys live in the server's env files; hire files and exports strip anything that looks like a key; webhook and API key secrets are shown once |
-| 10 | The app isn't on the open internet | It is served on the private Tailscale network only (`tailscale serve`, not `funnel`). Making any path public (for example `/s/` so clients can open share links) is a deliberate step the owner takes |
+| 10 | The app isn't on the open internet | The app is served on the private Tailscale network only (`tailscale serve`). The one public part is share links: Tailscale Funnel on its own port (10000) maps only `/s` to the server, so every other path there answers 404 and the app's own ports stay private. `SHARE_ORIGIN` in the server's env makes the app hand out links on that public address. To close it again: `tailscale funnel --https=10000 off` |
 
 ## Open on purpose
 
@@ -37,4 +37,4 @@ It reads `server/src` to list every route (following each `app.route(...)` mount
 | `GET /api/inbound/hooks/result/:token` | A webhook caller checks its card | Random result token |
 | `/api/desktop/*` | Pairing the Windows app | One-time code, then a device key |
 | `/mcp/*` | The agents' own tools | Local requests only, per-bot token |
-| `GET /s/:token` | A client opens a share link | Random token, expiry, can be turned off; one file only |
+| `GET /s/:token` | A client opens a share link (public, through Funnel port 10000) | Random token, expiry, can be turned off; one file only; 120 views per 10 minutes per address |

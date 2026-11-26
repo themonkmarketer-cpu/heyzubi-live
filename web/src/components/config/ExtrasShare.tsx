@@ -14,8 +14,8 @@ export function SharePanel({ botId, file, name, onClose }: { botId: string; file
   const make = async (hours: number) => {
     setBusy(true); setError(null); setCopied(false);
     try {
-      const r = await jpost<{ share: { path: string; expiresAt: number } }>('/api/shares', { botId, file, hours });
-      setLink({ url: `${location.origin}${r.share.path}`, expiresAt: r.share.expiresAt });
+      const r = await jpost<{ share: { path: string; url: string | null; expiresAt: number } }>('/api/shares', { botId, file, hours });
+      setLink({ url: r.share.url ?? `${location.origin}${r.share.path}`, expiresAt: r.share.expiresAt });
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
   };

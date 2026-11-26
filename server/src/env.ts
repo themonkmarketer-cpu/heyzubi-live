@@ -68,6 +68,8 @@ export const env = {
    */
   host: process.env.HOST || (isLoopbackUrl(appUrl) ? '127.0.0.1' : undefined),
   appUrl,
+  /** Where share links (/s/<token>) are opened from outside, e.g. a Tailscale Funnel address; empty = the app's own address. */
+  shareOrigin: (process.env.SHARE_ORIGIN ?? '').replace(/\/+$/, ''),
   /** Public URL of this server, used for OAuth callbacks. */
   serverUrl: process.env.SERVER_URL ?? `http://localhost:${process.env.PORT ?? 8787}`,
   /** The app is only reachable at a local address (development). Some conveniences are limited to this. */

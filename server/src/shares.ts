@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import { Readable } from 'node:stream';
 import { Hono } from 'hono';
 import { db, now } from './db.js';
+import { env } from './env.js';
 import { requireUser, rateLimit, type AuthVars } from './lib/auth.js';
 import { openAs, openHeaders } from './library-open.js';
 import { libraryFile, safeRel } from './routes-config.js';
@@ -20,7 +21,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS shares (token TEXT PRIMARY KEY, user_id TEXT
 interface Share { token: string; user_id: string; bot_id: string; rel: string; expires_at: number; revoked_at: number | null; views: number; last_view_at: number | null; created_at: number }
 
 const HOURS = [1, 24, 72, 168, 720];
-const view = (s: Share) => ({ token: s.token, botId: s.bot_id, file: s.rel, path: `/s/${s.token}`, expiresAt: s.expires_at, revoked: !!s.revoked_at, live: !s.revoked_at && s.expires_at > now(), views: s.views, lastViewAt: s.last_view_at, createdAt: s.created_at });
+const view = (s: Share) => ({ token: s.token, botId: s.bot_id, file: s.rel, path: `/s/${s.token}`, url: env.shareOrigin ? `${env.shareOrigin}/s/${s.token}` : null, public: !!env.shareOrigin, expiresAt: s.expires_at, revoked: !!s.revoked_at, live: !s.revoked_at && s.expires_at > now(), views: s.views, lastViewAt: s.last_view_at, createdAt: s.created_at });
 
 export const sharesApi = new Hono<AuthVars>();
 sharesApi.use('*', requireUser);

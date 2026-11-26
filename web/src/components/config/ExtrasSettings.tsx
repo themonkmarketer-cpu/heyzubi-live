@@ -188,7 +188,7 @@ export function DeletedBody() {
 // ---------------------------------------------------------------------------
 // Share links
 
-interface ShareLink { token: string; botId: string; file: string; path: string; expiresAt: number; revoked: boolean; live: boolean; views: number; lastViewAt: number | null; createdAt: number }
+interface ShareLink { token: string; botId: string; file: string; path: string; url: string | null; expiresAt: number; revoked: boolean; live: boolean; views: number; lastViewAt: number | null; createdAt: number }
 
 export function SharesBody() {
   const bots = useStore((s) => s.bots);
@@ -218,7 +218,7 @@ export function SharesBody() {
                   <div className="cfg-row__text">
                     <div className="cfg-row__title">{s.file.split('/').pop()}</div>
                     <div className="cfg-row__sub">{nameOf(s.botId)} · {state} · {s.views} view{s.views === 1 ? '' : 's'}{s.lastViewAt ? `, last ${relativeShort(s.lastViewAt) === 'now' ? 'just now' : relativeShort(s.lastViewAt)}` : ''}</div>
-                    <div className="cfg-row__sub xsh-link">{location.origin}{s.path}</div>
+                    <div className="cfg-row__sub xsh-link">{s.url ?? `${location.origin}${s.path}`}</div>
                   </div>
                   {s.live && <ConfirmButton className="cfg-btn cfg-btn--secondary" confirmLabel="Turn off link" onConfirm={() => off(s)}>Turn off</ConfirmButton>}
                 </div>
