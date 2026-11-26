@@ -335,8 +335,11 @@ function YouTubePanel() {
 
 interface IgProfile { username: string; name: string; followers: number; posts: number; picture: string }
 function InstagramPanel() {
-  const [data, load] = usePanelData<{ connected: boolean; posts: SocialPost[]; profile?: IgProfile; error?: string }>('instagram', 'Instagram', { connected: true, posts: [] });
+  // Which account to show: the one picked before, else the server's choice (the series' own account).
+  const [acct, setAcct] = useState(() => lsGet('igAccount') ?? '');
+  const [data, load] = usePanelData<{ connected: boolean; posts: SocialPost[]; profile?: IgProfile; account?: string; accounts?: { id: string; label: string }[]; error?: string }>(`instagram${acct ? `?account=${encodeURIComponent(acct)}` : ''}`, 'Instagram', { connected: true, posts: [] });
   const p = data?.profile;
+  const pick = (id: string) => { lsSet('igAccount', id); setAcct(id); };
   return (
     <section className="lpanel" aria-label="Instagram">
       <PanelHead title="INSTAGRAM" open="Open" href={p?.username ? `https://www.instagram.com/${encodeURIComponent(p.username)}/` : 'https://www.instagram.com/'} onRefresh={() => load(true)} onClose={() => usePanels.setState({ instagram: null })} />
@@ -348,7 +351,14 @@ function InstagramPanel() {
             {p && (
               <div className="lig__prof">
                 {p.picture ? <img src={p.picture} alt="" referrerPolicy="no-referrer" /> : <span className="lig__pic" />}
-                <div><b>@{p.username}</b>{p.name && <small>{p.name}</small>}</div>
+                <div>
+                  {(data.accounts?.length ?? 0) > 1 ? (
+                    <select className="lfb__pick" aria-label="Instagram account" value={data.account} onChange={(e) => pick(e.target.value)}>
+                      {data.accounts!.map((x) => <option key={x.id} value={x.id}>@{x.label}</option>)}
+                    </select>
+                  ) : <b>@{p.username}</b>}
+                  {p.name && <small>{p.name}</small>}
+                </div>
                 <span className="lig__stat"><b>{big(p.followers)}</b><small>followers</small></span>
                 <span className="lig__stat"><b>{big(p.posts)}</b><small>posts</small></span>
               </div>

@@ -227,13 +227,25 @@ const IG_LINK = /^https:\/\/www\.instagram\.com\//i;
 const FB_IMG = /^https:\/\/[a-z0-9.-]+\.(fbcdn\.net|fbsbx\.com)\//i;
 const FB_LINK = /^https:\/\/(www\.|m\.)?facebook\.com\//i;
 
+/** The series' own Instagram handle (private posting.json), so the window opens on it when nothing else was picked. */
+function mainInstagram(): string {
+  try {
+    const dir = process.env.HQ_SOCIAL_DIR || path.join(path.dirname(env.dbPath), 'social');
+    return String(JSON.parse(fs.readFileSync(path.join(dir, 'series', 'posting.json'), 'utf8'))?.instagram?.handle ?? '').replace(/^@/, '').toLowerCase();
+  } catch { return ''; }
+}
+
 panelsApi.get('/instagram', async (c) => {
   const fresh = c.req.query('fresh') === '1';
+  const want = /^[\w-]{3,80}$/.test(c.req.query('account') ?? '') ? c.req.query('account')! : '';
   try {
-    const body = await cached('ig', fresh, async () => {
-      const accts = active(await zubiAccounts(fresh), 'instagram');
-      if (!accts.length) return { connected: false, posts: [] };
-      const a = accts.find((x) => x.isDefault) ?? accts[0];
+    const accts = active(await zubiAccounts(fresh), 'instagram');
+    if (!accts.length) return c.json({ connected: false, posts: [] });
+    // The account asked for, else the series' own, else Composio's default.
+    const main = mainInstagram();
+    const a = accts.find((x) => x.id === want) ?? accts.find((x) => main && x.label.replace(/^@/, '').toLowerCase() === main) ?? accts.find((x) => x.isDefault) ?? accts[0];
+    const list = accts.map((x) => ({ id: x.id, label: x.label.replace(/^@/, '') })).sort((x, y) => Number(y.id === a.id) - Number(x.id === a.id) || x.label.localeCompare(y.label));
+    const body = await cached(`ig:${a.id}`, fresh, async () => {
       const base = 'id,caption,media_type,permalink,thumbnail_url,media_url,timestamp,like_count,comments_count';
       const media = (fields: string) => wlist('INSTAGRAM_GET_IG_USER_MEDIA', { ig_user_id: 'me', limit: 24, fields }, a.id);
       const [p, m] = await Promise.all([
@@ -267,7 +279,7 @@ panelsApi.get('/instagram', async (c) => {
         posts,
       };
     });
-    return c.json(body);
+    return c.json({ ...body, account: a.id, accounts: list });
   } catch (e) {
     console.warn('[panels] instagram failed:', (e as Error)?.message ?? e);
     return c.json({ connected: true, posts: [], error: why(e) }, 502);
