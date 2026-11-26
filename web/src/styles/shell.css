@@ -136,3 +136,7 @@
 .sidebar-nav.is-tiles .sidebar-island__label, .sidebar-nav.is-tiles .sidebar-island__chev { display: none; }
 .sidebar-nav.is-tiles .sidebar-island__count { position: absolute; top: 2px; right: 2px; min-width: 16px; height: 16px; margin: 0; padding: 0 4px; font-size: 10px; line-height: 16px; }
 .sidebar.is-collapsed .sidebar-nav.is-tiles { grid-template-columns: 1fr; }
+
+/* Group chats sit apart from the team members: a divider and their own heading */
+.bot-list.is-groups { margin-top: 10px; padding-top: 6px; border-top: 1px solid var(--color-border-subtle, rgba(127, 127, 127, 0.18)); }
+.bot-list__rule { width: 28px; height: 1px; margin: 4px auto 6px; background: var(--color-border-subtle, rgba(127, 127, 127, 0.3)); }

@@ -202,6 +202,19 @@ export function Sidebar() {
   const logout = async () => { await api.logout().catch(() => {}); location.reload(); };
   const primary = bots.find((b) => b.isPrimary);
   const others = bots.filter((b) => !b.isPrimary).sort((a, b) => b.lastActivityAt - a.lastActivityAt);
+  // Group chats (rooms) sit apart from the team members, under their own heading.
+  const members = others.filter((b) => b.kind !== 'room');
+  const groups = others.filter((b) => b.kind === 'room');
+  const cols = teamColumns(others.length);
+  const entry = (b: Bot) => (collapsed ? (
+    <button key={b.id} type="button" className={`bot-rail-item${selectedBotId === b.id ? ' is-selected' : ''}`} onClick={() => selectBot(b.id)} title={displayName(b)}>
+      <BotAvatarFor bot={b} size={36} />
+    </button>
+  ) : cols > 1 ? (
+    <BotTile key={b.id} bot={b} selected={selectedBotId === b.id} running={!!live[b.id]?.isRunning} awaiting={live[b.id]?.awaiting?.reason ?? null} onSelect={selectBot} />
+  ) : (
+    <BotRow key={b.id} bot={b} selected={selectedBotId === b.id} running={!!live[b.id]?.isRunning} awaiting={live[b.id]?.awaiting?.reason ?? null} onSelect={selectBot} />
+  ));
 
   return (
     <aside className={`sidebar${collapsed ? ' is-collapsed' : ''}`}>
@@ -237,19 +250,9 @@ export function Sidebar() {
             </button>
           </div>
         )}
-        <div className={`bot-list${!collapsed && teamColumns(others.length) > 1 ? ` is-grid cols-${teamColumns(others.length)}` : ''}`}>
-          {(collapsed ? others : groupedByTeam(others)).map((b) =>
-            'teamHeader' in b ? (
-              <div key={`team-${b.teamHeader}`} className="bot-list__team">{b.teamHeader}</div>
-            ) : collapsed ? (
-              <button key={b.id} type="button" className={`bot-rail-item${selectedBotId === b.id ? ' is-selected' : ''}`} onClick={() => selectBot(b.id)} title={displayName(b)}>
-                <BotAvatarFor bot={b} size={36} />
-              </button>
-            ) : teamColumns(others.length) > 1 ? (
-              <BotTile key={b.id} bot={b} selected={selectedBotId === b.id} running={!!live[b.id]?.isRunning} awaiting={live[b.id]?.awaiting?.reason ?? null} onSelect={selectBot} />
-            ) : (
-              <BotRow key={b.id} bot={b} selected={selectedBotId === b.id} running={!!live[b.id]?.isRunning} awaiting={live[b.id]?.awaiting?.reason ?? null} onSelect={selectBot} />
-            ),
+        <div className={`bot-list${!collapsed && cols > 1 ? ` is-grid cols-${cols}` : ''}`}>
+          {(collapsed ? members : groupedByTeam(members)).map((b) =>
+            'teamHeader' in b ? <div key={`team-${b.teamHeader}`} className="bot-list__team">{b.teamHeader}</div> : entry(b),
           )}
           {!collapsed && others.length === 0 && (
             <button type="button" className="bot-list__empty" onClick={() => setModal('create')}>
@@ -261,6 +264,12 @@ export function Sidebar() {
             </button>
           )}
         </div>
+        {groups.length > 0 && (
+          <div className={`bot-list is-groups${!collapsed && cols > 1 ? ` is-grid cols-${cols}` : ''}`} aria-label="Groups">
+            {collapsed ? <div className="bot-list__rule" aria-hidden /> : <div className="bot-list__team">Groups</div>}
+            {groups.map(entry)}
+          </div>
+        )}
       </div>
 
       {/* The views, at the bottom just above Updates: Usage and Capabilities (its orb opens upwards), then Kanban and Gallery,
