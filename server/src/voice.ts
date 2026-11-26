@@ -172,7 +172,7 @@ export const VOICE_TOOLS = [
     type: 'function', name: 'open_window',
     description: 'Open or close the Calendar, Gmail, YouTube, Instagram, Facebook, LinkedIn or Google Sheets window in the app. Call it whenever the user asks about their calendar, schedule or meetings (window "calendar"), their inbox or emails ("gmail"), their YouTube channel ("youtube"), their Instagram ("instagram"), their Facebook ("facebook"), their LinkedIn ("linkedin") or their Google Sheets ("sheets"), then hand_off the question itself so the main agent answers it.',
     parameters: obj({
-      window: { type: 'string', enum: ['calendar', 'gmail', 'youtube', 'instagram', 'facebook', 'linkedin', 'sheets'] },
+      window: { type: 'string', enum: ['calendar', 'gmail', 'youtube', 'instagram', 'facebook', 'linkedin', 'sheets', 'notion'] },
       close: { type: 'boolean', description: 'Close it instead' },
     }, ['window']),
   },

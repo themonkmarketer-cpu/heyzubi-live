@@ -18,8 +18,8 @@ import '../styles/livepanels.css';
  */
 
 type PanelKey = PanelName;
-export const usePanels = create<Record<PanelKey, number | null>>(() => ({ gmail: null, calendar: null, youtube: null, instagram: null, facebook: null, linkedin: null, sheets: null }));
-const KEYS: PanelKey[] = ['calendar', 'gmail', 'youtube', 'instagram', 'facebook', 'linkedin', 'sheets'];
+export const usePanels = create<Record<PanelKey, number | null>>(() => ({ gmail: null, calendar: null, youtube: null, instagram: null, facebook: null, linkedin: null, sheets: null, notion: null }));
+const KEYS: PanelKey[] = ['calendar', 'gmail', 'youtube', 'instagram', 'facebook', 'linkedin', 'sheets', 'notion'];
 /** Open a window now (an icon click, a request, or the capability being used). */
 export const openPanel = (k: PanelKey) => usePanels.setState({ [k]: Date.now() });
 const HIDE_AFTER = 10 * 60_000;
@@ -32,7 +32,7 @@ export function CapabilityWatcher() {
   const bot = useStore((s) => s.bots.find((b) => b.isPrimary));
   const { cap } = useOrbState(bot);
   useEffect(() => {
-    const key: PanelKey | null = cap?.k === 'email' ? 'gmail' : cap?.k === 'calendar' ? 'calendar' : cap?.k === 'instagram' ? 'instagram' : cap?.k === 'facebook' ? 'facebook' : cap?.k === 'linkedin' ? 'linkedin' : cap?.k === 'sheets' ? 'sheets' : null;
+    const key: PanelKey | null = cap?.k === 'email' ? 'gmail' : cap?.k === 'calendar' ? 'calendar' : cap?.k === 'instagram' ? 'instagram' : cap?.k === 'facebook' ? 'facebook' : cap?.k === 'linkedin' ? 'linkedin' : cap?.k === 'sheets' ? 'sheets' : cap?.k === 'notion' ? 'notion' : null;
     if (key) openPanel(key);
   }, [cap?.k]);
   // A fast app call can finish before the orb sees it running: any new calendar or email tool call opens its window too.
@@ -47,7 +47,7 @@ export function CapabilityWatcher() {
       if (r.createdAt < since.current) continue; // an earlier conversation's call
       const k = capFor(r.body, undefined)?.k;
       if (k === 'email') openPanel('gmail');
-      else if (k === 'calendar' || k === 'instagram' || k === 'facebook' || k === 'linkedin' || k === 'sheets') openPanel(k);
+      else if (k === 'calendar' || k === 'instagram' || k === 'facebook' || k === 'linkedin' || k === 'sheets' || k === 'notion') openPanel(k);
       // The YouTube icon also lights for video making (Higgsfield, yt-dlp); only a real YouTube call opens its window.
       else if (k === 'youtube' && /youtube/i.test(`${r.body.name} ${r.body.label} ${JSON.stringify(r.body.args ?? '')}`)) openPanel('youtube');
     }
@@ -65,7 +65,7 @@ export function CapabilityWatcher() {
 
 /** The Calendar and Gmail windows: floating in the chat area at the shared size (lib/floatFrame.ts), drag by a title bar. */
 export function LivePanels() {
-  const { gmail, calendar, youtube, instagram, facebook, linkedin, sheets } = usePanels();
+  const { gmail, calendar, youtube, instagram, facebook, linkedin, sheets, notion } = usePanels();
   const waOpen = useStore((s) => s.waOpen);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   // One step down and left of the WhatsApp window when both are open, so neither hides the other.
@@ -95,7 +95,7 @@ export function LivePanels() {
     }, 30_000);
     return () => clearInterval(t);
   }, []);
-  if (!gmail && !calendar && !youtube && !instagram && !facebook && !linkedin && !sheets) return null;
+  if (!gmail && !calendar && !youtube && !instagram && !facebook && !linkedin && !sheets && !notion) return null;
   return (
     <div
       ref={boxRef} className="lpanels is-floating" role="region" aria-label="Zubi’s windows"
@@ -109,6 +109,7 @@ export function LivePanels() {
       {facebook && <FacebookPanel key={`f${facebook}`} />}
       {linkedin && <LinkedInPanel key={`l${linkedin}`} />}
       {sheets && <SheetsPanel key={`s${sheets}`} />}
+      {notion && <NotionPanel key={`n${notion}`} />}
     </div>
   );
 }
@@ -496,6 +497,158 @@ function SheetsPanel() {
           </>
         )}
       <AskZubi ask="Build a Google Sheet: " label="Build a sheet with Zubi" />
+    </section>
+  );
+}
+
+// ---------- Notion: reel signals from the post tracker, task signals, recently edited pages and memories ----------
+
+type NSection<T> = { state: 'ok'; data: T } | { state: 'unset' | 'unshared' | 'error'; error?: string };
+interface NPost { title: string; platform: string; status: string; at: string; views: number | null; likes: number | null; comments: number | null; link: string; page: string }
+interface NTask { title: string; status: string; due: string; project: string; page: string }
+interface NPage { title: string; kind?: string; type?: string; at: number; page: string }
+interface NotionData {
+  connected: boolean; configured?: boolean; error?: string; loading?: boolean; refreshing?: boolean; at?: number;
+  posts?: NSection<{ totals: { posts: number; views: number; likes: number; comments: number }; platforms: { name: string; posts: number; views: number; likes: number; comments: number }[]; best: NPost | null; fresh72: number; scheduled: { count: number; next: NPost | null }; latest: NPost[] }>;
+  tasks?: NSection<{ open: number; overdue: NTask[]; today: NTask[]; soon: NTask[]; waiting: NTask[] }>;
+  memories?: NSection<NPage[]>;
+  recent?: NSection<NPage[]>;
+  links?: { memories?: string };
+}
+
+const day = (iso: string) => (iso ? new Date(`${iso.slice(0, 10)}T12:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '');
+
+/** Why a section has nothing to show. */
+function NWhy({ s, what }: { s: NSection<unknown> | undefined; what: string }) {
+  if (!s || s.state === 'ok') return null;
+  return (
+    <p className="lpanel__mut">
+      {s.state === 'unshared' ? `Zubi’s Notion connection can’t see ${what} yet. In Notion, open it, then ••• › Connections, and add Composio (Zubi’s connection).`
+        : s.state === 'unset' ? `No ${what} is set for this window.`
+        : s.error ?? `Couldn’t read ${what} just now.`}
+    </p>
+  );
+}
+
+const NLink = ({ href, children, className }: { href: string; children: React.ReactNode; className?: string }) =>
+  href ? <a href={href} target="_blank" rel="noreferrer noopener" className={className}>{children}</a> : <span className={className}>{children}</span>;
+
+function NotionPanel() {
+  const [data, load] = usePanelData<NotionData>('notion', 'Notion', { connected: true });
+  // The server reads Notion in the background (a minute or more); check back while it does.
+  useEffect(() => {
+    if (!data?.loading && !data?.refreshing) return;
+    const t = setTimeout(() => load(false), 6000);
+    return () => clearTimeout(t);
+  }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [q, setQ] = useState('');
+  const [found, setFound] = useState<{ q: string; results: NPage[]; error?: string } | null>(null);
+  const [list, setList] = useState<'overdue' | 'today' | 'soon' | 'waiting' | null>(null);
+  const search = (e?: React.FormEvent) => {
+    e?.preventDefault();
+    const s = q.trim();
+    if (!s) { setFound(null); return; }
+    fetch(`/api/panels/notion/search?q=${encodeURIComponent(s)}`, { credentials: 'include' })
+      .then((r) => r.json()).then((j) => setFound({ q: s, results: j.results ?? [], error: j.error }))
+      .catch(() => setFound({ q: s, results: [], error: 'Couldn’t search Notion just now.' }));
+  };
+  const posts = data?.posts?.state === 'ok' ? data.posts.data : null;
+  const tasks = data?.tasks?.state === 'ok' ? data.tasks.data : null;
+  const shownTasks = tasks ? (list ?? (tasks.overdue.length ? 'overdue' : tasks.today.length ? 'today' : tasks.soon.length ? 'soon' : 'waiting')) : null;
+  return (
+    <section className="lpanel lnotion" aria-label="Notion">
+      <PanelHead title="NOTION" open="Open" href="https://www.notion.so/" onRefresh={() => load(true)} onClose={() => usePanels.setState({ notion: null })} />
+      <form className="lnotion__search" onSubmit={search} role="search">
+        <input type="search" value={q} onChange={(e) => { setQ(e.target.value); if (!e.target.value) setFound(null); }} placeholder="Find a Notion page…" aria-label="Find a Notion page" maxLength={100} />
+      </form>
+      {!found && data?.at ? <div className="lpanel__acct">Read {ago(data.at) === 'now' ? 'just now' : `${ago(data.at)} ago`}{data.refreshing ? ' · updating…' : ''}</div> : null}
+      {found ? (
+        <div className="lnotion__sec">
+          <h4>Pages matching “{found.q}”</h4>
+          {found.error ? <p className="lpanel__mut">{found.error}</p> : !found.results.length ? <p className="lpanel__mut">Nothing Zubi’s Notion connection can see matches.</p> : (
+            <ul className="lpanel__list">{found.results.map((p, i) => <li key={i} className="lnotion__row"><NLink href={p.page} className="lmedia__title">{p.title}</NLink><span className="lmedia__meta">{p.kind === 'database' ? 'Database · ' : ''}{ago(p.at)} ago</span></li>)}</ul>
+          )}
+        </div>
+      ) : !data ? <p className="lpanel__mut">Loading your Notion…</p>
+        : data.loading ? <p className="lpanel__mut">Reading your Notion. The first read takes a minute or two (long task notes come one at a time); this fills in by itself.</p>
+        : data.error ? <p className="lpanel__mut">{data.error}</p>
+        : (
+          <>
+            <div className="lnotion__sec">
+              <h4>Reels</h4>
+              <NWhy s={data.posts} what="the post tracker" />
+              {posts && (
+                <>
+                  <dl className="sgrid__sum" aria-label={`Totals for ${posts.totals.posts} live posts`}>
+                    <div><dd><Eye size={13} strokeWidth={2.2} aria-hidden />{big(posts.totals.views)}</dd><dt>Views</dt></div>
+                    <div><dd><Heart size={13} strokeWidth={2.2} aria-hidden />{big(posts.totals.likes)}</dd><dt>Likes</dt></div>
+                    <div><dd><MessageCircle size={13} strokeWidth={2.2} aria-hidden />{big(posts.totals.comments)}</dd><dt>Comments</dt></div>
+                    <div><dd>{posts.totals.posts}</dd><dt>Live posts</dt></div>
+                  </dl>
+                  {posts.platforms.length > 1 && (
+                    <p className="lnotion__line">{posts.platforms.map((p) => `${p.name}: ${big(p.views)} views, ${big(p.likes)} likes`).join(' · ')}</p>
+                  )}
+                  {posts.best && <p className="lnotion__line">Best this week: <NLink href={posts.best.link || posts.best.page}>{posts.best.title}</NLink> ({posts.best.platform}, {big(posts.best.views ?? 0)} views)</p>}
+                  <p className="lnotion__line">
+                    {posts.fresh72} in their first 72 hours · {posts.scheduled.count} scheduled
+                    {posts.scheduled.next && <> · next: <NLink href={posts.scheduled.next.page}>{posts.scheduled.next.title}</NLink> ({day(posts.scheduled.next.at)})</>}
+                  </p>
+                  <ul className="lpanel__list">
+                    {posts.latest.map((p, i) => (
+                      <li key={i} className="lnotion__post">
+                        <span className="lnotion__tag">{p.platform || '—'}</span>
+                        <NLink href={p.link || p.page} className="lmedia__title">{p.title}</NLink>
+                        <span className="lnotion__n"><Eye size={11} aria-hidden />{p.views === null ? '–' : big(p.views)} <Heart size={11} aria-hidden />{p.likes === null ? '–' : big(p.likes)} <MessageCircle size={11} aria-hidden />{p.comments === null ? '–' : big(p.comments)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+            <div className="lnotion__sec">
+              <h4>Tasks</h4>
+              <NWhy s={data.tasks} what="the task list" />
+              {tasks && shownTasks && (
+                <>
+                  <div className="lnotion__chips" role="radiogroup" aria-label="Which tasks">
+                    {([['overdue', 'Overdue'], ['today', 'Due today'], ['soon', 'Next 3 days'], ['waiting', 'Waiting on you']] as const).map(([k, l]) => (
+                      <button key={k} type="button" role="radio" aria-checked={shownTasks === k} className={`lnotion__chip${shownTasks === k ? ' is-active' : ''}${k === 'overdue' && tasks.overdue.length ? ' is-warn' : ''}`} onClick={() => setList(k)}>
+                        <b>{tasks[k].length}</b><span>{l}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {tasks[shownTasks].length === 0 ? <p className="lpanel__mut">None. {tasks.open} open tasks in all.</p> : (
+                    <ul className="lpanel__list">
+                      {tasks[shownTasks].map((t, i) => (
+                        <li key={i} className="lnotion__row">
+                          <NLink href={t.page} className="lmedia__title">{t.title}</NLink>
+                          <span className="lmedia__meta">{[t.due && `due ${day(t.due)}`, t.status, t.project].filter(Boolean).join(' · ')}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              )}
+            </div>
+            <div className="lnotion__sec">
+              <h4>Recently edited</h4>
+              <NWhy s={data.recent} what="your pages" />
+              {data.recent?.state === 'ok' && (data.recent.data.length ? (
+                <ul className="lpanel__list">{data.recent.data.map((p, i) => <li key={i} className="lnotion__row"><NLink href={p.page} className="lmedia__title">{p.title}</NLink><span className="lmedia__meta">{p.kind === 'database' ? 'Database · ' : ''}{ago(p.at)} ago</span></li>)}</ul>
+              ) : <p className="lpanel__mut">Zubi’s Notion connection can’t see any pages yet.</p>)}
+            </div>
+            <div className="lnotion__sec">
+              <h4>Memories</h4>
+              {data.memories?.state === 'unshared' ? (
+                <p className="lpanel__mut">Notion keeps Memories to its own agents, so no connection can read it here.{data.links?.memories && <> <a href={data.links.memories} target="_blank" rel="noreferrer noopener">Open Memories in Notion</a></>}</p>
+              ) : <NWhy s={data.memories} what="the Memories database" />}
+              {data.memories?.state === 'ok' && (data.memories.data.length ? (
+                <ul className="lpanel__list">{data.memories.data.map((p, i) => <li key={i} className="lnotion__row"><NLink href={p.page} className="lmedia__title">{p.title}</NLink><span className="lmedia__meta">{[p.type, `${ago(p.at)} ago`].filter(Boolean).join(' · ')}</span></li>)}</ul>
+              ) : <p className="lpanel__mut">No memories yet.</p>)}
+            </div>
+          </>
+        )}
+      <AskZubi ask="Find in my Notion: " label="Ask Zubi about Notion" />
     </section>
   );
 }

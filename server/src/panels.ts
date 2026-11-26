@@ -28,13 +28,14 @@ const ASKS: [PanelName, RegExp][] = [
   ['facebook', /\b(facebook|fb)\b/i],
   ['linkedin', /\blinked ?in\b/i],
   ['sheets', /\b(google ?sheets?|g ?sheets?|spreadsheets?)\b/i],
+  ['notion', /\bnotion\b/i],
 ];
 export function openPanelsFor(userId: string, words: string) {
   const t = String(words ?? '');
   for (const [panel, re] of ASKS) if (re.test(t)) hub.emit(userId, { type: 'panel', panel, open: true });
 }
 
-export const PANEL_NAMES: Record<PanelName, string> = { gmail: 'Gmail', calendar: 'Calendar', youtube: 'YouTube', instagram: 'Instagram', facebook: 'Facebook', linkedin: 'LinkedIn', sheets: 'Google Sheets' };
+export const PANEL_NAMES: Record<PanelName, string> = { gmail: 'Gmail', calendar: 'Calendar', youtube: 'YouTube', instagram: 'Instagram', facebook: 'Facebook', linkedin: 'LinkedIn', sheets: 'Google Sheets', notion: 'Notion' };
 /** The window a tool argument names (Calendar when it names none we know). */
 export const panelArg = (v: unknown): PanelName => (typeof v === 'string' && v in PANEL_NAMES ? (v as PanelName) : 'calendar');
 
@@ -501,5 +502,195 @@ panelsApi.get('/sheets', async (c) => {
   } catch (e) {
     console.warn('[panels] sheets failed:', (e as Error)?.message ?? e);
     return c.json({ connected: true, sheets: [], error: why(e) }, 502);
+  }
+});
+
+// ---------- Notion: the owner's own databases, read through Zubi's Notion connection (never written) ----------
+
+/**
+ * Which databases the Notion window reads: the owner's task list, post tracker and memories. Their ids live in a
+ * private notion.json beside the app's database (not in the code): { "tasks": "<id>", "posts": "<id>", "memories": "<id>" }.
+ * Each is optional; a database Zubi's Notion connection can't see says so in its own section.
+ */
+interface NotionIds { tasks?: string; posts?: string; memories?: string }
+function notionIds(): NotionIds {
+  try {
+    const j = JSON.parse(fs.readFileSync(path.join(path.dirname(env.dbPath), 'notion.json'), 'utf8'));
+    const id = (v: unknown) => (typeof v === 'string' && /^[0-9a-f]{32}$/i.test(v.replace(/-/g, '')) ? v.replace(/-/g, '') : undefined);
+    return { tasks: id(j.tasks), posts: id(j.posts), memories: id(j.memories) };
+  } catch { return {}; }
+}
+
+const NOTION_LINK = /^https:\/\/((www\.)?notion\.so|app\.notion\.com\/p)\/[\w%-]+$/i;
+const POST_LINK = /^https:\/\/(www\.instagram\.com|(www\.|m\.)?facebook\.com|(www\.)?youtube\.com|youtu\.be)\//i;
+const nLink = (u: unknown) => (NOTION_LINK.test(str(u)) ? str(u) : '');
+const nText = (p: any): string => {
+  if (!p) return '';
+  const rich = p.title ?? p.rich_text;
+  if (Array.isArray(rich)) return rich.map((x: any) => str(x?.plain_text)).join('');
+  if (p.type === 'select') return str(p.select?.name);
+  if (p.type === 'status') return str(p.status?.name);
+  if (p.type === 'url') return str(p.url);
+  return '';
+};
+const props = (row: any): [string, any][] => Object.entries<any>(row?.properties ?? {});
+const byType = (row: any, type: string, name?: RegExp) => props(row).find(([k, v]) => v?.type === type && (!name || name.test(k)))?.[1];
+const titleOf = (x: any) => (x?.object === 'database' ? (Array.isArray(x.title) ? x.title.map((t: any) => str(t?.plain_text)).join('') : '') : nText(byType(x, 'title')));
+const numOf = (row: any, name: RegExp) => { const p = byType(row, 'number', name); return p && Number.isFinite(p.number) ? Number(p.number) : null; };
+const dateOf = (row: any, name?: RegExp) => str((byType(row, 'date', name) ?? byType(row, 'date'))?.date?.start);
+/** Today's date in IST as YYYY-MM-DD, and n days on. */
+const istDay = (plusDays = 0) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date(Date.now() + plusDays * 86_400_000));
+const notShared = (e: unknown) => /object_not_found|could not find|404/i.test(String((e as Error)?.message ?? e));
+
+/**
+ * A Notion list call. Composio answers a too-big list with an empty one marked successful, so an empty page that says
+ * nothing about more is asked again for fewer items before it is believed.
+ */
+async function notionPage(slug: string, args: Record<string, unknown>, sizes = [25, 10, 4]): Promise<any> {
+  let last: any = {};
+  for (const page_size of sizes) {
+    last = await wtool(slug, { ...args, page_size });
+    if (Array.isArray(last.results) && (last.results.length || last.has_more === false)) return last;
+  }
+  return last;
+}
+
+/**
+ * Every row of a database (up to `max`). Rows with long text make Composio's answer too big, so a page that comes back
+ * empty is asked again smaller (down to one row), and the next page tries a size up again.
+ */
+async function notionRows(id: string, max = 400): Promise<any[]> {
+  const rows: any[] = [];
+  let cursor: string | undefined;
+  let size = 25;
+  for (let calls = 0; calls < 150; calls++) {
+    const d = await wtool('NOTION_QUERY_DATABASE', { database_id: id, page_size: size, ...(cursor ? { start_cursor: cursor } : {}) });
+    if (!Array.isArray(d.results)) {
+      if (size === 1) throw new Error('a row is too big to read');
+      size = Math.max(1, Math.floor(size / 2.5));
+      continue;
+    }
+    rows.push(...(d.results as any[]));
+    if (!(d.has_more && d.next_cursor) || rows.length >= max) return rows;
+    cursor = str(d.next_cursor);
+    size = Math.min(25, size * 2);
+  }
+  return rows;
+}
+
+/** A section's answer, or why it has none: "not shared" when Zubi's Notion connection can't see that database. */
+async function section<T>(id: string | undefined, load: (id: string) => Promise<T>): Promise<{ state: 'ok'; data: T } | { state: 'unset' | 'unshared' | 'error'; error?: string }> {
+  if (!id) return { state: 'unset' };
+  try { return { state: 'ok', data: await load(id) }; } catch (e) {
+    if (e instanceof TokenExpired) throw e;
+    return notShared(e) ? { state: 'unshared' } : { state: 'error', error: why(e) };
+  }
+}
+
+interface NotionPost { title: string; platform: string; status: string; at: string; views: number | null; likes: number | null; comments: number | null; link: string; page: string }
+interface NotionTask { title: string; status: string; due: string; project: string; page: string }
+
+/**
+ * The Notion window's reading. Reading every row takes a minute or more (long rows come one at a time), so the last
+ * reading is kept and shown at once with its time, and a new one is made in the background: when the window asks and
+ * the reading is over 10 minutes old (1 minute with ↻), and once shortly after the app starts.
+ */
+let notionState: { at: number; body: any } | null = null;
+let notionBusy: Promise<void> | null = null;
+function refreshNotion(): Promise<void> {
+  notionBusy ??= readNotion()
+    .then((body) => { notionState = { at: Date.now(), body }; })
+    .catch((e) => {
+      console.warn('[panels] notion failed:', (e as Error)?.message ?? e);
+      if (!notionState) notionState = { at: Date.now(), body: { connected: true, error: why(e) } };
+    })
+    .finally(() => { notionBusy = null; });
+  return notionBusy;
+}
+if (!process.env.HEYZUBI_NO_SCHEDULER) {
+  setTimeout(() => { const ids = notionIds(); if (ids.tasks || ids.posts) void refreshNotion(); }, 90_000).unref?.();
+}
+
+panelsApi.get('/notion', (c) => {
+  const fresh = c.req.query('fresh') === '1';
+  const age = notionState ? Date.now() - notionState.at : Infinity;
+  if (!notionBusy && (age > 10 * 60_000 || (fresh && age > 60_000))) void refreshNotion();
+  if (!notionState) return c.json({ connected: true, loading: true });
+  return c.json({ ...notionState.body, at: notionState.at, refreshing: !!notionBusy });
+});
+
+async function readNotion() {
+  {
+    {
+      const ids = notionIds();
+      const [posts, tasks, memories, recent] = await Promise.all([
+        section(ids.posts, async (id) => {
+          const all: NotionPost[] = (await notionRows(id)).map((r) => {
+            const link = nText(byType(r, 'url'));
+            return {
+              title: clip(nText(byType(r, 'title')), 120), platform: nText(byType(r, 'select', /platform/i)), status: nText(byType(r, 'select', /status/i)) || nText(byType(r, 'status')),
+              at: dateOf(r, /publish/i), views: numOf(r, /^views?$/i), likes: numOf(r, /^likes?$/i), comments: numOf(r, /^comments?$/i),
+              link: POST_LINK.test(link) ? link : '', page: nLink(r.url),
+            };
+          }).sort((a, b) => (b.at > a.at ? 1 : b.at < a.at ? -1 : 0));
+          const live = all.filter((p) => /live/i.test(p.status));
+          const now = Date.now();
+          const ageH = (p: NotionPost) => (p.at ? (now - Date.parse(p.at)) / 3_600_000 : Infinity);
+          const sum = (k: 'views' | 'likes' | 'comments', list = live) => list.reduce((a, p) => a + (p[k] ?? 0), 0);
+          const platforms = [...new Set(live.map((p) => p.platform).filter(Boolean))].map((name) => {
+            const l = live.filter((p) => p.platform === name);
+            return { name, posts: l.length, views: sum('views', l), likes: sum('likes', l), comments: sum('comments', l) };
+          });
+          const week = live.filter((p) => ageH(p) <= 7 * 24 && p.views !== null);
+          const best = week.sort((a, b) => (b.views ?? 0) - (a.views ?? 0))[0] ?? null;
+          const scheduled = all.filter((p) => /scheduled/i.test(p.status) && p.at && Date.parse(p.at) >= now - 3_600_000).sort((a, b) => (a.at < b.at ? -1 : 1)); // a past date still marked Scheduled is a stale row
+          return {
+            totals: { posts: live.length, views: sum('views'), likes: sum('likes'), comments: sum('comments') },
+            platforms, best,
+            fresh72: live.filter((p) => ageH(p) >= 0 && ageH(p) <= 72).length,
+            scheduled: { count: scheduled.length, next: scheduled[0] ?? null },
+            latest: live.slice(0, 8),
+          };
+        }),
+        section(ids.tasks, async (id) => {
+          const today = istDay(), soon = istDay(3);
+          const open: NotionTask[] = (await notionRows(id)).map((r) => ({
+            title: clip(nText(byType(r, 'title')), 140), status: nText(byType(r, 'status')) || nText(byType(r, 'select', /status/i)),
+            due: dateOf(r, /due/i).slice(0, 10), project: nText(byType(r, 'select', /project/i)), page: nLink(r.url),
+          })).filter((t) => !/^(done|complete|completed|archived)$/i.test(t.status));
+          const byDue = (l: NotionTask[]) => l.sort((a, b) => (a.due < b.due ? -1 : a.due > b.due ? 1 : 0));
+          return {
+            open: open.length,
+            overdue: byDue(open.filter((t) => t.due && t.due < today)),
+            today: open.filter((t) => t.due === today),
+            soon: byDue(open.filter((t) => t.due > today && t.due <= soon)),
+            waiting: open.filter((t) => /waiting|blocked/i.test(t.status)),
+          };
+        }),
+        section(ids.memories, async (id) => (await notionRows(id, 100))
+          .sort((a, b) => (str(b.last_edited_time) > str(a.last_edited_time) ? 1 : -1)).slice(0, 5)
+          .map((r) => ({ title: clip(titleOf(r), 100), type: nText(byType(r, 'select')), at: Date.parse(str(r.last_edited_time)) || 0, page: nLink(r.url) }))),
+        section('search', async () => {
+          const d = await notionPage('NOTION_SEARCH_NOTION_PAGE', { query: '', timestamp: 'last_edited_time', direction: 'descending' }, [8, 4]);
+          return ((d.results ?? []) as any[]).map((x) => ({ title: clip(titleOf(x) || '(untitled)', 100), kind: x.object === 'database' ? 'database' : 'page', at: Date.parse(str(x.last_edited_time)) || 0, page: nLink(x.url) }));
+        }),
+      ]);
+      // Notion keeps its own Memories database to its agents (no connection can be added to it), so the window links to it.
+      const links = { memories: ids.memories ? `https://app.notion.com/p/${ids.memories}` : '' };
+      return { connected: true, configured: !!(ids.tasks || ids.posts || ids.memories), posts, tasks, memories, recent, links };
+    }
+  }
+}
+
+/** Find a Notion page or database by title (what Zubi's Notion connection can see). */
+panelsApi.get('/notion/search', async (c) => {
+  const q = str(c.req.query('q')).trim().slice(0, 100);
+  if (!q) return c.json({ results: [] });
+  try {
+    const d = await notionPage('NOTION_SEARCH_NOTION_PAGE', { query: q }, [10, 5]);
+    const results = ((d.results ?? []) as any[]).map((x) => ({ title: clip(titleOf(x) || '(untitled)', 100), kind: x.object === 'database' ? 'database' : 'page', at: Date.parse(str(x.last_edited_time)) || 0, page: nLink(x.url) }));
+    return c.json({ results });
+  } catch (e) {
+    return c.json({ results: [], error: why(e) }, 502);
   }
 });
