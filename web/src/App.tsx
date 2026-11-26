@@ -14,6 +14,7 @@ import { ConnectAppsModal } from './components/modals/ConnectAppsModal';
 import { CreateBotModal } from './components/modals/CreateBotModal';
 import { CreateGroupModal } from './components/modals/CreateGroupModal';
 import { SearchModal } from './components/modals/SearchModal';
+import { ClientsWindow } from './components/extras/ClientsModal';
 import { ConfigLayer } from './components/config/ConfigLayer';
 import { TasksView } from './components/config/TasksView';
 import { RoutinesView } from './components/config/RoutinesView';
@@ -60,6 +61,14 @@ function Shell() {
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
+      // "/" opens search too, when not typing somewhere (the Kanban board keeps "/" for its own search box).
+      if (e.key === '/' && !mod && !e.altKey && !e.defaultPrevented) {
+        const el = e.target as HTMLElement | null;
+        const typing = !!el && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable);
+        const st = useStore.getState();
+        if (!typing && !st.modal && useConfigUI.getState().view !== 'board') { e.preventDefault(); st.setModal('search'); }
+        return;
+      }
       if (!mod) return;
       const st = useStore.getState();
       const key = e.key.toLowerCase();
@@ -81,6 +90,7 @@ function Shell() {
       {modal === 'group' && <CreateGroupModal />}
       {modal === 'search' && <SearchModal />}
       {modal === 'apps' && <ConnectAppsModal />}
+      <ClientsWindow />
       {wallpaperPicker && <WallpaperPicker />}
       {viewerOpen && <ComputerViewer />}
       {waOpen && <WhatsAppWindow />}

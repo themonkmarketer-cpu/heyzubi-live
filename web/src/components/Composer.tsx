@@ -8,8 +8,13 @@ import { Menu } from './Menu';
 import { endCall, isCallActive, startCall, useVoice } from '../voice/call';
 import { useDictation } from '../voice/dictation';
 import { speakReply, stopSpeaking, useSpeak } from '../voice/speak';
-import { AudioLines, Camera, Hand, ImagePlus, LayoutGrid, Pause, PhoneOff, ShieldAlert, ShieldCheck, Speech, SquarePen } from 'lucide-react';
+import { AudioLines, Camera, CircleDot, Hand, ImagePlus, LayoutGrid, Megaphone, MonitorUp, Pause, PhoneOff, ShieldAlert, ShieldCheck, Speech, SquarePen, Swords } from 'lucide-react';
 import { toggleCamera, useCamera } from './CameraBubble';
+import { canShareScreen, screenshotOnce, usePendingPictures } from './extras/pendingPictures';
+import { stamp } from './extras/http';
+import { MeetingRecorder } from './extras/MeetingRecorder';
+import { AnnounceModal } from './extras/AnnounceModal';
+import { DebateModal } from './extras/DebateModal';
 import { PromptChips, usePrompts } from './PromptChips';
 import { lsGet, lsSet } from '../lib/storage';
 
@@ -122,6 +127,19 @@ export function Composer({ bot, running, target }: { bot: Bot; running: boolean;
       finally { setPicBusy((n) => n - 1); }
     }
   };
+  // A camera snapshot or a screenshot waiting for the open chat's box.
+  const pendingPics = usePendingPictures((s) => s.queue.length);
+  useEffect(() => {
+    if (!own || !pendingPics) return;
+    const files = usePendingPictures.getState().take();
+    if (files.length) void addPictures(files);
+  }, [pendingPics, own]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shareScreen = async () => {
+    const f = await screenshotOnce(`screen-${stamp()}.png`);
+    if (f) void addPictures([f]);
+  };
+  const [meeting, setMeeting] = useState(false);
+  const [extra, setExtra] = useState<'announce' | 'debate' | null>(null);
 
   const send = async () => {
     const typed = text.trim();
@@ -238,6 +256,9 @@ export function Composer({ bot, running, target }: { bot: Bot; running: boolean;
       {!error && !vmNote && voiceMsg.state !== 'idle' && <div className="composer__note" role="status">{voiceMsg.state === 'recording'
           ? 'Recording a voice message… click the red button to send (Esc cancels)'
           : 'Transcribing and sending your voice message…'}</div>}
+      {meeting && <MeetingRecorder bot={bot} onClose={() => setMeeting(false)} />}
+      {extra === 'announce' && <AnnounceModal onClose={() => setExtra(null)} />}
+      {extra === 'debate' && bot.kind === 'room' && <DebateModal room={bot} onClose={() => setExtra(null)} />}
       {own && <PromptChips bot={bot} prompts={prompts} text={text} onPick={pickPrompt} />}
       {target?.hint && <div className="composer__hint">{target.hint}</div>}
       {own && (liveState?.blocked || liveState?.guard || liveState?.pausing) && (
@@ -261,6 +282,10 @@ export function Composer({ bot, running, target }: { bot: Bot; running: boolean;
                 onClose={() => setMenu(false)}
                 items={[
                   { label: 'Attach a picture', icon: <ImagePlus size={16} strokeWidth={1.8} />, onSelect: () => picRef.current?.click() },
+                  ...(canShareScreen ? [{ label: 'Share a screenshot of your screen', icon: <MonitorUp size={16} strokeWidth={1.8} />, onSelect: () => void shareScreen() }] : []),
+                  ...(own && !meeting ? [{ label: 'Record a meeting', icon: <CircleDot size={16} strokeWidth={1.8} />, onSelect: () => setMeeting(true) }] : []),
+                  ...(own && bot.kind === 'room' ? [{ label: 'Start a debate…', icon: <Swords size={16} strokeWidth={1.8} />, onSelect: () => setExtra('debate') }] : []),
+                  ...(own ? [{ label: 'Announce on every platform…', icon: <Megaphone size={16} strokeWidth={1.8} />, onSelect: () => setExtra('announce') }] : []),
                   ...(own ? [{ label: 'New conversation', icon: <SquarePen size={16} strokeWidth={1.8} />, onSelect: fresh }] : []),
                   { label: 'Connect apps', icon: <LayoutGrid size={16} strokeWidth={1.8} />, onSelect: () => setModal('apps') },
                   ...(own ? [liveState?.blocked
@@ -295,7 +320,7 @@ export function Composer({ bot, running, target }: { bot: Bot; running: boolean;
             onClick={toggleCamera}
             aria-pressed={camOn}
             aria-label={camOn ? 'Turn camera off' : 'Turn camera on'}
-            title={camOn ? 'Turn camera off' : 'Camera: a preview just for you (nothing is recorded or sent)'}
+            title={camOn ? 'Turn camera off' : 'Camera: a preview just for you. Nothing is recorded or sent until you send a snapshot from it'}
           >
             <Camera size={18} strokeWidth={1.8} style={{ opacity: camOn ? 1 : 0.56 }} aria-hidden />
           </button>

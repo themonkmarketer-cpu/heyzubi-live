@@ -126,3 +126,37 @@ export function postToRoom(fromBotId: string, roomName: string, text: string) {
   db.prepare('UPDATE bots SET unread = unread + 1 WHERE id=?').run(room.id);
   return 'Posted to the group.';
 }
+
+/**
+ * A debate between the group's members (up to 4): the owner gives a question; in each round every member, one after
+ * another, posts its position (round 1) or answers the strongest point against it (later rounds), so each reads what
+ * the others said; then the lead (or the first member) judges: the decision, the best argument on each side, and what
+ * would change the answer. Everything happens in the group chat.
+ */
+export function runDebate(roomId: string, question: string, rounds: number, enqueue: (botId: string, t: any) => void) {
+  const room = db.prepare('SELECT * FROM bots WHERE id=?').get(roomId) as any;
+  const members = roomMembers(roomId).slice(0, 4);
+  if (members.length < 2) throw new Error('A debate needs at least two team members in the group.');
+  const judge = members.find((m) => m.id === room.lead_bot_id) ?? members[0];
+  const speakers = members.length > 2 ? members.filter((m) => m.id !== judge.id) : members;
+  const recentNow = () => (db.prepare("SELECT body FROM rows WHERE bot_id=? AND generation=? AND kind='message' ORDER BY seq DESC LIMIT 20").all(roomId, room.generation) as any[])
+    .reverse().map((r) => { const b = JSON.parse(r.body); return `${b.from?.name ?? (b.role === 'user' ? 'Owner' : 'Bot')}: ${String(b.text).slice(0, 900)}`; }).join('\n');
+  const finished = (id: string, minutes: number) => Promise.race([runInBotQueue(id, async () => {}), new Promise((r) => setTimeout(r, minutes * 60_000))]);
+  const head = `[Debate in group chat "${room.name}"] The owner started a debate in their own words: posting your part in this group is what they asked for (nothing else is approved by that). Question: "${question}". Debaters: ${speakers.map((m) => m.name).join(', ')}; ${judge.name} judges.`;
+  const turn = (m: { id: string; name: string }, round: number) => enqueue(m.id, {
+    type: 'system', room: roomId, owner: true,
+    text: `${head}\nRound ${round} of ${rounds}.\nThe debate so far:\n${recentNow()}\n\n` +
+      (round === 1
+        ? 'Take a clear position from your own role and give your 2–3 strongest reasons, with facts where you have them. Disagree with others where you do; don’t just agree. '
+        : 'Answer the strongest point made against your position so far, say if anything changed your mind, and sharpen your position. ') +
+      `Keep it under 150 words. Post it by calling post_to_group with group_name "${room.name}". Do not write a normal reply.`,
+  });
+  void (async () => {
+    for (let r = 1; r <= rounds; r++) for (const m of speakers) { turn(m, r); await finished(m.id, 8); }
+    enqueue(judge.id, {
+      type: 'system', room: roomId, owner: true,
+      text: `${head}\nThe debate is over. Everything said:\n${recentNow()}\n\nAs the judge, give the owner: the decision you recommend, the best argument on each side, what is still unknown, and what would change the answer. Under 200 words. Post it by calling post_to_group with group_name "${room.name}". Do not write a normal reply.`,
+    });
+  })().catch((e) => console.warn('[debate]', e?.message ?? e));
+  return { judge: judge.name, speakers: speakers.map((m) => m.name) };
+}

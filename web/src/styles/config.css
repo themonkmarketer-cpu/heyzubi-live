@@ -374,3 +374,30 @@ textarea.pa-input { resize: vertical; line-height: 19px; }
 .hook-pill { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 600; background: rgba(230, 160, 40, 0.16); vertical-align: middle; }
 .hook-pill.is-allow { background: rgba(60, 170, 100, 0.16); }
 @media (max-width: 560px) { .hook-form__row { grid-template-columns: 1fr; gap: 4px; } }
+
+/* ---------- Extras: memory gauge + pinned rules, skill reviews, access map, share links, trend scout ---------- */
+.xm-gauges { display: flex; flex-direction: column; gap: 12px; }
+.cfg-meter.is-full .cfg-meter__track span { background: var(--color-danger, #d9534f); }
+.cfg-meter.is-full .cfg-meter__label span:last-child { color: var(--color-danger-text, #d9534f); }
+.xm-pin-form { display: flex; gap: 8px; align-items: center; }
+.xm-pin-form .text-input { flex: 1 1 auto; min-width: 0; }
+.xs-warn { background: rgba(230, 160, 40, 0.18); color: var(--color-text-primary); }
+.xs-actions { gap: 6px; }
+.xs-kept { display: flex; flex-direction: column; gap: 2px; margin-top: 10px; }
+.xs-kept__row { display: flex; align-items: center; gap: 8px; padding: 2px 4px; font-size: 12px; color: var(--color-text-tertiary); }
+.xs-kept__name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.xa-card { display: flex; flex-direction: column; gap: 8px; padding: 12px; margin-top: 8px; }
+.xa-card__head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.xa-card__head .cfg-row__title { white-space: normal; }
+.xa-pills { display: flex; flex-wrap: wrap; gap: 4px; }
+.xsh-link { user-select: all; word-break: break-all; font-family: var(--font-mono-stack); font-size: 11.5px; }
+.cfg-row.xsh-off .cfg-row__title { color: var(--color-text-tertiary); }
+.xsh-pop { display: flex; flex-direction: column; gap: 6px; margin: 2px 4px 8px 44px; padding: 10px; border-radius: 8px; background: var(--color-bg-tertiary); }
+.xsh-pop__label { font-size: 12px; line-height: 16px; color: var(--color-text-tertiary); }
+.xsh-pop__choices { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.xsh-pop .xsh-link { width: 100%; }
+.xt-scout { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; align-items: flex-start; }
+.xt-scout__form { display: flex; flex-direction: column; gap: 8px; padding: 12px; width: 100%; box-sizing: border-box; }
+.xt-scout__fields { display: flex; flex-wrap: wrap; gap: 12px; }
+.xt-scout__actions { display: flex; justify-content: flex-end; gap: 8px; }
+@media (max-width: 560px) { .xsh-pop { margin-left: 4px; } .xm-pin-form { flex-wrap: wrap; } }

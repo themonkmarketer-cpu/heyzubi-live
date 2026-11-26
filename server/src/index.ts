@@ -24,6 +24,14 @@ import { enqueue, expireStaleApprovals, resumeInterrupted } from './agent/loop.j
 import { desSelfTest } from './lib/des.js';
 import { configApi } from './routes-config.js';
 import { hireApi } from './hire.js';
+import { memoryApi } from './memory-extras.js';
+import { initWorkers, workersApi } from './workers.js';
+import { clientsApi } from './clients.js';
+import { sharePublic, sharesApi } from './shares.js';
+import { searchApi } from './search.js';
+import { contentApi } from './content.js';
+import { deletedApi, initRestore } from './restore.js';
+import { initSkillReview, skillReviewApi } from './skill-review.js';
 import { startIdleWatcher } from './idle.js';
 import { mcpApi } from './mcp.js';
 import { initEngines } from './engine.js';
@@ -45,6 +53,9 @@ void import('./reels/flow.js').then((f) => f.initStatusPosts());
 void import('./reels/jobs.js').then((j) => j.initJobs());
 void import('./reels/handoff.js').then((h) => h.initHandoffs()); // finished episodes go to the PC for their landing page
 void import('./kanban-watch.js').then((k) => k.initKanbanWatch()); // reminders for cards waiting on the owner; Zubi re-engages stuck work
+initWorkers(); // one-job workers: spending caps checked every 15 seconds
+initRestore(); // Recently deleted: removed for good after 7 days
+initSkillReview(); // new skills a bot writes wait for the owner's OK
 // A message in an episode's session that was being answered when the last process stopped still gets its answer.
 setTimeout(resumeChats, 8000);
 
@@ -76,6 +87,18 @@ app.route('/api/rooms', roomsApi);
 app.route('/api/kanban', kanbanApi);
 // Hire files: a team member as one portable file, and role bundles (hire.ts).
 app.route('/api/hire', hireApi);
+// The second feature list: pinned rules and memory gauge, one-job workers, clients, share links, search, content,
+// Recently deleted, and skill approval.
+app.route('/api/bot-memory', memoryApi);
+app.route('/api/workers', workersApi);
+app.route('/api/clients', clientsApi);
+app.route('/api/shares', sharesApi);
+app.route('/api/search', searchApi);
+app.route('/api/content', contentApi);
+app.route('/api/deleted', deletedApi);
+app.route('/api/skill-reviews', skillReviewApi);
+// A share link's page (no sign-in; one Library file until it expires).
+app.route('/s', sharePublic);
 app.route('/api', api);
 app.route('/api', configApi);
 

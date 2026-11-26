@@ -8,6 +8,7 @@ import { capFor, useOrbState } from './SidebarOrb';
 import { prefillComposer } from './Composer';
 import { useConfigUI } from '../configStore';
 import { lsGet, lsSet } from '../lib/storage';
+import { ReachCheck } from './extras/ReachCheck';
 import '../styles/livepanels.css';
 
 /**
@@ -307,6 +308,13 @@ const COUNTS = [
 type CountKey = (typeof COUNTS)[number]['k'];
 
 const KIND_ICON = { video: Play, picture: ImageIcon, album: Copy, text: Type };
+/** The media-type filter's choices, in this order. */
+const KINDS = [
+  { k: 'video' as const, label: 'Videos', Icon: Play },
+  { k: 'picture' as const, label: 'Images', Icon: ImageIcon },
+  { k: 'album' as const, label: 'Carousels', Icon: Copy },
+  { k: 'text' as const, label: 'Text', Icon: Type },
+];
 const big = (n: number) => n.toLocaleString(undefined, n >= 10_000 ? { notation: 'compact', maximumFractionDigits: 1 } : undefined);
 
 /** One tile: the picture, what kind of post it is and its counts; the caption and age on hover. */
@@ -333,12 +341,29 @@ function SocialTile({ post }: { post: SocialPost }) {
 }
 
 /** The posts as a grid (Instagram, YouTube, Facebook, LinkedIn), newest first or by any count, with the totals above. */
-function SocialGrid({ posts, empty }: { posts: SocialPost[]; empty: string }) {
+function SocialGrid({ posts: all, empty }: { posts: SocialPost[]; empty: string }) {
   const [sort, setSort] = useState<'new' | CountKey>('new');
+  const [kind, setKind] = useState<'all' | SocialPost['kind']>('all');
+  // Only the media types this account actually has; the filter hides itself when there is just one.
+  const kinds = useMemo(() => KINDS.filter((k) => all.some((p) => p.kind === k.k)), [all]);
+  const posts = useMemo(() => (kind === 'all' ? all : all.filter((p) => p.kind === kind)), [all, kind]);
+  useEffect(() => { if (kind !== 'all' && !all.some((p) => p.kind === kind)) setKind('all'); }, [all, kind]);
   const shown = useMemo(() => (sort === 'new' ? posts : [...posts].sort((a, b) => (b[sort] ?? -1) - (a[sort] ?? -1))), [posts, sort]);
-  if (!posts.length) return <p className="lpanel__mut">{empty}</p>;
+  if (!all.length) return <p className="lpanel__mut">{empty}</p>;
   return (
     <>
+      {kinds.length > 1 && (
+        <div className="sgrid__kinds" role="radiogroup" aria-label="Media type">
+          {[{ k: 'all' as const, label: 'All', Icon: null }, ...kinds].map((k) => {
+            const n = k.k === 'all' ? all.length : all.filter((p) => p.kind === k.k).length;
+            return (
+              <button key={k.k} type="button" role="radio" aria-checked={kind === k.k} className={kind === k.k ? 'is-active' : ''} onClick={() => setKind(k.k)}>
+                {k.Icon && <k.Icon size={11} strokeWidth={2.4} aria-hidden />}{k.label} <span>{n}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div className="sgrid__bar">
         <div className="sgrid__sort" role="radiogroup" aria-label="Order">
           {[['new', 'Newest'] as const, ...COUNTS.map((c) => [c.k, c.label] as const)].map(([k, l]) => (
@@ -420,6 +445,7 @@ function InstagramPanel() {
                 <span className="lig__stat"><b>{big(p.posts)}</b><small>posts</small></span>
               </div>
             )}
+            {data.posts.length > 0 && <ReachCheck key={data.account ?? ''} posts={data.posts} followers={p?.followers} />}
             <SocialGrid posts={data.posts} empty="No posts yet." />
           </>
         )}

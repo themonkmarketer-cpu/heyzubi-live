@@ -10,6 +10,8 @@ import {
   type CardOrder, type Filters, type MovePlan,
 } from './boardModel';
 import { lsGet, lsSet } from '../../lib/storage';
+import { NewWorkerDialog, WorkersPopover } from '../extras/Workers';
+import { useBoardFocus } from '../extras/clientsWindow';
 import '../../styles/board.css';
 import '../../styles/routines.css'; // the Bot and Sort pickers, shared with Tasks and Routines
 
@@ -105,6 +107,13 @@ export function BoardView() {
   const scroller = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
   const [tile, setTile] = useState<{ perRow: number; rowH: number | null }>({ perRow: 4, rowH: null });
+  // One-job workers: the New worker form, and the list of them with what each has spent.
+  const [newWorker, setNewWorker] = useState(false);
+  const [workersOpen, setWorkersOpen] = useState(false);
+  const [workersVersion, setWorkersVersion] = useState(0);
+  // A card picked in Search opens once the board is here.
+  const focusCard = useBoardFocus((s) => s.card);
+  useEffect(() => { if (focusCard && data) { setOpenId(focusCard); useBoardFocus.setState({ card: null }); } }, [focusCard, data]);
 
   const say = useCallback((msg: string) => {
     setToast(msg);
@@ -351,6 +360,17 @@ export function BoardView() {
             <button type="button" className={`icon-btn kb-refresh${syncing ? ' is-busy' : ''}`} aria-label="Refresh from Hermes" title="Refresh from Hermes" onClick={() => void reload()} disabled={syncing}>
               <Icon name="refresh" size={14} />
             </button>
+            <div className="kb-filter">
+              <button type="button" className="cfg-btn cfg-btn--secondary kb-filter__btn" aria-expanded={workersOpen} onClick={() => setWorkersOpen((o) => !o)} title="One-job workers and what each has spent">
+                Workers
+              </button>
+              {workersOpen && (
+                <WorkersPopover who={who} version={workersVersion} onClose={() => setWorkersOpen(false)} onOpen={(card) => { setWorkersOpen(false); setOpenId(card); }} />
+              )}
+            </div>
+            <button type="button" className="cfg-btn cfg-btn--secondary kb-filter__btn" onClick={() => setNewWorker(true)} title="One job for one team member, with a spending cap">
+              <Icon name="plus" size={12} /> <span>New worker</span>
+            </button>
             <button type="button" className="cfg-btn cfg-btn--primary kb-head__add" onClick={() => setCreating('ready')} disabled={!workflow}>
               <Icon name="plus" size={12} /> <span>Add task</span>
             </button>
@@ -480,6 +500,10 @@ export function BoardView() {
       {openId && workflow && (
         <TaskDrawer board={slug} id={openId} version={data?.latest_event_id ?? 0} workflow={workflow} bots={bots} who={who} assignees={data?.assignees ?? []}
           onClose={closeDrawer} onChanged={() => void reload()} onMove={(card, to) => requestMove(card, to)} />
+      )}
+      {newWorker && (
+        <NewWorkerDialog bots={bots} onClose={() => setNewWorker(false)}
+          onMade={(w) => { setNewWorker(false); setWorkersVersion((v) => v + 1); say(`Worker started: “${w.title}”, with a $${w.capUsd.toFixed(2)} cap.`); void reload(); }} />
       )}
       {creating && workflow && <CreateDialog workflow={workflow} column={creating} people={people} who={who} onCreate={addChain} onBrief={(p) => kanbanApi.brief(slug, p)} onClose={() => setCreating(null)} />}
       {pending && (

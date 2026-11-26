@@ -3,6 +3,8 @@ import { getBotRow, listRoutines } from '../store.js';
 import { connectedToolkits } from '../composio.js';
 import { libraryRoot } from '../paths.js';
 import { personaLine, pronouns } from '../gender.js';
+import { pinnedBlock } from '../memory-extras.js';
+import { getPrefs } from '../prefs.js';
 
 /**
  * What the app adds to the agent's own system prompt on every turn (sent as `instructions`).
@@ -45,6 +47,8 @@ export async function instructionsFor(userId: string, botId: string): Promise<st
     ? `This conversation comes from ${owner}'s team app, where you appear as "${bot.name}"${bot.label ? ` (${bot.label})` : ''}. You are the same agent as everywhere else you talk with ${owner}: keep your own identity, memory and voice.${bot.is_primary ? ` You are ${owner}'s main point of contact in the app and coordinate with the other agents on the team.` : ''}`
     : `You are ${bot.name}${bot.label ? `, ${bot.label},` : ''} on ${owner}'s team of AI agents. ${owner} talks to you in their team app.${bot.gender ? `\n${personaLine(bot.gender)}` : ''}${bot.description ? `\nAbout you: ${bot.description}` : ''}${bot.is_primary ? `\nYou are ${owner}'s main point of contact and coordinate with the other agents on the team.` : ''}`;
 
+  const pinned = pinnedBlock(botId);
+  const spanish = getPrefs(userId).language === 'es';
   return `# Team app
 ${who}
 
@@ -76,5 +80,5 @@ You have your own screen on a Linux computer shared by the team: a desktop with 
 - User: ${owner}${user?.email ? ` <${user.email}>` : ''}
 - Connected apps: ${apps || 'none yet'}
 ${team ? `- Other agents on the team:\n${team}` : '- You are the only agent on the team so far.'}${groups ? `\n- Group chats you are in: ${groups}` : ''}
-${org ? `\n${org}` : ''}${routines ? `\n## Your routines in the app\n${routines}\n` : ''}${skills ? `\n## Skills ${owner} gave you\n${skills}\n` : ''}${bot.instructions ? `\n## Instructions from ${owner}\n${bot.instructions}\n` : ''}`;
+${org ? `\n${org}` : ''}${routines ? `\n## Your routines in the app\n${routines}\n` : ''}${skills ? `\n## Skills ${owner} gave you\n${skills}\n` : ''}${bot.instructions ? `\n## Instructions from ${owner}\n${bot.instructions}\n` : ''}${pinned ? `\n${pinned}\n` : ''}${spanish ? `\n## Language\nAnswer ${owner} and anyone else in Spanish (Latin American, plain and friendly) until told otherwise, even when they write in English. Names, links, code and file names stay as they are.\n` : ''}`;
 }

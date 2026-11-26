@@ -9,6 +9,7 @@ import { useStore } from '../../store';
 import { Icon } from '../Icon';
 import { Glyph } from './glyphs';
 import { ConfirmButton, nextRunLabel, Switch } from './ui';
+import { TrendScoutForm } from './ExtrasTrendScout';
 import '../../styles/routines.css';
 
 /**
@@ -147,6 +148,7 @@ export function RoutinesView() {
       </header>
       <div className="tasks-view__scroll">
         <div className="tasks-view__inner">
+          <TrendScoutForm />
           {all.length > 0 && (
             <div className="routines-tools">
               <label className="routines-pick">

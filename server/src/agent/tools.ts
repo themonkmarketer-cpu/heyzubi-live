@@ -155,6 +155,35 @@ function fileCard(botId: string, name: string, content: string) {
 
 export const TOOLS: ToolDef[] = [
   {
+    name: 'heyzubi_doctor',
+    description: "Check HeyZubi's own health (the team's engines, HeyZubi tools, routines, skills, sessions, the owner's-words safety hook, the database and the Windows app) and get what is wrong with what to do about it. Use it when the owner asks what's wrong with HeyZubi, why something isn't working, or for a health check. Read only.",
+    parameters: obj({}),
+    activity: 'working',
+    label: 'Checking HeyZubi',
+    impl: async (_a, ctx) => {
+      const { healthChecks } = await import('../health.js');
+      const items = await healthChecks(ctx.userId);
+      const bad = items.filter((i) => i.status !== 'ok');
+      const NL = String.fromCharCode(10);
+      const lines = items.map((i) => `- [${i.status === 'ok' ? 'OK' : i.status === 'warn' ? 'LOOK' : 'BROKEN'}] ${i.title}: ${i.line}${i.status !== 'ok' && i.detail.length ? `${NL}  ${i.detail.slice(0, 4).join(`${NL}  `)}` : ''}`);
+      return { output: `${bad.length ? `${bad.length} thing(s) to look at.` : 'Everything checks out.'}
+${lines.join(NL)}
+Fixes that need the owner (signing in, connecting an app) are theirs to do; say what to do, step by step.`, summary: bad.length ? `${bad.length} to look at` : 'All healthy' };
+    },
+  },
+  {
+    name: 'list_clients',
+    description: "Search the owner's client address book (name, company, email, tags, notes). Read only.",
+    parameters: obj({ query: { type: 'string', description: 'Words to look for; empty lists the most recent clients.' } }),
+    activity: 'working',
+    label: 'Looking in the address book',
+    impl: async (a, ctx) => {
+      const { listClients } = await import('../clients.js');
+      const list = listClients(ctx.userId, String(a.query ?? '').slice(0, 80)).slice(0, 25);
+      return { output: list.length ? JSON.stringify(list.map((c) => ({ id: c.id, name: c.name, company: c.company, email: c.email, phone: c.phone, tags: c.tags, notes: c.notes.slice(0, 400) }))) : 'No clients match.', summary: `${list.length} client(s)` };
+    },
+  },
+  {
     name: 'save_file',
     description: "Save a finished deliverable (report, notes, CSV, code, markdown) to your Library so the user can open and download it. It lands in your Library folder on your computer (the path is in your instructions); files you write into that folder yourself show up in the Library too.",
     parameters: obj({ filename: { type: 'string', description: 'e.g. briefing-2026-11-09.md' }, content: { type: 'string' } }, ['filename', 'content']),

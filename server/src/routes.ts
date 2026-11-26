@@ -42,6 +42,7 @@ import { codingApi } from './coding.js';
 import { promptsApi } from './prompts.js';
 import { socialApi } from './reels/routes.js';
 import { desktopApi, desktopDevicesApi } from './desktop.js';
+import { softDelete } from './restore.js';
 
 export const api = new Hono<AuthVars>();
 
@@ -328,20 +329,9 @@ api.patch('/bots/:id', async (c) => {
 api.delete('/bots/:id', async (c) => {
   const b = ownBot(c.get('user').id, c.req.param('id'));
   if (!b) return c.json({ error: 'not found' }, 404);
-  interrupt(b.id);
-  for (const r of listRoutines(b.id)) {
-    unscheduleRoutine(r.id);
-    await deleteEventTrigger(r.id).catch(() => {});
-  }
-  if (b.kind !== 'room') {
-    await removeEngine(b.id).catch((e) => console.warn('[engine] remove failed', e?.message ?? e));
-    await releaseScreen(b.id).catch((e) => console.warn('[computer] release failed', e?.message ?? e));
-    await forgetBotFiles(b.id).catch((e) => console.warn('[computer] cleanup failed', e?.message ?? e));
-  }
-  db.prepare('DELETE FROM screens WHERE bot_id=?').run(b.id);
-  db.prepare('DELETE FROM bots WHERE id=?').run(b.id);
-  hub.emit(c.get('user').id, { type: 'roster' });
-  return c.json({ ok: true });
+  // It goes to Recently deleted for 7 days (restore.ts); it is removed for good after that.
+  await softDelete(b.id);
+  return c.json({ ok: true, restorable: true });
 });
 
 api.post('/bots/:id/primary', (c) => {

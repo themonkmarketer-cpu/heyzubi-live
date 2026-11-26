@@ -171,6 +171,8 @@ addColumn('bots', 'avatar_prop', 'TEXT');
 addColumn('bots', 'gender', 'TEXT');
 // A group's researcher: goes first, so the others answer with its findings in front of them.
 addColumn('bots', 'research_bot_id', 'TEXT');
+// Deleted bots wait 7 days in Recently deleted (restore.ts) before they are removed for good.
+addColumn('bots', 'deleted_at', 'INTEGER');
 addColumn('screens', 'width', 'INTEGER');
 addColumn('screens', 'height', 'INTEGER');
 // JSON list of the tools an approval card asked about: "Always allow" stores a policy for each of

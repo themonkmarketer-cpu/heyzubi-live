@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { create } from 'zustand';
+import { Send } from 'lucide-react';
+import { canvasToFile, grabFrame, usePendingPictures } from './extras/pendingPictures';
+import { stamp } from './extras/http';
 import '../styles/camera.css';
 
 /**
  * Zubi HQ's camera, in HeyZubi: a round floating preview of your own camera, turned on from the button next to
- * the mic. Local only: nothing is recorded, saved or sent anywhere, and the team member does not see it.
+ * the mic. Local only: nothing is recorded, saved or sent anywhere, and the team member does not see it, until you
+ * press the snapshot button: that one frame is attached to your next message in the open chat.
  * Drag it anywhere; zoom with + / −, the mouse wheel or a pinch (double-click resets); flip mirrors it.
  * It stops when turned off, when the camera is unplugged, or when the page closes.
  * Ported from Zubi HQ (video-wiki-tools/console.js, the "camera" block).
@@ -121,6 +125,16 @@ function CameraWindow() {
     if (win.current) write(K_POS, JSON.stringify({ x: win.current.offsetLeft, y: win.current.offsetTop }));
   };
 
+  // A snapshot of what the camera shows now, attached to the next message in the open chat.
+  const [snapped, setSnapped] = useState(false);
+  useEffect(() => { if (!snapped) return; const t = setTimeout(() => setSnapped(false), 1600); return () => clearTimeout(t); }, [snapped]);
+  const snapshot = async () => {
+    const v = video.current;
+    const c = v ? grabFrame(v) : null;
+    const f = c ? await canvasToFile(c, 'image/jpeg', `camera-${stamp()}.jpg`) : null;
+    if (f) { usePendingPictures.getState().push([f]); setSnapped(true); }
+  };
+
   const fz = `${zoom.toFixed(2).replace(/0$/, '')}×`;
   const style = { left: pos?.x, top: pos?.y, visibility: pos ? 'visible' : 'hidden', ['--z' as string]: zoom, ['--m' as string]: flip ? -1 : 1 } as CSSProperties;
 
@@ -153,6 +167,10 @@ function CameraWindow() {
             title={flip ? 'Mirrored: tap to flip back' : 'Not mirrored: tap to mirror'} aria-label={flip ? 'Mirrored: tap to flip back' : 'Not mirrored: tap to mirror'}
           >
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M7 4L3 8l4 4M3 8h14M17 12l4 4-4 4M21 16H7" /></svg>
+          </button>
+          <button type="button" className={`ccam__b${snapped ? ' is-snapped' : ''}`} onClick={() => void snapshot()}
+            title={snapped ? 'Snapshot added to your message' : 'Send a snapshot to the bot (it is attached to your next message)'} aria-label="Send a snapshot to the bot">
+            <Send size={14} strokeWidth={2} aria-hidden />
           </button>
           <button type="button" className="ccam__b" onClick={off} title="Turn camera off" aria-label="Turn camera off">×</button>
         </div>

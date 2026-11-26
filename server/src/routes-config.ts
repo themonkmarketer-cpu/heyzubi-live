@@ -430,7 +430,7 @@ configApi.post('/bots/:id/handback', (c) => {
 
 // ---------- library: files under <libraryRoot>/<botId> on the bot's computer (see paths.ts) ----------
 
-function safeRel(p: string | undefined): string | null {
+export function safeRel(p: string | undefined): string | null {
   const rel = (p ?? '').replace(/^\/+|\/+$/g, '');
   if (!rel) return '';
   if (rel.split('/').some((s) => !s || s === '.' || s === '..') || /[\0\n\r]/.test(rel)) return null;
@@ -491,7 +491,7 @@ configApi.post('/bots/:id/files/download', async (c) => {
 });
 
 /** A file in a bot's Library on this machine, or null when it isn't there (or a link leads outside the Library). */
-function libraryFile(botId: string, rel: string): string | null {
+export function libraryFile(botId: string, rel: string): string | null {
   const root = `${libraryRoot()}/${botId}`;
   try {
     // Follow links before checking, so a link inside the library cannot point outside it.

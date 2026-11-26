@@ -292,3 +292,18 @@
 .composer__guard.is-info { background: rgba(60, 130, 220, 0.14); color: var(--color-text-primary); }
 .composer__guard.is-pause { background: rgba(127, 127, 127, 0.16); }
 .composer__btn.is-on { opacity: 1; color: var(--color-brand, #7c6cff); }
+
+/* Record a meeting: the red bar above the message box. */
+.meeting-bar { max-width: 960px; margin: 0 auto 8px; padding: 8px 12px; border-radius: 12px; background: var(--color-danger-bg); color: var(--color-danger-text); font-size: 13px; line-height: 18px; }
+.meeting-bar__row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; }
+.meeting-bar__state { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.meeting-bar__dot { color: var(--color-danger); animation: meeting-blink 1.2s ease-in-out infinite; }
+@keyframes meeting-blink { 50% { opacity: 0.3; } }
+.meeting-bar__acts { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.meeting-bar__acts .link-btn { display: inline-flex; align-items: center; gap: 4px; color: inherit; }
+.meeting-bar__stop { height: 28px; padding: 0 12px; border-radius: 999px; background: var(--color-danger); color: #FFFFFF; font-size: 13px; font-weight: 600; }
+.meeting-bar__stop:hover { background: var(--color-danger-hover); }
+.meeting-bar__note { margin-top: 2px; font-size: 12px; color: var(--color-text-secondary); }
+.meeting-bar.is-failed .meeting-bar__state { font-weight: 500; }
+/* The camera bubble's snapshot button (kept out of camera.css): a short flash of colour after a snapshot. */
+.ccam__b.is-snapped { background: var(--color-success); }

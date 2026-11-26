@@ -27,7 +27,7 @@ export function hashPick<T>(id: string, list: T[]): T {
   return list[h % list.length];
 }
 
-export const agentCount = () => (db.prepare("SELECT COUNT(*) n FROM bots WHERE COALESCE(kind,'agent')<>'room' AND COALESCE(hidden,0)=0").get() as any).n as number;
+export const agentCount = () => (db.prepare("SELECT COUNT(*) n FROM bots WHERE COALESCE(kind,'agent')<>'room' AND (COALESCE(hidden,0)=0 OR deleted_at IS NOT NULL)").get() as any).n as number;
 
 export interface NewBot {
   name: string; label?: string; description?: string; instructions?: string; avatarShape?: string; avatarColor?: string;

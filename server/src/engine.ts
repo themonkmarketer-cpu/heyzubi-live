@@ -463,7 +463,7 @@ function gatewayPid(home: string): number | null {
   return pid;
 }
 
-async function stopGateway(botId: string) {
+export async function stopGateway(botId: string) {
   const home = homeFor(botId);
   const pid = gatewayPid(home);
   if (!pid) return;
@@ -714,7 +714,7 @@ export function initEngines() {
   }
   const bots = db.prepare("SELECT id, is_primary FROM bots WHERE engine IS NULL AND COALESCE(kind,'agent') <> 'room' AND COALESCE(hidden,0)=0 ORDER BY is_primary DESC, created_at ASC").all() as any[];
   for (const b of bots) assignEngine(b.id);
-  for (const b of db.prepare("SELECT id FROM bots WHERE engine='managed'").all() as any[]) provisionEngine(b.id);
+  for (const b of db.prepare("SELECT id FROM bots WHERE engine='managed' AND deleted_at IS NULL").all() as any[]) provisionEngine(b.id);
 }
 
 // ---------- what the settings panel shows ----------

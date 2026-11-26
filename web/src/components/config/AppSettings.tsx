@@ -19,6 +19,7 @@ import { USAGE_ROWS, usd } from '../VoiceSettings';
 import { DictationSection, PointerSection, ProductsSection } from './ProductSettings';
 import { removePhoto, saveDisplayName, uploadPhoto } from '../../lib/profile';
 import type { XaiUsage } from '../../voice/api';
+import { AccessMapBody, AskZubiButton, DeletedBody, DemoLanguageSettings, SharesBody } from './ExtrasSettings';
 
 const SECTIONS: { id: AppSection; label: string }[] = [
   { id: 'status', label: 'Status' },
@@ -31,6 +32,9 @@ const SECTIONS: { id: AppSection; label: string }[] = [
   { id: 'computer', label: 'Computer' },
   { id: 'permissions', label: 'Permissions' },
   { id: 'apps', label: 'Connected apps' },
+  { id: 'access', label: 'Access map' },
+  { id: 'shares', label: 'Share links' },
+  { id: 'deleted', label: 'Recently deleted' },
   { id: 'api', label: 'Outside programs' },
   { id: 'desktop', label: 'Windows app' },
   { id: 'account', label: 'Account' },
@@ -74,6 +78,9 @@ export function AppSettings() {
           {section === 'api' && <ApiKeysSection />}
           {section === 'desktop' && <DesktopSection />}
           {section === 'account' && <AccountSection />}
+          {section === 'access' && <><PageHead title="Access map" sub="What each team member can read, change or holds a key to." /><AccessMapBody /></>}
+          {section === 'shares' && <><PageHead title="Share links" sub="Links that show one Library file to a client, until they expire." /><SharesBody /></>}
+          {section === 'deleted' && <><PageHead title="Recently deleted" sub="Team members you deleted, kept for a while so you can bring them back." /><DeletedBody /></>}
         </div>
       </div>
     </div>,
@@ -128,6 +135,7 @@ function GeneralSection() {
       </section>
       <ChatWallpaperSetting />
       <NotificationsSetting />
+      <DemoLanguageSettings />
     </>
   );
 }
@@ -554,6 +562,7 @@ function HealthList() {
         <div className="cfg-section__label">Health</div>
         <span className="cfg-field__hint">{!items ? 'Checking…' : bad ? `${bad} thing${bad === 1 ? '' : 's'} to look at` : 'Everything looks right'}{checked ? ` · checked ${relativeShort(checked)}` : ''}</span>
         <button type="button" className="cfg-btn" onClick={run} disabled={busy}>{busy ? 'Checking…' : 'Run checks'}</button>
+        <AskZubiButton disabled={busy} />
       </div>
       <div className="health-list">
         {(items ?? []).map((i) => (

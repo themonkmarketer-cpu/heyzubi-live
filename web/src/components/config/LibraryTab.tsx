@@ -7,6 +7,7 @@ import { useStore } from '../../store';
 import { Icon } from '../Icon';
 import { Glyph } from './glyphs';
 import { formatBytes } from './ui';
+import { SharePanel } from './ExtrasShare';
 
 /** Files the bot saved in its Library folder on its computer (server/src/paths.ts). */
 export function LibraryTab({ bot }: { bot: Bot }) {
@@ -16,6 +17,7 @@ export function LibraryTab({ bot }: { bot: Bot }) {
   const [loading, setLoading] = useState(false);
   const [busyFile, setBusyFile] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sharing, setSharing] = useState<string | null>(null);
 
   const load = useCallback(async (wake = false) => {
     setLoading(true); setError(null);
@@ -24,7 +26,8 @@ export function LibraryTab({ bot }: { bot: Bot }) {
     finally { setLoading(false); }
   }, [bot.id, path]);
 
-  useEffect(() => { setPath(''); setList(null); }, [bot.id]);
+  useEffect(() => { setPath(''); setList(null); setSharing(null); }, [bot.id]);
+  useEffect(() => { setSharing(null); }, [path]);
   useEffect(() => { load(); }, [load, awake]);
 
   const download = async (f: LibraryFile) => {
@@ -74,7 +77,8 @@ export function LibraryTab({ bot }: { bot: Bot }) {
             <div className="panel-empty panel-empty--center">{path ? 'This folder is empty.' : `Files that ${bot.name} creates, like reports and notes, are kept here.`}</div>
           ) : (
             list.files.map((f) => (
-              <div key={f.name} className={`lib-row${f.isDir ? ' is-dir' : ''}`}>
+              <div key={f.name} className="lib-row-wrap">
+              <div className={`lib-row${f.isDir ? ' is-dir' : ''}`}>
                 <button type="button" className="lib-row__main" onClick={() => { const rel = path ? `${path}/${f.name}` : f.name; if (f.isDir) setPath(rel); else if (opens(f)) openFile(bot.id, rel); else void download(f); }} title={f.isDir || opens(f) ? `Open ${f.name}` : `Download ${f.name}`}>
                   <span className="lib-row__icon"><Glyph name={f.isDir ? 'folder' : 'doc'} size={16} opacity={0.6} /></span>
                   <span className="panel-row__text">
@@ -85,11 +89,14 @@ export function LibraryTab({ bot }: { bot: Bot }) {
                 {f.isDir ? <Icon name="chev_right" size={12} opacity={0.5} /> : (
                   <>
                   {opens(f) && <button type="button" className="cfg-btn lib-open" onClick={() => openFile(bot.id, path ? `${path}/${f.name}` : f.name)}>Open</button>}
+                  <button type="button" className="cfg-btn lib-open" onClick={() => setSharing(sharing === f.name ? null : f.name)} aria-expanded={sharing === f.name} title={`Share ${f.name} with a link`}>Share</button>
                   <button type="button" className="cfg-icon-btn" onClick={() => download(f)} disabled={busyFile === f.name} aria-label={`Download ${f.name}`} title="Download">
                     {busyFile === f.name ? <span className="cfg-spinner" /> : <Glyph name="download" size={14} />}
                   </button>
                   </>
                 )}
+              </div>
+              {!f.isDir && sharing === f.name && <SharePanel botId={bot.id} file={path ? `${path}/${f.name}` : f.name} name={f.name} onClose={() => setSharing(null)} />}
               </div>
             ))
           )}

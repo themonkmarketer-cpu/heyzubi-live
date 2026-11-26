@@ -237,3 +237,26 @@ async function setUpProfile(botId: string, f: HireFile, useModel: boolean) {
     say('error', `Hired, but its tools and model couldn’t be set from the file: ${String(e?.message ?? e).slice(0, 200)}. Set them in its settings.`);
   }
 }
+
+/**
+ * The access map: for every team member, each tool group it has (with its read only / writes / holds a key label), its
+ * MCP servers, and which connected apps it can reach through HeyZubi's own tools ("hq": the owner's Composio apps).
+ */
+hireApi.get('/access-map', async (c) => {
+  const user = c.get('user').id;
+  const bots = db.prepare("SELECT id, name, label FROM bots WHERE user_id=? AND COALESCE(kind,'agent')<>'room' AND COALESCE(hidden,0)=0 ORDER BY is_primary DESC, created_at ASC").all(user) as any[];
+  let apps: string[] = [];
+  try { const { connectedToolkits } = await import('./composio.js'); apps = [...await connectedToolkits(user)].sort(); } catch { /* Composio unreachable */ }
+  const rows = await Promise.all(bots.map(async (b) => {
+    if (!profileNameFor(b.id)) return { id: b.id, name: b.name, role: b.label ?? '', profile: null, error: 'Not a Hermes profile', level: null, tools: [], apps: [] };
+    try {
+      const p = await describeProfile(b.id);
+      const f = { toolsets: p.toolsets.filter((t) => t.enabled).map((t) => t.name), mcpServers: p.mcp_servers.filter((m) => m.enabled).map((m) => m.name) } as HireFile;
+      const a = accessOf(f);
+      return { id: b.id, name: b.name, role: b.label ?? '', profile: p.name, level: a.level, label: a.label, tools: a.tools, apps: f.mcpServers.includes('hq') ? apps : [] };
+    } catch (e: any) {
+      return { id: b.id, name: b.name, role: b.label ?? '', profile: profileNameFor(b.id), error: String(e?.message ?? e).slice(0, 160), level: null, tools: [], apps: [] };
+    }
+  }));
+  return c.json({ bots: rows, apps });
+});

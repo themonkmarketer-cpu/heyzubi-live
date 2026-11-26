@@ -11,7 +11,8 @@ import { Menu } from './Menu';
 import { UpdateRow } from './UpdateRow';
 import { SidebarOrb } from './SidebarOrb';
 import { keys } from '../lib/keys';
-import { ChartNoAxesColumn, Clapperboard, LogOut, Settings } from 'lucide-react';
+import { ChartNoAxesColumn, Clapperboard, Contact, LogOut, Settings } from 'lucide-react';
+import { openClients } from './extras/clientsWindow';
 
 function initials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -229,6 +230,9 @@ export function Sidebar() {
             <>
               <button type="button" className="icon-btn" onClick={() => setModal('search')} aria-label="Search" title={`Search (${keys('K')})`}>
                 <Icon name="search" opacity={0.66} />
+              </button>
+              <button type="button" className="icon-btn" onClick={() => openClients()} aria-label="Clients" title="Clients">
+                <Contact size={18} strokeWidth={1.7} style={{ opacity: 0.66 }} aria-hidden />
               </button>
               <button type="button" className="icon-btn" onClick={() => setModal('create')} aria-label="Add a team member" title="Add a team member">
                 <Icon name="plus" opacity={0.66} />

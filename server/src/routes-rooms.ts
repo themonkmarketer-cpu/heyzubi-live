@@ -3,7 +3,9 @@ import { db, now } from './db.js';
 import { hub } from './lib/hub.js';
 import { requireUser, type AuthVars } from './lib/auth.js';
 import { appendRow } from './store.js';
-import { roomMembers } from './agent/rooms.js';
+import { roomMembers, runDebate } from './agent/rooms.js';
+import { enqueue } from './agent/loop.js';
+import { emitBot } from './store.js';
 
 /** /api/rooms: group chat membership. A room is a bot row with kind='room'. */
 export const roomsApi = new Hono<AuthVars>();
@@ -20,6 +22,25 @@ roomsApi.get('/:id/members', (c) => {
     return { id: b.id, name: b.name, label: b.label, description: b.description, avatarShape: b.avatar_shape, avatarColor: b.avatar_color, avatarProp: b.avatar_prop ?? null };
   });
   return c.json({ members, leadId: room.lead_bot_id ?? null, researchId: room.research_bot_id ?? null });
+});
+
+/** Start a debate in the group: { question, rounds 1-3 }. The question is posted in the group as the owner's message. */
+roomsApi.post('/:id/debate', async (c) => {
+  const room = ownRoom(c.get('user').id, c.req.param('id'));
+  if (!room) return c.json({ error: 'not found' }, 404);
+  const p = await c.req.json().catch(() => ({})) as any;
+  const question = String(p.question ?? '').replace(/\s+/g, ' ').trim().slice(0, 600);
+  const rounds = Math.min(3, Math.max(1, Math.round(Number(p.rounds ?? 2))));
+  if (question.length < 5) return c.json({ error: 'Write the question to debate.' }, 400);
+  try {
+    appendRow(room.id, 'message', { type: 'message', role: 'user', text: `Debate (${rounds} round${rounds === 1 ? '' : 's'}): ${question}` });
+    const who = runDebate(room.id, question, rounds, enqueue);
+    appendRow(room.id, 'notice', { type: 'notice', tone: 'info', text: `${who.speakers.join(', ')} debate it, one after another; ${who.judge} judges at the end.` });
+    emitBot(room.id);
+    return c.json({ ok: true, ...who, rounds });
+  } catch (e: any) {
+    return c.json({ error: String(e?.message ?? e) }, 400);
+  }
 });
 
 /** The group's lead: after the others give their view, the lead wraps up one answer. { botId | null }. */

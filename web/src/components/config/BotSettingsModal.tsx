@@ -13,6 +13,8 @@ import { backgroundOf, byId, customUrl, useWallpaper } from '../../lib/wallpaper
 import { Glyph } from './glyphs';
 import { ProfileTab } from './ProfileTab';
 import { ConfirmButton, Field, Segmented, Switch, nextRunLabel, shortDate } from './ui';
+import { MemoryGauge, PinnedRules } from './ExtrasMemory';
+import { SkillReviews } from './ExtrasSkillReviews';
 
 const EFFORTS: { value: Bot['effort']; label: string }[] = [
   { value: 'low', label: 'Low' },
@@ -230,7 +232,7 @@ function GeneralTab({ bot, onClose }: { bot: Bot; onClose: () => void }) {
           <div className="cfg-row">
             <div className="cfg-row__text">
               <div className="cfg-row__title">Delete {bot.name}</div>
-              <div className="cfg-row__sub">{bot.isPrimary ? 'Make another Bot primary first.' : 'Removes its chat, memories, skills and routines for good.'}</div>
+              <div className="cfg-row__sub">{bot.isPrimary ? 'Make another Bot primary first.' : 'Moves it to Recently deleted for 7 days, with its chat, memories, skills and routines. Restore it from Settings → Recently deleted.'}</div>
             </div>
             <ConfirmButton
               disabled={bot.isPrimary}
@@ -323,6 +325,7 @@ function PropPicker({ draft, onProp }: { draft: Draft; onProp: (v: string | null
 
 function SkillsTab({ bot, skills, onChange }: { bot: Bot; skills: Skill[] | undefined; onChange: () => void }) {
   const [editing, setEditing] = useState<string | 'new' | null>(null);
+  const [reviewed, setReviewed] = useState(0);
   return (
     <div className="cfg-page">
       <div className="cfg-page__head">
@@ -356,7 +359,8 @@ function SkillsTab({ bot, skills, onChange }: { bot: Bot; skills: Skill[] | unde
           ))}
         </div>
       )}
-      <AgentSkills bot={bot} />
+      <SkillReviews bot={bot} onDecided={() => setReviewed((n) => n + 1)} />
+      <AgentSkills key={reviewed} bot={bot} />
     </div>
   );
 }
@@ -489,6 +493,8 @@ function MemoriesTab({ bot, data, onChange }: { bot: Bot; data: BotSettingsBundl
           <div className="cfg-page__sub">What {bot.name} remembers about you. It saves things when you share them, and picks up more on its own once a chat goes quiet.</div>
         </div>
       </div>
+      <MemoryGauge bot={bot} refresh={data} />
+      <PinnedRules bot={bot} />
       {(data?.memories.length ?? 0) > 6 && (
         <input className="text-input" placeholder="Search memories" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search memories" />
       )}

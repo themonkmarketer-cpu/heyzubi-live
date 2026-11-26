@@ -35,6 +35,13 @@ export interface Prefs {
   safety: { breaker: boolean; injectionGuard: boolean };
   /** Email triage: people (an address) or companies (a domain) whose mail always comes first. */
   vips: string[];
+  /** Demo language: 'es' has every team member answer in Spanish (for demos to Spanish-speaking clients); 'en' as usual. */
+  language: 'en' | 'es';
+  /**
+   * The spoken confirm word for voice calls: approving a risky action by voice needs this word said in the same answer.
+   * Empty = risky actions can't be approved by voice (only in the chat).
+   */
+  voiceConfirmWord: string;
 }
 
 /** The hold-to-talk key combinations the Windows app knows (desktop/KeyboardHook.cs has the same ids). */
@@ -69,6 +76,8 @@ const DEFAULTS: Prefs = {
   products: { pointer: true, dictation: null }, pointer: POINTER, dictation: DICTATION,
   safety: { breaker: true, injectionGuard: true },
   vips: [],
+  language: 'en',
+  voiceConfirmWord: '',
 };
 /** The built-in wallpapers (drawn by the web app; web/src/lib/wallpapers.ts has the same ids). */
 export const WALLPAPERS = ['aurora', 'sunset', 'ocean', 'mesh', 'midnight', 'graphite', 'zubi', 'dots', 'waves', 'paper'];
@@ -158,6 +167,8 @@ prefsApi.patch('/', async (c) => {
     wallpaperDim: p.wallpaperDim !== undefined ? clampDim(p.wallpaperDim, cur.wallpaperDim) : cur.wallpaperDim,
     displayName: p.displayName !== undefined ? (String(p.displayName ?? '').replace(/\s+/g, ' ').trim().slice(0, 40) || null) : cur.displayName,
     vips: p.vips !== undefined ? cleanWords(p.vips).map((v) => v.toLowerCase()).filter((v) => /^@?[\w.+-]+(@[\w-]+(\.[\w-]+)+)?$/.test(v) && /[.@]/.test(v)).slice(0, 50) : cur.vips,
+    language: p.language === 'es' ? 'es' : p.language === 'en' ? 'en' : cur.language,
+    voiceConfirmWord: p.voiceConfirmWord !== undefined ? String(p.voiceConfirmWord ?? '').toLowerCase().replace(/[^\p{L}\p{N} -]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 30) : cur.voiceConfirmWord,
     safety: {
       breaker: typeof p.safety?.breaker === 'boolean' ? p.safety.breaker : cur.safety.breaker,
       injectionGuard: typeof p.safety?.injectionGuard === 'boolean' ? p.safety.injectionGuard : cur.safety.injectionGuard,
