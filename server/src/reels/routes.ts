@@ -48,7 +48,7 @@ socialApi.get('/', (c) => {
   const sr = ready ? series() : null;
   return c.json({
     ready, series: sr && { name: sr.name, handle: sr.handle, hookTypes: sr.hookTypes, assetsExpire: sr.assetsExpire, cast: sr.cast.map((x) => ({ key: x.key, name: x.name, about: x.about, image: x.image, look: x.castLine, voice: x.voice, role: x.key === formula().roles.hero ? 'hero' : x.key === formula().roles.closer ? 'closer' : '' })), voices: sr.voices.length },
-    episodes: listEpisodes(u).map(brief), history: (sr?.history ?? []).map((h) => ({ num: h.num, title: h.title, trade: h.trade, aiEmployee: h.aiEmployee, slot: h.slot, usd: h.usd, status: h.status, cast: h.cast, hook: h.hook, cover: h.cover ?? null, links: h.links ?? {}, youtubeAt: h.youtubeAt ?? null, youtubeTitle: h.youtubeTitle ?? '', keyword: h.keyword ?? '', platforms: h.platforms ?? [] })),
+    episodes: listEpisodes(u).map(brief), history: (sr?.history ?? []).map((h) => ({ num: h.num, title: h.title, trade: h.trade, aiEmployee: h.aiEmployee, slot: h.slot, usd: h.usd, status: h.status, cast: h.cast, hook: h.hook, cover: h.cover ?? null, links: h.links ?? {}, youtubeAt: h.youtubeAt ?? null, youtubeTitle: h.youtubeTitle ?? '', keyword: h.keyword ?? '', platforms: h.platforms ?? [], page: /^https:\/\//.test(h.page ?? '') ? h.page : '', pagePreview: h.pagePreview ?? null })),
     slots: ready ? slots(u, 10) : [], next: nextNum(u), keys: { topview: !!getKey('topview'), kie: !!getKey('kie') },
   });
 });
@@ -270,4 +270,4 @@ function serve(c: Context, root: string, rel: string) {
   return c.body(Readable.toWeb(fs.createReadStream(f)) as any, 200, { ...h, 'Content-Length': String(size) });
 }
 socialApi.get('/episodes/:id/file', (c) => { const e = mine(c); return serve(c, epDir(e.num), c.req.query('path') ?? ''); });
-socialApi.get('/series/file', (c) => { const p = c.req.query('path') ?? ''; if (!/^(cast|voices|sfx|music|covers)\/[\w.-]+$/.test(p) || p.includes('..')) return c.json({ error: 'not found' }, 404); return serve(c, seriesDir(), p); });
+socialApi.get('/series/file', (c) => { const p = c.req.query('path') ?? ''; if (!/^(cast|voices|sfx|music|covers|pages)\/[\w.-]+$/.test(p) || p.includes('..')) return c.json({ error: 'not found' }, 404); return serve(c, seriesDir(), p); });

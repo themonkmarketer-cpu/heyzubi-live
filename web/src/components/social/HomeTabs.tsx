@@ -15,6 +15,8 @@ interface Item {
   img: string | null; wide?: boolean; num: number; at: string | null; usd: number | null; text: string;
   facets: Record<string, string[]>; sorts: Record<string, number | string>;
   links: [string, string][]; later?: string | null; open?: () => void; voice?: string; slot?: { at: string; blocked: boolean };
+  /** The episode's own landing page (its AI Employee's page), with a small picture of it. */
+  page?: { url: string; img: string | null };
   cells: ReactNode[];
 }
 interface TabDef { label: string; items: Item[]; filters: [string, string, string][]; sorts: [string, string][]; heads: string[]; empty: string }
@@ -25,16 +27,16 @@ const fmt = (t: number, tz: string, o: Intl.DateTimeFormatOptions) => new Intl.D
 const ist = (at: string) => `${fmt(ms(at), 'Asia/Kolkata', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false })} IST`;
 const ny = (at: string) => `${new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(ms(at))} New York`;
 const cap = (t: string) => (t ? t[0].toUpperCase() + t.slice(1) : t);
-const PLACE: Record<string, string> = { instagram: 'Instagram', facebook: 'Facebook', youtube: 'YouTube', whatsapp: 'WhatsApp' };
+const PLACE: Record<string, string> = { instagram: 'Instagram', facebook: 'Facebook', youtube: 'YouTube', whatsapp: 'WhatsApp', page: 'Landing page' };
 const ORDER = ['instagram', 'youtube', 'facebook', 'whatsapp'];
 const toLinks = (l: Record<string, string>): [string, string][] => ORDER.filter((k) => /^https:\/\//.test(l[k] ?? '')).map((k) => [k, l[k]]);
 const uniq = (a: string[]) => [...new Set(a.filter(Boolean))];
 
 function build(home: Home, onOpen: (id: string) => void): Record<TabId, TabDef> {
   const now = Date.now();
-  interface Post { key: string; num: number; title: string; trade: string; ai: string; keyword: string; cast: string[]; at: string | null; usd: number | null; img: string | null; links: [string, string][]; platforms: string[]; line: string; made: boolean; ready: boolean; ytAt: string | null; open?: () => void }
+  interface Post { key: string; num: number; title: string; trade: string; ai: string; keyword: string; cast: string[]; at: string | null; usd: number | null; img: string | null; links: [string, string][]; platforms: string[]; line: string; made: boolean; ready: boolean; ytAt: string | null; open?: () => void; page?: { url: string; img: string | null } }
   const posts: Post[] = [
-    ...home.history.map((h): Post => ({ key: `h${h.num}`, num: h.num, title: h.title, trade: h.trade, ai: h.aiEmployee, keyword: h.keyword, cast: h.cast.filter((c) => !/AI Employee|bookings/i.test(c)), at: h.slot, usd: h.usd, img: h.cover ? seriesFileUrl(h.cover) : null, links: toLinks(h.links), platforms: h.platforms, line: h.hook[0] ?? '', made: false, ready: true, ytAt: h.youtubeAt })),
+    ...home.history.map((h): Post => ({ key: `h${h.num}`, num: h.num, title: h.title, trade: h.trade, ai: h.aiEmployee, keyword: h.keyword, cast: h.cast.filter((c) => !/AI Employee|bookings/i.test(c)), at: h.slot, usd: h.usd, img: h.cover ? seriesFileUrl(h.cover) : null, links: toLinks(h.links), platforms: h.platforms, line: h.hook[0] ?? '', made: false, ready: true, ytAt: h.youtubeAt, page: h.page ? { url: h.page, img: h.pagePreview ? seriesFileUrl(h.pagePreview) : null } : undefined })),
     ...home.episodes.filter((e) => !e.archived && e.slot).map((e): Post => ({ key: e.id, num: e.num, title: e.title, trade: e.trade, ai: e.aiEmployee, keyword: e.keyword, cast: e.cast, at: e.slot, usd: e.spent, img: e.cover ? epFileUrl(e.id, e.cover) : null, links: toLinks(e.links), platforms: e.platforms, line: '', made: true, ready: e.scheduled, ytAt: null, open: () => onOpen(e.id) })),
   ];
   const isOut = (p: Post) => !p.at || ms(p.at) <= now;
@@ -50,11 +52,11 @@ function build(home: Home, onOpen: (id: string) => void): Record<TabId, TabDef> 
         trade: [cap(p.trade)], ai: [p.ai], who: p.cast, month: p.at ? [fmt(ms(p.at), 'Asia/Kolkata', { month: 'long', year: 'numeric' })] : [], from: [p.made ? 'HeyZubi' : 'Claude session'],
       },
       sorts: { time: p.at ? ms(p.at) : 0, num: p.num, title: p.title.toLowerCase(), usd: p.usd ?? -1, trade: p.trade.toLowerCase(), ai: p.ai.toLowerCase() },
-      links: p.links, later: later ? p.ytAt : null, open: p.open,
+      links: p.links, later: later ? p.ytAt : null, open: p.open, page: p.page,
       cells: [
         <><b>{p.at ? ist(p.at) : '–'}</b><small>{p.at ? ny(p.at) : ''}</small></>,
         <><b>Ep {p.num}: {p.title}</b><small>{p.line || p.keyword}</small></>, cap(p.trade), p.ai,
-        <Links key="l" item={p.links} later={later ? p.ytAt : null} also={p.platforms.filter((k) => !p.links.some(([x]) => x === k))} />,
+        <Links key="l" item={[...p.links, ...(p.page ? [['page', p.page.url] as [string, string]] : [])]} later={later ? p.ytAt : null} also={p.platforms.filter((k) => !p.links.some(([x]) => x === k))} />,
         published ? (p.usd !== null ? usd(p.usd) : '–') : <span className={`spill is-${p.ready ? 'done' : 'needs_you'}`}>{status}</span>,
       ],
     };
@@ -202,6 +204,17 @@ function Acts({ it, onSlot, big }: { it: Item; onSlot: (s: { at: string; blocked
 const Pic = ({ it }: { it: Item }) => (it.img
   ? <img src={it.img} alt="" loading="lazy" draggable={false} />
   : <span className="sshow__blank"><CalendarClock size={30} aria-hidden /><b>{it.slot ? (it.slot.blocked ? 'Blocked' : 'Free') : `Ep ${it.num}`}</b><small>{it.at ? ist(it.at) : 'No cover yet'}</small></span>);
+/** The episode's landing page: a small picture of its top and its address, opening the page. */
+function PagePeek({ page, big }: { page: { url: string; img: string | null }; big?: boolean }) {
+  const where = page.url.replace(/^https:\/\/(www\.)?/, '').replace(/\/$/, '');
+  return (
+    <a className={`sshow__page${big ? ' is-big' : ''}`} href={page.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} title={`Open the landing page: ${where}`}>
+      {page.img && <img src={page.img} alt={`Landing page preview: ${where}`} loading="lazy" draggable={false} />}
+      <span><b>Landing page ↗</b><small>{big ? where : `/${where.split('/').slice(1).join('/') || where}`}</small></span>
+    </a>
+  );
+}
+
 /** The first item large, like a page's banner; the rest as cards in a coloured band, four to a row. */
 function Showcase({ tab, label, items, onSlot }: { tab: TabId; label: string; items: Item[]; onSlot: (s: { at: string; blocked: boolean }) => void }) {
   const [hero, ...rest] = items;
@@ -215,6 +228,7 @@ function Showcase({ tab, label, items, onSlot }: { tab: TabId; label: string; it
           <p>{hero.sub}</p>
           {hero.line && <small>{hero.line}</small>}
           <Acts it={hero} onSlot={onSlot} big />
+          {hero.page && <PagePeek page={hero.page} big />}
           {hero.usd !== null && hero.usd > 0 && <small className="sshow__usd">{usd(hero.usd)}</small>}
         </div>
         <span className="sshow__poster"><Pic it={hero} /></span>
@@ -229,6 +243,7 @@ function Showcase({ tab, label, items, onSlot }: { tab: TabId; label: string; it
                   <Pic it={it} /><span className="sshow__badge">{it.badge}</span>
                 </button>
                 <div className="sshow__txt"><b>{it.title}</b><span>{it.sub}</span>{it.line && <small>{it.line}</small>}</div>
+                {it.page && <PagePeek page={it.page} />}
                 <Acts it={it} onSlot={onSlot} />
               </article>
             ))}

@@ -30,7 +30,7 @@ export const seriesText = (f: string) => { try { return fs.readFileSync(path.joi
 
 export interface SeriesCast { key: string; name: string; image: string; imageAsset: string; voice: string; voiceAsset: string; voiceSeconds: number; lock: string; castLine: string; about: string; voiceId?: string; voiceName?: string; stability?: number; similarity?: number }
 export interface SeriesVoice { id: string; name: string; note: string }
-export interface PastEpisode { num: number; title: string; trade: string; aiEmployee: string; lines: string[]; slot: string | null; usd: number | null; status: string; cast: string[]; hook: string[]; cover?: string; links?: Record<string, string>; youtubeAt?: string | null; youtubeTitle?: string; keyword?: string; platforms?: string[] }
+export interface PastEpisode { num: number; title: string; trade: string; aiEmployee: string; lines: string[]; slot: string | null; usd: number | null; status: string; cast: string[]; hook: string[]; cover?: string; links?: Record<string, string>; youtubeAt?: string | null; youtubeTitle?: string; keyword?: string; platforms?: string[]; page?: string; pagePreview?: string }
 export interface Series {
   name: string; handle: string; style: string; audio: string; sheetStyle: string; theme: string; refVideoAsset: string; refVideoNote: string;
   closing: string; courseLine: string; courseLineFacebook: string; hashtags: string; commentBase: string; commentBaseFacebook: string; youtubeLink: string;

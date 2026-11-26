@@ -78,3 +78,14 @@
 .sshow__cta a, .sshow__cta button { display: inline-flex; align-items: center; gap: 4px; padding: 0; background: none; color: #12305c; font-size: 11.5px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .sshow__cta a:hover, .sshow__cta button:hover { color: #0a58ca; }
 @media (max-width: 720px) { .sshow__hero { flex-direction: column-reverse; align-items: flex-start; padding: 24px 20px; } .sshow__band { padding: 20px 14px 22px; } .sshow__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } }
+
+/* the episode's landing page on its card: a small picture of the page's top and its address */
+.sshow__page { display: flex; align-items: center; gap: 10px; margin: 2px 12px 6px; padding: 6px; border-radius: 8px; border: 1px solid #e3e6ec; background: #f7f8fb; color: #1f2430; text-decoration: none; transition: border-color 0.2s, box-shadow 0.2s; }
+.sshow__page:hover { border-color: #12305c; box-shadow: 0 4px 12px rgba(18, 48, 92, 0.15); }
+.sshow__page img { flex-shrink: 0; width: 84px; aspect-ratio: 16 / 10; object-fit: cover; object-position: top; border-radius: 5px; border: 1px solid #e3e6ec; background: #fff; }
+.sshow__page span { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+.sshow__page b { white-space: nowrap; font-size: 11px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: #12305c; }
+.sshow__page small { font-size: 10.5px; color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sshow__page.is-big { margin: 14px 0 0; padding: 8px; max-width: 360px; background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.22); color: #fff; }
+.sshow__page.is-big img { width: 150px; border-color: rgba(255, 255, 255, 0.25); }
+.sshow__page.is-big b { color: #fff; } .sshow__page.is-big small { color: rgba(255, 255, 255, 0.75); }
