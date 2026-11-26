@@ -49,15 +49,21 @@ function fixList(list: any[]): number {
   return fixed;
 }
 
-/** Replace every damaged picture in the bot's stored conversations. Returns how many were replaced (0 = nothing to do). */
-export function repairDamagedImages(home: string | null): number {
+/**
+ * Replace damaged pictures in the bot's stored conversations. Returns how many were replaced (0 = nothing to do).
+ * `currentOnly` checks just the responses the conversations point at (what the next turn sends): cheap enough to run
+ * before every turn. Without it every stored response is checked.
+ */
+export function repairDamagedImages(home: string | null, opts: { currentOnly?: boolean } = {}): number {
   if (!home) return 0;
   const file = path.join(home, 'response_store.db');
   if (!fs.existsSync(file)) return 0;
   const db = new Database(file, { timeout: 15_000 });
   let fixed = 0;
   try {
-    const rows = db.prepare('SELECT response_id, data FROM responses').all() as { response_id: string; data: string }[];
+    const rows = (opts.currentOnly
+      ? db.prepare('SELECT r.response_id, r.data FROM responses r JOIN conversations c ON c.response_id = r.response_id').all()
+      : db.prepare('SELECT response_id, data FROM responses').all()) as { response_id: string; data: string }[];
     const save = db.prepare('UPDATE responses SET data=? WHERE response_id=?');
     db.transaction(() => {
       for (const r of rows) {

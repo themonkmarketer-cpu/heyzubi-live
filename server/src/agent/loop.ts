@@ -9,8 +9,8 @@ import { batchActions, toolkitInfo } from '../composio.js';
 import { screenForWork } from '../computer.js';
 import { engineFor, engineHome, primaryBotId } from '../engine.js';
 import { DAMAGED_IMAGE_ERROR, repairDamagedImages } from './image-repair.js';
-/** When a bot last got its conversation's damaged pictures repaired and its turn retried (one retry per 10 minutes). */
-const imageRetryAt = new Map<string, number>();
+/** When a bot's conversation was repaired after a damaged-picture error and its turn retried (up to 3 in 10 minutes). */
+const imageRetryAt = new Map<string, number[]>();
 import { chatHeaders, chatSessionId, noteChat } from '../engine-sessions.js';
 import { getPrefs } from '../prefs.js';
 import { BREAKER, breakerCall, breakerResult, GUARD_MESSAGES, isBlocked, newBreaker, OUTSIDE_NOTICE, readsOutside, type BreakerState, type GuardKind } from './controls.js';
@@ -516,6 +516,8 @@ async function runTurn(botId: string, trigger: Trigger) {
     // The screen first: the engine's browser and computer tools point at it.
     await screenForWork(userId, botId).catch((e) => console.warn(`[computer] screen not ready for ${botId}: ${e?.message ?? e}`));
     const engine = await engineFor(botId);
+    // Hermes can damage a screenshot when it hides key-like text; repair any before this turn sends the history.
+    try { const n = repairDamagedImages(engineHome(botId), { currentOnly: true }); if (n) console.warn(`[agent] ${botId}: repaired ${n} damaged picture(s) before the turn`); } catch (err) { console.warn('[agent] picture check failed:', (err as Error).message); }
     if (ctrl.signal.aborted) throw new Error('interrupted');
     const why = notOwnerWhy(trigger);
     const room = trigger.type === 'system' ? trigger.room : undefined, roomRow = room ? getBotRow(room) : null;
@@ -673,9 +675,10 @@ async function runTurn(botId: string, trigger: Trigger) {
     const note = turn.pause?.note ?? '';
     // A damaged screenshot in the stored conversation makes the model refuse every later turn: repair it, try once more.
     let repaired = 0;
-    if (!stopped && DAMAGED_IMAGE_ERROR.test(raw) && Date.now() - (imageRetryAt.get(botId) ?? 0) > 10 * 60_000) {
+    const recent = (imageRetryAt.get(botId) ?? []).filter((at) => Date.now() - at < 10 * 60_000);
+    if (!stopped && DAMAGED_IMAGE_ERROR.test(raw) && recent.length < 3) {
       try { repaired = repairDamagedImages(engineHome(botId)); } catch (err) { console.warn('[agent] picture repair failed:', (err as Error).message); }
-      if (repaired) { imageRetryAt.set(botId, Date.now()); retryAfterRepair = true; }
+      if (repaired) { imageRetryAt.set(botId, [...recent, Date.now()]); retryAfterRepair = true; }
     }
     const text = repaired ? `A damaged screenshot in this chat’s history made the model refuse to answer. HeyZubi removed ${repaired === 1 ? 'it' : `${repaired} damaged pictures`} and is trying again.`
       : turn.paused ? `Paused after step ${steps}.${note ? ' Carrying on with your note.' : ' Send a message to carry on; what it did so far is kept.'}`
