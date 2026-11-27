@@ -517,7 +517,17 @@ function gatewayPid(home: string): number | null {
   return pid;
 }
 
+/**
+ * Stop the bot's gateway. A start still in progress is waited for first: otherwise a stop that comes while the agent is
+ * starting (a delete right after this server boots) finds no process yet, and the agent comes up after it.
+ */
 export async function stopGateway(botId: string) {
+  await starting.get(botId)?.catch(() => {});
+  await killGateway(botId);
+}
+
+/** Stop the running gateway process, if any (used inside a start, so it never waits for one). */
+async function killGateway(botId: string) {
   const home = homeFor(botId);
   const pid = gatewayPid(home);
   if (!pid) return;
@@ -558,13 +568,14 @@ function heldByHost(home: string): boolean {
 async function startGateway(botId: string): Promise<void> {
   const b = botRow(botId);
   if (!b || b.engine !== 'managed') throw new Error('not a managed engine');
+  if (b.deleted_at) throw new Error(`${b.name} was deleted, so its agent stays off.`);
   if (!b.engine_port) db.prepare('UPDATE bots SET engine_port=? WHERE id=?').run(freePort(), botId);
   let url = managedUrl(botId);
 
   // A gateway from an earlier run of this server is still good: use it as it is.
   if ((await healthy(url)) && managedKey(botId) && (await keyAccepted(url, managedKey(botId)))) return;
   if (await healthy(url)) {
-    if (gatewayPid(homeFor(botId))) await stopGateway(botId);
+    if (gatewayPid(homeFor(botId))) await killGateway(botId);
     else {
       // Something this server doesn't know answers there (a gateway Hermes runs for a profile with no bot here):
       // move to the next port nobody answers on.
@@ -579,7 +590,7 @@ async function startGateway(botId: string): Promise<void> {
 
   const { home, key, display } = await writeHome(botId);
   keys.set(botId, key);
-  if (gatewayPid(home)) await stopGateway(botId);
+  if (gatewayPid(home)) await killGateway(botId);
 
   attempts: for (let attempt = 0; attempt < 2; attempt++) {
     const owner = engineOwner(botId);
@@ -627,6 +638,8 @@ async function startGateway(botId: string): Promise<void> {
         throw new Error(exited);
       }
       if (await healthy(url, 1500)) {
+        // Deleted while it was starting: stop it again rather than leave it running (and on its messaging apps).
+        if (botRow(botId)?.deleted_at) { await killGateway(botId); throw new Error(`${b.name} was deleted while its agent was starting; it was stopped.`); }
         console.log(`[engine] ${b.name}: gateway up on ${url}`);
         // Its Hermes profile shows the same name and mascot as here (loaded late: that module imports this one).
         if (b.hermes_profile) void import('./hermes-identity.js').then((m) => m.syncIdentity(botId)).catch(() => {});
