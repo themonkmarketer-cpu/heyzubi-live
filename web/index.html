@@ -10,9 +10,8 @@
       (function () {
         var t = null;
         try { t = localStorage.getItem('heyzubi.theme') || localStorage.getItem('bothq.theme') || localStorage.getItem('grokbot.theme'); } catch (e) {}
-        var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-        var map = { pearl: ['light', 'pearl', 1], sand: ['light', 'sand', 1], obsidian: ['dark', 'obsidian', 1], light: ['light'], dark: ['dark'], navy: ['dark', 'navy'] };
-        var d = map[t] || (dark ? map.obsidian : map.pearl);
+        var map = { dark: ['dark'], midnight: ['dark', 'midnight', 1], forest: ['dark', 'forest', 1], sandstone: ['light', 'sandstone', 1], silver: ['light', 'silver', 1] };
+        var d = map[t] || map.dark;
         var r = document.documentElement;
         r.setAttribute('data-theme', d[0]);
         if (d[1]) r.setAttribute('data-palette', d[1]);
@@ -22,8 +21,8 @@
     </script>
     <style>
       html { background: #FAF9FC; } html[data-theme='dark'] { background: #0F0D14; }
-      html[data-palette='pearl'] { background: #F7F8FA; } html[data-palette='sand'] { background: #F7F3EC; }
-      html[data-palette='obsidian'] { background: #131419; } html[data-palette='navy'] { background: #0E1630; }
+      html[data-palette='midnight'] { background: #081422; } html[data-palette='forest'] { background: #051F20; }
+      html[data-palette='sandstone'] { background: #F4F1EA; } html[data-palette='silver'] { background: #F3F3F3; }
     </style>
   </head>
   <body>

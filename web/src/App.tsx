@@ -23,6 +23,7 @@ import { WhatsAppWindow } from './components/WhatsAppWindow';
 import { CameraBubble } from './components/CameraBubble';
 import { GenerationsView } from './components/GenerationsView';
 import { CapabilityWatcher, LivePanels } from './components/LivePanels';
+import { TelegramWindow } from './components/TelegramWindow';
 import { WallpaperPicker } from './components/WallpaperPicker';
 import { FileViewer } from './lib/openFile';
 import { useWallpaper } from './lib/wallpapers';
@@ -97,6 +98,7 @@ function Shell() {
       <CameraBubble />
       <CapabilityWatcher />
       <LivePanels />
+      <TelegramWindow />
       <ConfigLayer />
       <FileViewer />
     </div>

@@ -49,3 +49,14 @@
 @media (prefers-reduced-transparency: reduce) {
   :root, :root[data-theme='dark'] { --float-bg: var(--color-bg-elevated); --float-blur: none; }
 }
+
+/* The resize corner of a floating window (lib/resizable.ts): drag the lower-right corner, double-click to reset. */
+.fgrip {
+  position: absolute; right: 3px; bottom: 3px; z-index: 8; width: 16px; height: 16px; cursor: nwse-resize; touch-action: none;
+  border-radius: 0 0 10px 0; opacity: .55;
+  background:
+    linear-gradient(135deg, transparent 0 46%, var(--color-text-tertiary) 46% 54%, transparent 54% 62%, var(--color-text-tertiary) 62% 70%, transparent 70% 78%, var(--color-text-tertiary) 78% 86%, transparent 86%);
+}
+.fgrip:hover { opacity: 1; }
+/* In a window that scrolls (the app windows), the corner stays at the bottom of what's in view. */
+.fgrip--sticky { position: sticky; align-self: flex-end; flex-shrink: 0; right: auto; bottom: 2px; margin: -26px -4px 0 0; }

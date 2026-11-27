@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useOpeningFrame } from '../lib/floatFrame';
+import { useResizable } from '../lib/resizable';
 import type { WaDraft } from '@shared/types';
 import { useStore } from '../store';
 import { GenPicker, genUrl } from './GenerationsView';
@@ -197,16 +198,18 @@ export function WhatsAppWindow() {
     return () => window.removeEventListener('keydown', k);
   });
 
+  const { size, grip } = useResizable({ w: 320, h: 300 });
   const style: CSSProperties = {
-    left: pos?.x ?? frame.left, top: pos?.y ?? frame.top, right: 'auto', bottom: 'auto', width: frame.width,
-    ...(min ? {} : { height: frame.height, maxHeight: 'none' }),
+    left: pos?.x ?? frame.left, top: pos?.y ?? frame.top, right: 'auto', bottom: 'auto', width: size?.w ?? frame.width,
+    ...(min ? {} : { height: size?.h ?? frame.height, maxHeight: 'none' }),
   };
   const q = gq.trim().toLowerCase();
   const list = groups ? groups.filter((g) => !q || g.name.toLowerCase().includes(q)) : [];
   const pairing = status && !status.paired;
 
   return (
-    <div ref={winRef} className={`waw${min ? ' is-min' : ''}`} style={style} role="dialog" aria-label="WhatsApp">
+    <div ref={winRef} className={`waw${min ? ' is-min' : ''}`} style={style} role="dialog" aria-label="WhatsApp" data-resizable>
+      {!min && <span className="fgrip" {...grip} />}
       <div className="waw__head" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
         <WaIcon />
         <b>WhatsApp</b>

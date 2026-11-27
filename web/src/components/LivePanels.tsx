@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, Check, ChevronLeft, ChevronRight, Clapperboard, Copy, Eye, Forward, Heart, Image as ImageIcon, ListChecks, MessageCircle, Play, SquareKanban, Table2, Type } from 'lucide-react';
 import { useOpeningFrame } from '../lib/floatFrame';
+import { useResizable } from '../lib/resizable';
 import { create } from 'zustand';
 import { useStore } from '../store';
 import type { PanelName } from '@shared/types';
@@ -72,6 +73,8 @@ export function LivePanels() {
   // One step down and left of the WhatsApp window when both are open, so neither hides the other.
   const frame = useOpeningFrame(waOpen ? 1 : 0);
   const boxRef = useRef<HTMLDivElement>(null);
+  // Resized by its lower-right corner; drag by a window's title bar.
+  const { size, grip } = useResizable({ w: 320, h: 260 });
   const drag = useRef<{ dx: number; dy: number } | null>(null);
   const onDown = (e: React.PointerEvent) => {
     const t = e.target as Element;
@@ -99,8 +102,8 @@ export function LivePanels() {
   if (!gmail && !calendar && !youtube && !instagram && !facebook && !linkedin && !sheets && !notion) return null;
   return (
     <div
-      ref={boxRef} className="lpanels is-floating" role="region" aria-label="Zubi’s windows"
-      style={{ left: pos?.x ?? frame.left, top: pos?.y ?? frame.top, right: 'auto', width: frame.width, maxHeight: frame.height }}
+      ref={boxRef} className="lpanels is-floating" role="region" aria-label="Zubi’s windows" data-resizable
+      style={{ left: pos?.x ?? frame.left, top: pos?.y ?? frame.top, right: 'auto', width: size?.w ?? frame.width, ...(size ? { height: size.h, maxHeight: 'none' } : { maxHeight: frame.height }) }}
       onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
     >
       {calendar && <CalendarPanel key={`c${calendar}`} />}
@@ -111,6 +114,7 @@ export function LivePanels() {
       {linkedin && <LinkedInPanel key={`l${linkedin}`} />}
       {sheets && <SheetsPanel key={`s${sheets}`} />}
       {notion && <NotionPanel key={`n${notion}`} />}
+      <span className="fgrip fgrip--sticky" {...grip} />
     </div>
   );
 }
@@ -151,19 +155,23 @@ type GmailView = 'latest' | 'triage' | 'waiting';
 /** Latest emails; Triage (sorted by who matters, with the reasons); Waiting on you (real people you haven't answered). */
 function GmailPanel() {
   const [view, setView] = useState<GmailView>(() => ((['latest', 'triage', 'waiting'] as const).find((v) => v === lsGet('gmailView')) ?? 'latest'));
-  const [data, setData] = useState<{ connected: boolean; emails: Email[]; error?: string; account?: string } | null>(null);
+  const [data, setData] = useState<{ connected: boolean; emails: Email[]; error?: string; account?: string; accountId?: string; accounts?: { id: string; label: string }[]; inbox?: string } | null>(null);
+  // Which Gmail account to show: the one picked before, else Composio's default. Switching is like Instagram's.
+  const [acct, setAcct] = useState(() => lsGet('gmailAccount') ?? '');
+  const q = (fresh: boolean) => { const p = new URLSearchParams(); if (fresh) p.set('fresh', '1'); if (acct) p.set('account', acct); const t = p.toString(); return t ? `?${t}` : ''; };
   const [tri, setTri] = useState<Triage | null>(null);
   const [vipEdit, setVipEdit] = useState<string | null>(null);
   const loadTriage = (fresh: boolean) => {
-    fetch(`/api/panels/gmail/triage${fresh ? '?fresh=1' : ''}`, { credentials: 'include' })
+    fetch(`/api/panels/gmail/triage${q(fresh)}`, { credentials: 'include' })
       .then((r) => r.json()).then(setTri).catch(() => setTri({ connected: true, top: [], waiting: [], error: 'Couldn’t sort your inbox just now.' }));
   };
   const load = (fresh: boolean) => {
-    fetch(`/api/panels/gmail${fresh ? '?fresh=1' : ''}`, { credentials: 'include' })
+    fetch(`/api/panels/gmail${q(fresh)}`, { credentials: 'include' })
       .then((r) => r.json()).then(setData).catch(() => setData({ connected: true, emails: [], error: 'Couldn’t read Gmail just now.' }));
     if (view !== 'latest' || tri) loadTriage(fresh);
   };
-  useEffect(() => { load(true); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setData(null); setTri(null); load(false); }, [acct]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pickAcct = (id: string) => { lsSet('gmailAccount', id); setAcct(id); };
   const pick = (v: GmailView) => { setView(v); lsSet('gmailView', v); if (v !== 'latest' && !tri) loadTriage(false); };
   const saveVips = async () => {
     const list = (vipEdit ?? '').split(/[\n,]+/).map((x) => x.trim()).filter(Boolean);
@@ -174,7 +182,16 @@ function GmailPanel() {
   const list = view === 'triage' ? tri?.top ?? [] : tri?.waiting ?? [];
   return (
     <section className="lpanel" aria-label="Gmail">
-      <PanelHead title="GMAIL" open="Open" href="https://mail.google.com/" onRefresh={() => load(true)} onClose={() => usePanels.setState({ gmail: null })} />
+      <PanelHead title="GMAIL" open="Open" href={data?.inbox ?? 'https://mail.google.com/'} onRefresh={() => load(true)} onClose={() => usePanels.setState({ gmail: null })} />
+      {!off && data?.account && (
+        <div className="lmail__acct">
+          {(data.accounts?.length ?? 0) > 1 ? (
+            <select className="lfb__pick" aria-label="Gmail account" value={data.accountId} onChange={(e) => pickAcct(e.target.value)}>
+              {data.accounts!.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+            </select>
+          ) : <span>{data.account}</span>}
+        </div>
+      )}
       {!off && (
         <div className="lmail__tabs" role="tablist" aria-label="Gmail view">
           {([['latest', 'Latest'], ['triage', 'Triage'], ['waiting', 'Waiting on you']] as const).map(([k, l]) => (
@@ -190,7 +207,6 @@ function GmailPanel() {
           : data.emails.length === 0 ? <p className="lpanel__mut">Your inbox is empty.</p>
           : (
             <ul className="lpanel__list">
-              {data.account && <li className="lpanel__acct">{data.account}</li>}
               {data.emails.map((e) => (
                 <li key={e.id} className={`lmail${e.unread ? ' is-unread' : ''}`}>
                   <div className="lmail__top"><b>{e.from}</b><span>{ago(e.at)}</span></div>

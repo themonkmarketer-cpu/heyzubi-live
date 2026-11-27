@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Contact, FileText, MessageSquare, Repeat, SquareKanban } from 'lucide-react';
+import { AppWindow, Contact, FileText, MessageSquare, Palette, Repeat, Settings, SquareKanban, X } from 'lucide-react';
 import { BotAvatarFor } from '../../avatar/BotAvatar';
-import { useConfigUI } from '../../configStore';
+import { THEMES, THEME_ORDER, useConfigUI, type MainView } from '../../configStore';
+import { SECTIONS } from '../config/AppSettings';
+import { openPanel } from '../LivePanels';
 import { displayName, useStore } from '../../store';
 import { openClients, useBoardFocus } from '../extras/clientsWindow';
 import { Icon } from '../Icon';
@@ -20,6 +22,17 @@ const GROUPS: { kind: HitKind; label: string; icon: ReactNode }[] = [
 ];
 
 interface Item { key: string; open: () => void; row: (active: boolean, idx: number, hover: () => void) => ReactNode }
+
+/** Everything the dashboard can open, so search finds it by name: views, app windows, settings pages, themes. */
+interface Place { key: string; label: string; sub: string; words?: string; icon: ReactNode; go: () => void }
+const VIEWS: [MainView, string, string][] = [
+  ['chat', 'Chat', 'Back to the chat'], ['board', 'Kanban', 'The board: cards from Ready to Done'], ['tasks', 'Tasks', 'Everything the team is working on'],
+  ['routines', 'Routines', 'Scheduled jobs and reminders'], ['generations', 'Gallery', 'Pictures and videos made'], ['social', 'Reels Factory', 'Reels from idea to post'],
+  ['usage', 'Usage', 'Spend and activity'],
+];
+const WINDOWS: [Parameters<typeof openPanel>[0], string][] = [
+  ['gmail', 'Gmail'], ['calendar', 'Calendar'], ['notion', 'Notion'], ['instagram', 'Instagram'], ['facebook', 'Facebook'], ['linkedin', 'LinkedIn'], ['youtube', 'YouTube'], ['sheets', 'Google Sheets'],
+];
 
 export function SearchModal() {
   const bots = useStore((s) => s.bots);
@@ -54,6 +67,23 @@ export function SearchModal() {
     return () => { clearTimeout(t); ac.abort(); };
   }, [needle]);
 
+  // The dashboard's own places, all of them when the box is empty (so search doubles as a menu), else the ones that match.
+  const places = useMemo<Place[]>(() => {
+    const ui = useConfigUI.getState;
+    const go = (fn: () => void) => () => { fn(); close(); };
+    const list: Place[] = [
+      ...VIEWS.map(([v, label, sub]) => ({ key: `view:${v}`, label, sub, icon: <SquareKanban size={16} strokeWidth={1.8} />, go: go(() => ui().setView(v)) })),
+      ...WINDOWS.map(([k, label]) => ({ key: `win:${k}`, label, sub: `Open the ${label} window`, icon: <AppWindow size={16} strokeWidth={1.8} />, go: go(() => openPanel(k)) })),
+      { key: 'win:whatsapp', label: 'WhatsApp', sub: 'Open the WhatsApp window', icon: <AppWindow size={16} strokeWidth={1.8} />, go: go(() => useStore.setState({ waOpen: true })) },
+      { key: 'win:clients', label: 'Clients', sub: 'Your clients and their notes', icon: <Contact size={16} strokeWidth={1.8} />, go: go(() => openClients(null)) },
+      { key: 'do:hire', label: 'Add a team member', sub: 'Hire a new AI employee', words: 'new bot hire create', icon: <Settings size={16} strokeWidth={1.8} />, go: () => setModal('create') },
+      ...SECTIONS.map((x) => ({ key: `set:${x.id}`, label: x.label, sub: 'Settings', words: 'settings', icon: <Settings size={16} strokeWidth={1.8} />, go: go(() => ui().openAppSettings(x.id)) })),
+      ...THEME_ORDER.map((t) => ({ key: `theme:${t}`, label: `Theme: ${THEMES[t].label}`, sub: THEMES[t].hint, words: 'theme colour color look', icon: <Palette size={16} strokeWidth={1.8} />, go: go(() => ui().setTheme(t)) })),
+    ];
+    const n = needle.toLowerCase();
+    return n ? list.filter((p) => `${p.label} ${p.sub} ${p.words ?? ''}`.toLowerCase().includes(n)) : list;
+  }, [needle, close, setModal]);
+
   const toChat = useCallback((id: string) => { useConfigUI.getState().setView('chat'); selectBot(id); close(); }, [selectBot, close]);
   const openHit = useCallback((h: Hit) => {
     if ((h.kind === 'message' || h.kind === 'routine' || h.kind === 'bot') && h.botId) toChat(h.botId);
@@ -75,6 +105,21 @@ export function SearchModal() {
             <span className="search-row__text">
               <span className="search-row__name">{displayName(b)}</span>
               <span className="search-row__sub">{b.lastPreview ?? (b.description || 'No messages yet')}</span>
+            </span>
+          </button>
+        ),
+      })) });
+    }
+    if (places.length) {
+      out.push({ label: 'Go to', items: places.map((p) => ({
+        key: p.key,
+        open: p.go,
+        row: (on, idx, hover) => (
+          <button key={p.key} type="button" role="option" aria-selected={on} data-idx={idx} className={`search-row${on ? ' is-active' : ''}`} onMouseMove={hover} onClick={p.go}>
+            <span className="search-row__kind" aria-hidden>{p.icon}</span>
+            <span className="search-row__text">
+              <span className="search-row__name">{p.label}</span>
+              <span className="search-row__sub">{p.sub}</span>
             </span>
           </button>
         ),
@@ -103,7 +148,7 @@ export function SearchModal() {
       }) });
     }
     return out;
-  }, [team, hits, needle, toChat, openHit]);
+  }, [team, places, hits, needle, toChat, openHit]);
   const flat = useMemo(() => sections.flatMap((s) => s.items), [sections]);
 
   useEffect(() => setActive(0), [q]);
@@ -121,7 +166,7 @@ export function SearchModal() {
           autoFocus
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search team, chats, Kanban, files, clients…"
+          placeholder="Search team, chats, Kanban, files, clients, settings…"
           aria-label="Search"
           onKeyDown={(e) => {
             if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(a + 1, flat.length - 1)); }
@@ -129,6 +174,7 @@ export function SearchModal() {
             else if (e.key === 'Enter' && flat[active]) { e.preventDefault(); flat[active].open(); }
           }}
         />
+        <button type="button" className="search-modal__close" onClick={close} aria-label="Close search" title="Close (Esc)"><X size={18} strokeWidth={2} /></button>
       </div>
       <div className="search-modal__results" ref={listRef} role="listbox">
         {sections.map((s) => (

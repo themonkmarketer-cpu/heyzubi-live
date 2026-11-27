@@ -121,6 +121,15 @@ export async function zubiGoogleAccounts(fresh = false): Promise<GoogleAccount[]
   return (await zubiAccounts(fresh)).filter((a) => a.toolkit === 'gmail' || a.toolkit === 'googlecalendar');
 }
 const active = (l: GoogleAccount[], tk: GoogleAccount['toolkit']) => l.filter((a) => a.toolkit === tk && /^active$/i.test(a.status));
+/** The account a window asked for (?account=<id>), else Composio's default; and the list to switch between, the shown one first. */
+function pickAccount(accts: GoogleAccount[], want: string | undefined) {
+  const id = /^[\w-]{3,80}$/.test(want ?? '') ? want : '';
+  const a = accts.find((x) => x.id === id) ?? accts.find((x) => x.isDefault) ?? accts[0];
+  const list = accts.map((x) => ({ id: x.id, label: x.label })).sort((x, y) => Number(y.id === a.id) - Number(x.id === a.id) || x.label.localeCompare(y.label));
+  return { a, list };
+}
+/** A Gmail link that opens in the right signed-in account. */
+const gmailUrl = (email: string, hash: string) => `https://mail.google.com/mail/u/0/?authuser=${encodeURIComponent(email)}#${hash}`;
 
 const cache = new Map<string, { at: number; body: unknown }>();
 const TTL = 45_000;
@@ -144,10 +153,10 @@ const who = (s: string) => s.replace(/<[^>]+>/, '').replace(/"/g, '').trim() || 
 panelsApi.get('/gmail', async (c) => {
   const fresh = c.req.query('fresh') === '1';
   try {
-    const body = await cached('gmail', fresh, async () => {
-      const accts = active(await zubiGoogleAccounts(fresh), 'gmail');
-      if (!accts.length) return { connected: false, emails: [] };
-      const a = accts.find((x) => x.isDefault) ?? accts[0];
+    const accts = active(await zubiGoogleAccounts(fresh), 'gmail');
+    if (!accts.length) return c.json({ connected: false, emails: [] });
+    const { a, list } = pickAccount(accts, c.req.query('account'));
+    const body = await cached(`gmail:${a.id}`, fresh, async () => {
       const d = await wtool('GMAIL_FETCH_EMAILS', { query: 'in:inbox', max_results: 5, verbose: false, include_payload: false }, a.id);
       const seen = new Set<string>();
       const emails = (d.messages ?? []).filter((m: any) => !seen.has(m.messageId) && seen.add(m.messageId)).slice(0, 5).map((m: any) => {
@@ -161,7 +170,7 @@ panelsApi.get('/gmail', async (c) => {
           unread: Array.isArray(m.labelIds) ? m.labelIds.includes('UNREAD') : undefined,
         };
       });
-      return { connected: true, account: a.label, accounts: accts.map((x) => x.label), emails };
+      return { connected: true, account: a.label, accountId: a.id, accounts: list, inbox: gmailUrl(a.label, 'inbox'), emails };
     });
     return c.json(body);
   } catch (e) {
@@ -189,10 +198,10 @@ panelsApi.get('/gmail/triage', async (c) => {
   const user = c.get('user').id;
   const vips = getPrefs(user).vips.map((v) => v.toLowerCase());
   try {
-    const body = await cached(`gmail-triage:${vips.join(',')}`, fresh, async () => {
-      const accts = active(await zubiGoogleAccounts(fresh), 'gmail');
-      if (!accts.length) return { connected: false, top: [], waiting: [] };
-      const a = accts.find((x) => x.isDefault) ?? accts[0];
+    const accts = active(await zubiGoogleAccounts(fresh), 'gmail');
+    if (!accts.length) return c.json({ connected: false, top: [], waiting: [] });
+    const { a } = pickAccount(accts, c.req.query('account'));
+    const body = await cached(`gmail-triage:${a.id}:${vips.join(',')}`, fresh, async () => {
       const me = a.label.toLowerCase();
       const fetch = (query: string, n: number) => wtool('GMAIL_FETCH_EMAILS', { query, max_results: n, verbose: false, include_payload: false }, a.id).then((d) => (d.messages ?? []) as any[]);
       const [inbox, sent] = await Promise.all([fetch('in:inbox newer_than:14d', 40), fetch('in:sent newer_than:90d', 60)]);
@@ -222,7 +231,7 @@ panelsApi.get('/gmail/triage', async (c) => {
           id, thread: str(m.threadId), from: clip(who(str(m.sender)), 60), email, subject: clip(unescape(str(m.subject) || '(no subject)'), 120),
           snippet: clip(unescape(str((typeof pv === 'object' ? pv?.body : pv) ?? m.messageText)).replace(/\s+/g, ' ').trim(), 160),
           at: Date.parse(str(m.messageTimestamp)) || 0, score, why,
-          link: /^[\w-]{6,40}$/.test(str(m.threadId)) ? `https://mail.google.com/mail/u/0/#inbox/${str(m.threadId)}` : 'https://mail.google.com/mail/u/0/#inbox',
+          link: gmailUrl(a.label, /^[\w-]{6,40}$/.test(str(m.threadId)) ? `inbox/${str(m.threadId)}` : 'inbox'),
         });
       }
       const top = mails.filter((x) => x.score > 0).sort((x, y) => y.score - x.score || y.at - x.at).slice(0, 8);

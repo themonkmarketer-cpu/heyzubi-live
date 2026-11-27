@@ -24,6 +24,7 @@ function builtLabel(build: string): string {
  */
 function useRelease() {
   const [state, setState] = useState<State>('checking');
+  const [next, setNext] = useState('');
   const busy = useRef(false);
   const check = useCallback(async (manual = false) => {
     if (RUNNING === 'dev' || busy.current) return;
@@ -34,7 +35,9 @@ function useRelease() {
       const r = await fetch('/api/version', { cache: 'no-store', credentials: 'same-origin' });
       if (!r.ok) throw new Error(String(r.status));
       const { build } = await r.json();
-      setState(typeof build === 'string' && build && build !== RUNNING ? 'ready' : 'current');
+      const fresh = typeof build === 'string' && build && build !== RUNNING;
+      if (fresh) setNext(build);
+      setState(fresh ? 'ready' : 'current');
     } catch {
       setState((s) => (s === 'ready' ? s : 'offline')); // the server is restarting: the next check will tell
     } finally {
@@ -53,7 +56,16 @@ function useRelease() {
     window.addEventListener('online', onShow);
     return () => { clearInterval(t); document.removeEventListener('visibilitychange', onShow); window.removeEventListener('focus', onShow); window.removeEventListener('online', onShow); };
   }, [check]);
-  return { state, check };
+  return { state, check, next };
+}
+
+/** Set just before the reload an update does, so the new page can say it was updated (for 2 minutes). */
+const UPDATED_KEY = 'hz.updatedAt';
+function justUpdated(): boolean {
+  try {
+    const t = Number(sessionStorage.getItem(UPDATED_KEY));
+    return !!t && Date.now() - t < 120_000;
+  } catch { return false; }
 }
 
 const RefreshIcon = ({ size = 16 }: { size?: number }) => (
@@ -64,21 +76,28 @@ const RefreshIcon = ({ size = 16 }: { size?: number }) => (
 
 /** The sidebar's Updates line: always there (quiet when up to date), "Update ready" when a new release is out. */
 export function UpdateRow({ collapsed }: { collapsed: boolean }) {
-  const { state, check } = useRelease();
+  const { state, check, next } = useRelease();
   const [updating, setUpdating] = useState(false);
+  const [updated, setUpdated] = useState(justUpdated);
+  useEffect(() => {
+    if (!updated) return;
+    const t = setTimeout(() => { setUpdated(false); try { sessionStorage.removeItem(UPDATED_KEY); } catch { /* fine */ } }, 120_000);
+    return () => clearTimeout(t);
+  }, [updated]);
   if (RUNNING === 'dev') return null;
   const built = builtLabel(RUNNING);
 
   if (state === 'ready' || updating) {
-    const update = () => { setUpdating(true); location.reload(); };
+    const update = () => { setUpdating(true); try { sessionStorage.setItem(UPDATED_KEY, String(Date.now())); } catch { /* fine */ } location.reload(); };
+    const when = builtLabel(next);
     return (
       <button type="button" className={`update-row${collapsed ? ' is-collapsed' : ''}`} onClick={update} disabled={updating}
-        title="A new version of HeyZubi is out. Update reloads the app; your chats and running work carry on." aria-label="Update HeyZubi to the new version">
+        title={`A new version of HeyZubi is out${when ? ` (released ${when})` : ''}. Update reloads the app; your chats and running work carry on.`} aria-label={`Update HeyZubi to the version released ${when || 'now'}`}>
         <span className="update-row__icon"><RefreshIcon /><span className="update-row__dot" /></span>
         {!collapsed && (
           <span className="update-row__text">
             <span className="update-row__title">{updating ? 'Updating…' : 'Update ready'}</span>
-            <span className="update-row__sub">A new version of HeyZubi is out</span>
+            <span className="update-row__sub">{when ? `New version · released ${when}` : 'A new version of HeyZubi is out'}</span>
           </span>
         )}
         {!collapsed && !updating && <span className="update-row__go">Update</span>}
@@ -88,9 +107,9 @@ export function UpdateRow({ collapsed }: { collapsed: boolean }) {
 
   // Up to date, checking or not reachable: a quiet line, like Vello's. In the narrow sidebar it stays out of the way.
   if (collapsed) return null;
-  const text = state === 'checking' ? 'Checking for updates…' : state === 'offline' ? "Couldn't check for updates" : 'Up to date';
+  const text = updated && state !== 'checking' ? 'Updated · now running' : state === 'checking' ? 'Checking for updates…' : state === 'offline' ? "Couldn't check for updates" : 'Up to date';
   return (
-    <button type="button" className={`update-line${state === 'checking' ? ' is-checking' : ''}`} onClick={() => void check(true)}
+    <button type="button" className={`update-line${state === 'checking' ? ' is-checking' : ''}${updated ? ' is-updated' : ''}`} onClick={() => void check(true)}
       title={`HeyZubi ${built ? `released ${built}` : RUNNING}. Click to check for a new version.`}>
       <RefreshIcon size={13} />
       <span className="update-line__text">{text}</span>

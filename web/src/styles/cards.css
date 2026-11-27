@@ -110,3 +110,28 @@
 .file-card__text { display: flex; flex-direction: column; min-width: 0; }
 .file-card__name { font-size: 14px; font-weight: 500; line-height: 20px; color: var(--color-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-card__meta { font-size: 12.5px; line-height: 17px; color: var(--color-text-tertiary); }
+
+/* Telegram in a team member's side panel: where it stands and a button that opens the setup window */
+.tg-side { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.tg-side__status { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-text-primary); }
+.tg-side__status a { color: var(--color-primary); }
+.tg-side__status.is-off { color: var(--color-text-tertiary); }
+.tg-side__btn { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 14px; border-radius: 10px; font-size: 13px; font-weight: 600;
+  color: var(--color-text-primary); background: var(--color-bg-elevated); border: 1px solid var(--color-border-secondary); }
+.tg-side__btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
+
+/* The Telegram bot setup window (TelegramWindow.tsx): floats, drags by its title bar, resizes from the corner */
+.tgw { position: fixed; z-index: 62; display: flex; flex-direction: column; overflow: hidden; border-radius: 16px;
+  background: var(--color-bg-elevated); color: var(--color-text-primary); border: 1px solid var(--color-border-secondary); box-shadow: var(--shadow-modal);
+  animation: waw-in 180ms var(--ease-out); }
+.tgw__head { display: flex; align-items: center; gap: 8px; padding: 10px 8px 10px 14px; cursor: move; user-select: none; touch-action: none;
+  background: var(--color-bg-chrome); border-bottom: 1px solid var(--color-border-tertiary); }
+.tgw__head b { font-size: 14px; }
+.tgw__head span { flex: 1; min-width: 0; font-size: 12.5px; color: var(--color-text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tgw__head button { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; font-size: 18px; color: var(--color-text-secondary); }
+.tgw__head button:hover { background: var(--color-bg-hover); color: var(--color-text-primary); }
+.tgw__body { flex: 1; min-height: 0; overflow: auto; padding-bottom: 12px; }
+.tg-setup--window .tg-setup__body { align-items: center; }
+.tg-setup--window .tg-setup__video { width: min(100%, 280px); }
+.tg-setup--window .tg-setup__side { align-items: center; text-align: center; }
+.tg-setup--window .tg-setup__watch { align-self: center; }

@@ -17,7 +17,7 @@
 
 /* How strongly each theme tints: pale and cool on Pearl, warm on Sand, dark tinted surfaces (not pastel) on Obsidian. */
 .kb-view { --kb-tint: 6%; --kb-col-base: var(--color-bg-chrome); --kb-col-line: color-mix(in srgb, var(--kb-hue, #888) 10%, var(--color-border-tertiary)); }
-:root[data-palette='sand'] .kb-view { --kb-tint: 7%; }
+:root[data-palette='sandstone'] .kb-view { --kb-tint: 7%; }
 :root[data-theme='dark'] .kb-view { --kb-tint: 7%; --kb-col-base: var(--color-bg-pane); --kb-col-line: var(--color-border-tertiary); }
 
 /* ---------- shell: board, and the drawer beside it ---------- */

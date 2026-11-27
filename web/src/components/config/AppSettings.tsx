@@ -7,7 +7,7 @@ import { api, type Webhook, type WebhookInput } from '../../lib/api';
 import { relativeShort } from '../../lib/time';
 import { notifyEnabled, notifySupported, setNotify } from '../../lib/notify';
 import { backgroundOf, byId, customUrl, useWallpaper } from '../../lib/wallpapers';
-import { useConfigUI, type AppSection, type Theme } from '../../configStore';
+import { THEMES, THEME_ORDER, useConfigUI, type AppSection, type Theme } from '../../configStore';
 import { useStore } from '../../store';
 import { computerStatusText } from '../DetailsPanel';
 import { Icon } from '../Icon';
@@ -21,7 +21,7 @@ import { removePhoto, saveDisplayName, uploadPhoto } from '../../lib/profile';
 import type { XaiUsage } from '../../voice/api';
 import { AccessMapBody, AskZubiButton, DeletedBody, DemoLanguageSettings, SharesBody } from './ExtrasSettings';
 
-const SECTIONS: { id: AppSection; label: string }[] = [
+export const SECTIONS: { id: AppSection; label: string }[] = [
   { id: 'status', label: 'Status' },
   { id: 'usage', label: 'Usage' },
   { id: 'products', label: 'Products' },
@@ -120,18 +120,9 @@ function GeneralSection() {
       <section className="cfg-section">
         <div className="cfg-section__label">Theme</div>
         <div className="theme-tiles" role="radiogroup" aria-label="Theme">
-          <ThemeTile value="system" label="System" current={theme} onPick={setTheme} />
-          <ThemeTile value="pearl" label="Pearl" current={theme} onPick={setTheme} />
-          <ThemeTile value="sand" label="Sand" current={theme} onPick={setTheme} />
-          <ThemeTile value="obsidian" label="Obsidian" current={theme} onPick={setTheme} />
+          {THEME_ORDER.map((t) => <ThemeTile key={t} value={t} label={t === 'dark' ? 'Legacy dark' : THEMES[t].label} current={theme} onPick={setTheme} />)}
         </div>
-        <div className="cfg-field__hint">Pearl is clean and neutral, Sand warm and quiet, Obsidian a calm dark. System follows your device: Pearl by day, Obsidian at night.</div>
-        <div className="cfg-section__label theme-group__label">Legacy</div>
-        <div className="theme-tiles theme-tiles--legacy" role="radiogroup" aria-label="Legacy theme">
-          <ThemeTile value="light" label="Legacy light" current={theme} onPick={setTheme} />
-          <ThemeTile value="dark" label="Legacy dark" current={theme} onPick={setTheme} />
-          <ThemeTile value="navy" label="Navy" current={theme} onPick={setTheme} />
-        </div>
+        <div className="cfg-field__hint">Legacy dark is the default. {THEME_ORDER.filter((t) => t !== 'dark').map((t) => `${THEMES[t].label}: ${THEMES[t].hint.toLowerCase()}`).join(' · ')}.</div>
       </section>
       <ChatWallpaperSetting />
       <NotificationsSetting />

@@ -6,20 +6,22 @@ import { lsGet, lsSet } from './lib/storage';
 /** UI state for bot settings, app settings, the Tasks view and the theme. Kept apart from store.ts on purpose. */
 
 /**
- * Pearl and Sand (light) and Obsidian (dark) are the current themes; System follows the device with Pearl or Obsidian.
- * 'light', 'dark' and 'navy' are the earlier purple look, kept as the Legacy themes.
+ * Legacy dark (the earlier purple look) is the default. Midnight and Forest (dark), Sandstone and Silver (light) are
+ * palettes on the same light or dark base (themes.css). An older saved theme (Pearl, Sand, Obsidian, Navy, Legacy
+ * light, System) falls back to Legacy dark.
  */
-export type Theme = 'system' | 'pearl' | 'sand' | 'obsidian' | 'light' | 'dark' | 'navy';
+export type Theme = 'dark' | 'midnight' | 'forest' | 'sandstone' | 'silver';
+export const DEFAULT_THEME: Theme = 'dark';
 
 /** How each theme is built from the stylesheets: a light or dark base, an optional palette, and the refreshed look. */
-export const THEMES: Record<Exclude<Theme, 'system'>, { base: 'light' | 'dark'; palette?: string; refresh?: boolean; label: string }> = {
-  pearl: { base: 'light', palette: 'pearl', refresh: true, label: 'Pearl' },
-  sand: { base: 'light', palette: 'sand', refresh: true, label: 'Sand' },
-  obsidian: { base: 'dark', palette: 'obsidian', refresh: true, label: 'Obsidian' },
-  light: { base: 'light', label: 'Legacy light' },
-  dark: { base: 'dark', label: 'Legacy dark' },
-  navy: { base: 'dark', palette: 'navy', label: 'Navy' },
+export const THEMES: Record<Theme, { base: 'light' | 'dark'; palette?: string; refresh?: boolean; label: string; hint: string }> = {
+  dark: { base: 'dark', label: 'Legacy dark', hint: 'The original HeyZubi purple dark' },
+  midnight: { base: 'dark', palette: 'midnight', refresh: true, label: 'Midnight', hint: 'Deep navy' },
+  forest: { base: 'dark', palette: 'forest', refresh: true, label: 'Forest', hint: 'Deep green to mint' },
+  sandstone: { base: 'light', palette: 'sandstone', refresh: true, label: 'Sandstone', hint: 'Warm cream' },
+  silver: { base: 'light', palette: 'silver', refresh: true, label: 'Silver', hint: 'Quiet greys' },
 };
+export const THEME_ORDER: Theme[] = ['dark', 'midnight', 'forest', 'sandstone', 'silver'];
 export type BotSettingsTab = 'general' | 'profile' | 'skills' | 'memories' | 'routines';
 export type AppSection = 'status' | 'usage' | 'products' | 'pointer' | 'dictation' | 'general' | 'teams' | 'computer' | 'permissions' | 'apps' | 'api' | 'desktop' | 'account' | 'access' | 'deleted' | 'shares';
 export type MainView = 'chat' | 'tasks' | 'generations' | 'board' | 'routines' | 'social' | 'usage';
@@ -43,13 +45,11 @@ interface ConfigUI {
 const LS_THEME = 'theme';
 const readTheme = (): Theme => {
   const t = lsGet(LS_THEME);
-  return t && t !== 'system' && t in THEMES ? (t as Theme) : 'system';
+  return t && t in THEMES ? (t as Theme) : DEFAULT_THEME;
 };
 
-const darkQuery = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
-
-/** The theme actually shown: System picks Pearl or Obsidian from the device setting. */
-export const resolveTheme = (t: Theme): Exclude<Theme, 'system'> => (t === 'system' ? (darkQuery?.matches ? 'obsidian' : 'pearl') : t);
+/** The theme actually shown (every theme is shown as it is). */
+export const resolveTheme = (t: Theme): Theme => (t in THEMES ? t : DEFAULT_THEME);
 
 /**
  * Sets the page's theme attributes: data-theme (the light or dark base every rule keys on), data-palette (the
@@ -84,9 +84,8 @@ export const useConfigUI = create<ConfigUI>((set, get) => ({
   bump: (key) => set({ versions: { ...get().versions, [key]: (get().versions[key] ?? 0) + 1 } }),
 }));
 
-// Apply the saved theme as early as possible, and follow the OS while on "system".
+// Apply the saved theme as early as possible.
 applyTheme(readTheme());
-darkQuery?.addEventListener?.('change', () => { if (useConfigUI.getState().theme === 'system') applyTheme('system'); });
 
 // store.ts forwards events it doesn't handle itself as a DOM event.
 window.addEventListener('heyzubi:event', (e) => {

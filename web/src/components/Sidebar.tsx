@@ -1,5 +1,5 @@
 import { memo, useCallback, useState } from 'react';
-import { THEMES, useConfigUI, type Theme } from '../configStore';
+import { THEMES, THEME_ORDER, useConfigUI, type Theme } from '../configStore';
 import { TasksIsland } from './config/TasksView';
 import { RoutinesIsland } from './config/RoutinesView';
 import type { Bot } from '@shared/types';
@@ -35,8 +35,8 @@ function ThemeButton() {
   const theme = useConfigUI((s) => s.theme);
   const setTheme = useConfigUI((s) => s.setTheme);
   const [open, setOpen] = useState(false);
-  const order: Theme[] = ['system', 'pearl', 'sand', 'obsidian', 'light', 'dark', 'navy'];
-  const label = (t: Theme) => (t === 'system' ? 'System (Pearl or Obsidian)' : THEMES[t].label);
+  const order: Theme[] = THEME_ORDER;
+  const label = (t: Theme) => (t === 'dark' ? 'Legacy dark (default)' : THEMES[t].label);
   return (
     <span className="theme-btn">
       <button type="button" className="icon-btn icon-btn--plain" onClick={() => setOpen(!open)} aria-haspopup="menu" aria-expanded={open}
