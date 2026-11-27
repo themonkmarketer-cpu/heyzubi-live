@@ -62,7 +62,7 @@ const RefreshIcon = ({ size = 16 }: { size?: number }) => (
   </svg>
 );
 
-/** The sidebar's Updates line: always there (quiet when up to date), "Crucial updates" (blinking) when a new release is out. */
+/** The sidebar's Updates line: always there (quiet when up to date), "Update ready" when a new release is out. */
 export function UpdateRow({ collapsed }: { collapsed: boolean }) {
   const { state, check } = useRelease();
   const [updating, setUpdating] = useState(false);
@@ -72,13 +72,13 @@ export function UpdateRow({ collapsed }: { collapsed: boolean }) {
   if (state === 'ready' || updating) {
     const update = () => { setUpdating(true); location.reload(); };
     return (
-      <button type="button" className={`update-row is-crucial${collapsed ? ' is-collapsed' : ''}`} onClick={update} disabled={updating}
-        title="A new version of HeyZubi is out. Update reloads the app; your chats and running work carry on." aria-label="Crucial updates: update HeyZubi to the new version">
+      <button type="button" className={`update-row${collapsed ? ' is-collapsed' : ''}`} onClick={update} disabled={updating}
+        title="A new version of HeyZubi is out. Update reloads the app; your chats and running work carry on." aria-label="Update HeyZubi to the new version">
         <span className="update-row__icon"><RefreshIcon /><span className="update-row__dot" /></span>
         {!collapsed && (
           <span className="update-row__text">
-            <span className="update-row__title">{updating ? 'Updating…' : 'Crucial updates'}</span>
-            <span className="update-row__sub">A new version of HeyZubi is out: update now</span>
+            <span className="update-row__title">{updating ? 'Updating…' : 'Update ready'}</span>
+            <span className="update-row__sub">A new version of HeyZubi is out</span>
           </span>
         )}
         {!collapsed && !updating && <span className="update-row__go">Update</span>}
