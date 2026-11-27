@@ -510,8 +510,21 @@ async function whatsapp(t: Tab, j: Job): Promise<Posted> {
   await t.click(COMPOSE, { scroll: false });
   await t.send('Input.insertText', { text: cap });
   await sleep(1200);
-  const c = await t.ev((c: string) => ({ cap: (document.querySelector<HTMLElement>(c)?.innerText ?? '').trim(), send: document.querySelectorAll('[aria-label="Send 1 selected"]').length, aud: [...document.querySelectorAll<HTMLElement>('button,[role=button]')].map((e) => (e.innerText ?? '').trim()).filter((x) => /^Status \([^)]*\)$/.test(x)) }), COMPOSE);
-  const ok = same(c.cap, cap) && c.send === 1 && c.aud.length === 1 && c.aud[0] === 'Status (Contacts)';
+  // The audience chip reads "Status" at first and gains "(Contacts)" once WhatsApp has loaded the privacy setting
+  // (27 Nov 2026: Ep 15 failed at 05:28 on a plain "Status"). Wait up to 20 s for it; a plain "Status" chip still
+  // means My Status and is accepted, any other audience ("Status (Excluded 3)", "Status (Only share with 5)") is not.
+  // Only the composer's own panel is read (the nearest ancestor that holds no chat list), never the left rail's Status button.
+  const AUD_OK = ['Status (Contacts)', 'Status'];
+  const read1 = () => t.ev((c: string) => {
+    const box = document.querySelector<HTMLElement>(c);
+    let root: HTMLElement | null = box;
+    while (root?.parentElement && root.parentElement !== document.body && !root.parentElement.querySelector('#pane-side')) root = root.parentElement;
+    const aud = root ? [...root.querySelectorAll<HTMLElement>('button,[role=button]')].filter((e) => !e.hasAttribute('aria-pressed')).map((e) => (e.innerText ?? '').trim()).filter((x) => /^Status(?: \([^)]*\))?$/.test(x)) : [];
+    return { cap: (box?.innerText ?? '').trim(), send: document.querySelectorAll('[aria-label="Send 1 selected"]').length, aud };
+  }, COMPOSE);
+  let c = await read1();
+  for (let i = 0; i < 20 && !c.aud.includes('Status (Contacts)'); i++) { await sleep(1000); c = await read1(); }
+  const ok = same(c.cap, cap) && c.send === 1 && c.aud.length === 1 && AUD_OK.includes(c.aud[0]);
   // The composer fills the window now, so this picture shows only the post.
   const rel = `review/posting-whatsapp.jpg`, shot = await t.shot(j.ep ? epFile(j.ep, rel) : path.join(j.dir, 'posting-whatsapp.jpg')).then(() => rel, () => undefined);
   const discard = async () => { await t.click('[aria-label="Close"]', { scroll: false }).catch(() => {}); await sleep(900); await t.click('button,[role=button]', { text: 'Discard', scroll: false, seconds: 5 }).catch(() => {}); };
@@ -527,7 +540,7 @@ async function whatsapp(t: Tab, j: Job): Promise<Posted> {
   let row = '';
   for (let i = 0; i < 90; i++) { await sleep(2000); row = await mine(); if (row && row !== before && !/Sending|Click to add/i.test(row) && /Today|now|minute/i.test(row)) break; }
   if (!/Today|now|minute/i.test(row) || /Sending/i.test(row)) throw new ReelError(`Send was pressed once, but My status doesn’t show it yet (“${row || 'nothing'}”). It is not sent again: look at My status on your phone.`);
-  return { status: 'scheduled', shot, note: `Posted to My Status (Contacts); My status shows “${row}”.` };
+  return { status: 'scheduled', shot, note: `Posted to My Status (audience chip “${c.aud[0]}”); My status shows “${row}”.` };
 }
 const DO: Record<Platform, (t: Tab, j: Job) => Promise<Posted>> = { instagram, facebook, youtube, whatsapp };
 
