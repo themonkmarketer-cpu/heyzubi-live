@@ -3,6 +3,7 @@ import { primaryBotId } from './engine.js';
 import { kanban } from './hermes-kanban.js';
 import { appendRow, emitBot, getBotRow } from './store.js';
 import { enqueue, isBotBusy } from './agent/loop.js';
+import { screenForWork } from './computer.js';
 
 /**
  * Keeps the board moving while the owner is busy (checked every 15 minutes, on Hermes's own board):
@@ -92,4 +93,27 @@ export function initKanbanWatch() {
   };
   setTimeout(run, 3 * 60_000).unref?.();
   setInterval(run, 15 * 60_000).unref?.();
+  // Board runs go straight from Hermes's dispatcher to the bot, not through a chat turn, so nothing else makes sure the
+  // bot's screen and browser are up (after this server restarts they are not). Checked often, and cheap: a lookup and,
+  // per bot with work, one quick question to its browser.
+  setInterval(() => { void boardScreens().catch(() => {}); }, 20_000).unref?.();
+}
+
+let screensBusy = false;
+/** Get the screen and browser ready for every team member with a card in Ready or Running, or next after a running one. */
+async function boardScreens() {
+  if (screensBusy) return;
+  screensBusy = true;
+  try {
+    const board = await kanban<any>('board', {});
+    const cards: Card[] = ((board.columns ?? []) as any[]).flatMap((c) => (c.tasks ?? []) as Card[]);
+    const busyIds = new Set(cards.filter((c) => c.status === 'running').map((c) => c.id));
+    const links = busyIds.size ? (((await kanban<any>('links', {}).catch(() => ({ links: [] }))).links ?? []) as [string, string][]) : [];
+    const next = new Set(links.filter(([p]) => busyIds.has(p)).map(([, c]) => c));
+    const profiles = new Set(cards.filter((c) => c.assignee && (c.status === 'ready' || c.status === 'running' || (c.status === 'todo' && next.has(c.id)))).map((c) => c.assignee as string));
+    for (const p of profiles) {
+      const b = db.prepare("SELECT id, user_id FROM bots WHERE hermes_profile=? AND engine='managed' AND deleted_at IS NULL").get(p) as { id: string; user_id: string } | undefined;
+      if (b) await screenForWork(b.user_id, b.id).catch((e) => console.warn(`[kanban-watch] screen for ${p}: ${(e as Error)?.message ?? e}`));
+    }
+  } finally { screensBusy = false; }
 }
