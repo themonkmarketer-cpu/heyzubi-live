@@ -60,3 +60,36 @@
 .fgrip:hover { opacity: 1; }
 /* In a window that scrolls (the app windows), the corner stays at the bottom of what's in view. */
 .fgrip--sticky { position: sticky; align-self: flex-end; flex-shrink: 0; right: auto; bottom: 2px; margin: -26px -4px 0 0; }
+
+/*
+ * Scrollbars inside floating windows (the app windows, WhatsApp, the Telegram setup window, dialogs): a slim rounded
+ * thumb in the theme's text colour on a clear track, faint until the window is hovered, no arrow buttons.
+ * Chrome, Edge and Safari use the -webkit- rules (they'd ignore them if scrollbar-color were set); Firefox the standard ones.
+ */
+:root :is(.lpanels.is-floating, .waw, .tgw, .modal) ::-webkit-scrollbar,
+:root :is(.lpanels.is-floating, .waw, .tgw, .modal)::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
+:root :is(.lpanels.is-floating, .waw, .tgw, .modal) ::-webkit-scrollbar-track,
+:root :is(.lpanels.is-floating, .waw, .tgw, .modal)::-webkit-scrollbar-track { background: transparent; }
+:root :is(.lpanels.is-floating, .waw, .tgw, .modal) ::-webkit-scrollbar-thumb,
+:root :is(.lpanels.is-floating, .waw, .tgw, .modal)::-webkit-scrollbar-thumb {
+  border: 3px solid transparent; border-radius: 999px; background-clip: padding-box;
+  background-color: color-mix(in srgb, var(--color-text-primary) 14%, transparent);
+}
+:root :is(.lpanels.is-floating, .waw, .tgw, .modal):hover ::-webkit-scrollbar-thumb,
+:root :is(.lpanels.is-floating, .waw, .tgw, .modal):hover::-webkit-scrollbar-thumb { background-color: color-mix(in srgb, var(--color-text-primary) 28%, transparent); }
+:root :is(.lpanels.is-floating, .waw, .tgw, .modal) ::-webkit-scrollbar-thumb:hover,
+:root :is(.lpanels.is-floating, .waw, .tgw, .modal)::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--color-text-primary) 42%, transparent); }
+:root :is(.lpanels.is-floating, .waw, .tgw, .modal) ::-webkit-scrollbar-button,
+:root :is(.lpanels.is-floating, .waw, .tgw, .modal)::-webkit-scrollbar-button,
+:root :is(.lpanels.is-floating, .waw, .tgw, .modal) ::-webkit-scrollbar-corner { display: none; background: transparent; }
+@supports (-moz-appearance: none) {
+  :root :is(.lpanels.is-floating, .waw, .tgw, .modal), :root :is(.lpanels.is-floating, .waw, .tgw, .modal) * {
+    scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--color-text-primary) 24%, transparent) transparent;
+  }
+}
+/* Chrome only draws the -webkit- scrollbar where scrollbar-width/color are not set, so inside floating windows they are reset
+   (lists that hide their scrollbar on purpose, like the Notion view tabs, keep hiding it). */
+@supports selector(::-webkit-scrollbar) {
+  :root :is(.lpanels.is-floating, .waw, .tgw, .modal), :root :is(.lpanels.is-floating, .waw, .tgw, .modal) *:not(.nviews) { scrollbar-width: auto; scrollbar-color: auto; }
+  :root :is(.lpanels.is-floating, .waw, .tgw, .modal) .nviews::-webkit-scrollbar { display: none; }
+}

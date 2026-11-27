@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type { Bot } from '@shared/types';
 import { kanbanApi, type KanbanCard, type KanbanCardPatch, type KanbanTaskDetail, type KanbanWorkflow } from '../../lib/kanbanApi';
+import { createPortal } from 'react-dom';
+import { ArrowLeft } from 'lucide-react';
 import { Icon } from '../Icon';
+import { Modal } from '../modals/Modal';
 import { Attachments } from './Attachments';
 import { ConfirmDialog } from './BoardDialogs';
 import { agentState } from './TaskCard';
@@ -42,6 +45,8 @@ interface Props {
 
 export function TaskDrawer({ board, id, version, workflow, bots, who, assignees, onClose, onMove, onChanged }: Props) {
   const [detail, setDetail] = useState<KanbanTaskDetail | null>(null);
+  // A run report, shown inside the app (it used to open as its own page, which in the Windows app had no way back).
+  const [report, setReport] = useState<{ url: string; title: string } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Values | null>(null);
   const base = useRef<Values | null>(null); // Hermes's value when this drawer last agreed with it, per field
@@ -135,7 +140,7 @@ export function TaskDrawer({ board, id, version, workflow, bots, who, assignees,
   }, [write, onClose]);
 
   const onKey = (e: ReactKeyboardEvent) => {
-    if (e.key === 'Escape' && !confirm && !conflict && !discard) { e.preventDefault(); void requestClose(); }
+    if (e.key === 'Escape' && !confirm && !conflict && !discard && !report) { e.preventDefault(); void requestClose(); }
   };
 
   const addComment = async () => {
@@ -233,8 +238,8 @@ export function TaskDrawer({ board, id, version, workflow, bots, who, assignees,
             {!!t.consecutive_failures && t.last_failure_error && lastRun?.error !== t.last_failure_error && <div className="kb-run__err">{t.last_failure_error}</div>}
             {runs.length > 0 && (
               <div className="kb-reports">
-                <a href={kanbanApi.reportUrl(board, t.id)} target="_blank" rel="noreferrer noopener">Full report</a>
-                {runs.slice(0, 6).map((r) => <a key={r.id} href={kanbanApi.reportUrl(board, t.id, r.id)} target="_blank" rel="noreferrer noopener" title={`${r.outcome || r.status || 'running'} · ${when(r.started_at)}`}>Run {r.id}{r.profile ? ` · ${who(r.profile)}` : ''}{/fail|error|crash|gave_up|reclaim/i.test(`${r.outcome} ${r.status}`) ? ' (failed)' : ''}</a>)}
+                <a href={kanbanApi.reportUrl(board, t.id)} target="_blank" rel="noreferrer noopener" onClick={(e) => { if (e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey) { e.preventDefault(); setReport({ url: kanbanApi.reportUrl(board, t.id), title: 'Full report' }); } }}>Full report</a>
+                {runs.slice(0, 6).map((r) => <a key={r.id} href={kanbanApi.reportUrl(board, t.id, r.id)} target="_blank" rel="noreferrer noopener" onClick={(e) => { if (e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey) { e.preventDefault(); setReport({ url: kanbanApi.reportUrl(board, t.id, r.id), title: `Run ${r.id}` }); } }} title={`${r.outcome || r.status || 'running'} · ${when(r.started_at)}`}>Run {r.id}{r.profile ? ` · ${who(r.profile)}` : ''}{/fail|error|crash|gave_up|reclaim/i.test(`${r.outcome} ${r.status}`) ? ' (failed)' : ''}</a>)}
               </div>
             )}
           </section>
@@ -301,6 +306,7 @@ export function TaskDrawer({ board, id, version, workflow, bots, who, assignees,
         <ConfirmDialog title="Close without saving?" lines={[`Hermes didn’t save your ${dirty.map((f) => FIELD_NAME[f]).join(' and ') || 'changes'}. Closing drops them.`]} action="Close anyway"
           onCancel={() => setDiscard(false)} onConfirm={() => { setDiscard(false); onClose(); }} />
       )}
+      {report && createPortal(<ReportViewer url={report.url} title={`${detail?.task?.title ?? 'Card'} · ${report.title}`} onClose={() => setReport(null)} />, document.body)}
     </aside>
   );
 }
@@ -312,5 +318,20 @@ function LinkRow({ id, row, workflow }: { id: string; row?: { title: string; sta
       <span className="kb-status" data-s={row?.status}>{col?.label ?? row?.status ?? '?'}</span>
       <span className="kb-link__title">{row?.title ?? id}</span>
     </div>
+  );
+}
+
+/** A card's run report inside the app: ← Back (or Esc, or a click outside) returns to the board; it can still open in a tab. */
+function ReportViewer({ url, title, onClose }: { url: string; title: string; onClose: () => void }) {
+  return (
+    <Modal onClose={onClose} className="report-viewer" label={title}>
+      <div className="report-viewer__head">
+        <button type="button" className="report-viewer__back" onClick={onClose}><ArrowLeft size={14} strokeWidth={2} aria-hidden /> Back to the board</button>
+        <span className="report-viewer__title">{title}</span>
+        <a className="report-viewer__tab" href={url} target="_blank" rel="noreferrer noopener">Open in new tab</a>
+        <button type="button" className="report-viewer__x" onClick={onClose} aria-label="Close report" title="Close (Esc)">×</button>
+      </div>
+      <iframe className="report-viewer__frame" src={url} title={title} />
+    </Modal>
   );
 }

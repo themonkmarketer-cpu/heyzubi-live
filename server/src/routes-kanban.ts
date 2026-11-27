@@ -226,7 +226,8 @@ ${runHtml || '<p class="sub">No run yet: no team member has worked on this card.
 ${comments ? `<h3>Comments</h3><ul>${comments}</ul>` : ''}
 ${log.trim() ? `<h3>End of the worker's log</h3><pre class="log">${esc(log.slice(-30000))}</pre>` : ''}
 </body></html>`;
-  return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox", 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, no-store' } });
+  return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8', // Shown inside HeyZubi itself (the board's report viewer), so only this app may frame it.
+'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox; frame-ancestors 'self'", 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, no-store' } });
 });
 
 // ---------- the prep assistant ----------
