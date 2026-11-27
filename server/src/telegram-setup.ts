@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { db } from './db.js';
 import { requireUser, rateLimit, type AuthVars } from './lib/auth.js';
 import { engineEnvValues, engineKind, primaryBotId, primaryEnvValue, readEngineEnv, restartEngineAndWait, setEngineEnv } from './engine.js';
-import { getBotRow, updateRow } from './store.js';
+import { appendRow, getBotRow, updateRow } from './store.js';
 import type { TelegramState } from './types.js';
 
 /**
@@ -60,9 +60,10 @@ export async function telegramState(botId: string): Promise<TelegramState> {
 }
 
 /** The teammate card(s) in Zubi's chat for this member: record the Telegram step (only the @username). */
-function markCards(botId: string, telegram: { status: 'connected' | 'skipped'; username?: string }) {
+function markCards(botId: string, telegram: { status: 'connected' | 'skipped'; username?: string }): boolean {
   const zubi = primaryBotId();
-  if (!zubi || zubi === botId) return;
+  if (!zubi || zubi === botId) return false;
+  let found = false;
   const rows = db.prepare("SELECT seq, body FROM rows WHERE bot_id=? AND generation=(SELECT generation FROM bots WHERE id=?) AND kind='card' AND body LIKE ? ORDER BY seq DESC LIMIT 5")
     .all(zubi, zubi, `%"teammateId":"${botId}"%`) as { seq: number; body: string }[];
   for (const r of rows) {
@@ -70,7 +71,9 @@ function markCards(botId: string, telegram: { status: 'connected' | 'skipped'; u
     try { body = JSON.parse(r.body); } catch { continue; }
     if (body?.card !== 'teammate' || body.teammateId !== botId) continue;
     updateRow(zubi, r.seq, { ...body, telegram });
+    found = true;
   }
+  return found;
 }
 
 export const telegramApi = new Hono<AuthVars>();
@@ -126,7 +129,14 @@ telegramApi.post('/:id', async (c) => {
   // opened it and pressed Start, so this can fail; that is not an error.
   const hello = await tg(token, 'sendMessage', { chat_id: userId, text: `Hi, I’m ${b.name}. I’m connected. Message me here any time, the same as in HeyZubi.` }).catch(() => null);
   const greeted = !!hello?.ok;
-  markCards(b.id, { status: 'connected', username });
+  // Tell the owner in the chat where they set it up (Zubi's, under the card; else the member's own). Only the @username.
+  const inZubi = markCards(b.id, { status: 'connected', username });
+  const link = username ? `[@${username}](https://t.me/${username})` : 'its new bot';
+  appendRow(inZubi ? primaryBotId()! : b.id, 'message', {
+    type: 'message', role: 'assistant', streaming: false,
+    text: `**${b.name} is ready on Telegram.** Message ${b.name} at ${link} any time; only you can talk to it there.` +
+      (greeted ? ` ${b.name} just said hello to you in Telegram.` : ` Open it in Telegram and tap **Start** first, so ${b.name} can write to you too.`),
+  });
   console.log(`[telegram] ${b.name}: connected as @${username}`);
   return c.json({ telegram: { available: true, connected: true, username } satisfies TelegramState, greeted });
 });

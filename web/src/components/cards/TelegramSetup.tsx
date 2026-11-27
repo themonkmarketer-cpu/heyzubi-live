@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { TelegramState } from '@shared/types';
 import { configApi } from '../../lib/configApi';
 
@@ -22,6 +22,18 @@ export function TelegramSetup({ botId, botName, mode, onSkip, onConnected }: {
   const [busy, setBusy] = useState<'connect' | 'skip' | 'disconnect' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [greeted, setGreeted] = useState<boolean | null>(null);
+  const video = useRef<HTMLVideoElement>(null);
+
+  // Open the how-to video fullscreen and play it (iPhone Safari has its own fullscreen call for videos).
+  const watch = async () => {
+    const v = video.current as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null;
+    if (!v) return;
+    try {
+      if (v.requestFullscreen) await v.requestFullscreen();
+      else v.webkitEnterFullscreen?.();
+    } catch { /* fullscreen refused: it still plays in place */ }
+    void v.play().catch(() => {});
+  };
 
   useEffect(() => {
     let alive = true;
@@ -84,20 +96,18 @@ export function TelegramSetup({ botId, botName, mode, onSkip, onConnected }: {
   return wrap(
     <div className={`tg-setup tg-setup--${mode}`}>
       <div className="tg-setup__body">
-        <video className="tg-setup__video" src="/media/telegram-setup.mp4" poster="/media/telegram-setup.jpg" controls playsInline preload="none"
+        <video ref={video} className="tg-setup__video" src="/media/telegram-setup.mp4" poster="/media/telegram-setup.jpg" controls playsInline preload="none"
           aria-label="How to make a Telegram bot with BotFather and find your user ID" />
-        <ol className="tg-setup__how">
-          <li>In Telegram, open <b>@BotFather</b>, tap <b>Start</b> and send <b>/newbot</b>.</li>
-          <li>Give it a name, then a username ending in <b>bot</b>. Copy the <b>token</b> it sends.</li>
-          <li>Open <b>@GetMyID_bot</b>, send <b>/start</b> and copy <b>Your user ID</b>.</li>
-          <li>Paste both below. They go straight into {botName}’s own settings and are not saved in this chat.</li>
-        </ol>
+        <div className="tg-setup__side">
+          <button type="button" className="btn btn--primary tg-setup__watch" onClick={() => void watch()}>Watch fullscreen</button>
+          <div className="tg-setup__hint">The token and your ID go straight into {botName}’s own settings, not this chat.</div>
+        </div>
       </div>
       <div className="tg-setup__fields">
         <label className="tg-setup__field">
           <span>Bot token</span>
           <span className="tg-setup__row">
-            <input className="text-input" type={show ? 'text' : 'password'} value={token} onChange={(e) => setToken(e.target.value)}
+            <input className={`text-input${show ? '' : ' tg-setup__secret'}`} type="text" name="tg-bot-key" value={token} data-bwignore="true" data-protonpass-ignore="true" onChange={(e) => setToken(e.target.value)}
               placeholder="123456789:AAH…" autoComplete="off" spellCheck={false} data-1p-ignore data-lpignore="true" data-form-type="other"
               aria-label={`Telegram bot token for ${botName}`} />
             <button type="button" className="link-btn link-btn--small" onClick={() => setShow((s) => !s)}>{show ? 'Hide' : 'Show'}</button>
@@ -105,9 +115,9 @@ export function TelegramSetup({ botId, botName, mode, onSkip, onConnected }: {
         </label>
         <label className="tg-setup__field">
           <span>Your user ID</span>
-          <input className="text-input" inputMode="numeric" value={userId} onChange={(e) => setUserId(e.target.value)}
+          <input className="text-input" type="text" name="tg-chat-number" inputMode="numeric" pattern="[0-9]*" value={userId} onChange={(e) => setUserId(e.target.value.replace(/\D/g, ''))}
             onKeyDown={(e) => { if (e.key === 'Enter') void connect(); }} placeholder="123456789" autoComplete="off" spellCheck={false}
-            data-1p-ignore data-lpignore="true" data-form-type="other" aria-label="Your Telegram user ID" />
+            data-1p-ignore data-lpignore="true" data-form-type="other" aria-label="Your Telegram ID number" data-bwignore="true" data-protonpass-ignore="true" />
         </label>
       </div>
       <div className="card__actions">
