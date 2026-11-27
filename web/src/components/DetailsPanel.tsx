@@ -9,6 +9,7 @@ import { Icon } from './Icon';
 import { VoiceSettings } from './VoiceSettings';
 import { ComputerScreen, type ScreenMode } from './ComputerViewer';
 import { EngineSettings } from './EngineSettings';
+import { TelegramSetup } from './cards/TelegramSetup';
 import { MembersCard } from './MembersCard';
 import { useConfigUI } from '../configStore';
 import { Glyph } from './config/glyphs';
@@ -120,6 +121,7 @@ export function DetailsPanel() {
                   <div className="section-label">Engine</div>
                   <EngineSettings bot={bot} />
                 </section>
+                <TelegramSetup key={bot.id} botId={bot.id} botName={bot.name} mode="settings" />
                 <section>
                   <div className="section-label">Voice chat</div>
                   <VoiceSettings bot={bot} />

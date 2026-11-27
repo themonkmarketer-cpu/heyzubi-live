@@ -426,6 +426,60 @@ async function writeHome(botId: string): Promise<{ home: string; key: string; di
   return { home, key, display };
 }
 
+/**
+ * Read keys from a managed bot's own .env (messaging settings such as Telegram's). Null for the primary agent, whose
+ * .env belongs to Hermes and is never written from here.
+ */
+export function readEngineEnv(botId: string, keys: string[]): Record<string, string> | null {
+  if (engineKind(botId) !== 'managed') return null;
+  const all = readDotenv(path.join(homeFor(botId), '.env'));
+  return Object.fromEntries(keys.filter((k) => all[k]).map((k) => [k, all[k]]));
+}
+
+/** Every managed bot's value of one .env key, with whose it is (to keep a messaging token on one bot only). */
+export function engineEnvValues(key: string): { botId: string; value: string }[] {
+  const ids = (db.prepare("SELECT id FROM bots WHERE engine='managed'").all() as { id: string }[]).map((r) => r.id);
+  const out: { botId: string; value: string }[] = [];
+  for (const id of ids) {
+    const v = readDotenv(path.join(homeFor(id), '.env'))[key];
+    if (v) out.push({ botId: id, value: v });
+  }
+  return out;
+}
+
+/** The primary agent's value of one .env key (read only). */
+export function primaryEnvValue(key: string): string | undefined {
+  return readDotenv(path.join(env.hermesHome, '.env'))[key];
+}
+
+/**
+ * Set or remove (null) keys in a managed bot's .env; every other line stays. Takes effect when its gateway restarts.
+ * The file stays private to the agent's user.
+ */
+export function setEngineEnv(botId: string, changes: Record<string, string | null>) {
+  if (engineKind(botId) !== 'managed') throw new Error('Only a team member with its own agent has its own settings file.');
+  const file = path.join(homeFor(botId), '.env');
+  if (!fs.existsSync(file)) throw new Error('Its agent has not started yet. Wait for “Engine running”, then try again.');
+  const vars = readDotenv(file);
+  for (const [k, v] of Object.entries(changes)) {
+    if (!/^[A-Z][A-Z0-9_]*$/.test(k)) throw new Error('bad key');
+    if (v === null) delete vars[k];
+    else {
+      if (/[\r\n]/.test(v)) throw new Error('bad value');
+      vars[k] = v;
+    }
+  }
+  writePrivate(file, Object.entries(vars).map(([k, v]) => `${k}=${v}`).join('\n') + '\n');
+  const owner = engineOwner(botId);
+  if (owner) { try { fs.chownSync(file, owner.uid, owner.gid); } catch { /* not root */ } }
+}
+
+/** Restart a managed bot's gateway and wait until it answers again. */
+export async function restartEngineAndWait(botId: string): Promise<void> {
+  await restartEngine(botId);
+  await engineFor(botId);
+}
+
 // ---------- a managed bot's gateway ----------
 
 async function healthy(url: string, timeoutMs = 2500): Promise<any | null> {

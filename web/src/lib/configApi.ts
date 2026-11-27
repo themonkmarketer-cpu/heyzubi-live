@@ -1,4 +1,5 @@
 import type { Bot, ComputerState, EngineInfo, LibraryFile, Memory, Routine, Skill, Task, Toolkit } from '@shared/types';
+import type { TelegramState } from '@shared/types';
 import { ApiError } from './api';
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -100,6 +101,11 @@ export const configApi = {
   claudeSignInFinish: (botId: string, code: string) => req<{ ok: true; engine?: EngineInfo }>('POST', `/bots/${botId}/engine/signin/finish`, { code }),
   claudeSignInCancel: (botId: string) => req<{ ok: true }>('POST', `/bots/${botId}/engine/signin/cancel`),
   restartEngine: (botId: string) => req<{ engine: EngineInfo }>('POST', `/bots/${botId}/engine/restart`),
+  /** A team member's own Telegram bot. The token and user ID go only in the connect request; nothing sends them back. */
+  telegram: (botId: string) => req<{ telegram: TelegramState }>('GET', `/telegram/${botId}`),
+  telegramConnect: (botId: string, token: string, userId: string) => req<{ telegram: TelegramState; greeted: boolean }>('POST', `/telegram/${botId}`, { token, userId }),
+  telegramSkip: (botId: string) => req<{ ok: true }>('POST', `/telegram/${botId}/skip`),
+  telegramDisconnect: (botId: string) => req<{ telegram: TelegramState }>('DELETE', `/telegram/${botId}`),
   /** Stops the private screen the agent runs for itself, so its computer work shows on the screen in the app. */
   stopOwnScreen: (botId: string) => req<{ engine: EngineInfo }>('POST', `/bots/${botId}/engine/screen/stop`),
 

@@ -14,7 +14,7 @@ It reads `server/src` to list every route (following each `app.route(...)` mount
 
 | # | Check | How HeyZubi does it |
 |---|---|---|
-| 1 | Every owner route needs a signed-in session | `requireUser` on each router (`api`, `configApi`, and each feature router: `hire`, `webhooks`, `workers`, `clients`, `shares`, `search`, `content`, `deleted`, `skill-reviews`, `bot-memory`, `kanban`, `rooms`) |
+| 1 | Every owner route needs a signed-in session | `requireUser` on each router (`api`, `configApi`, and each feature router: `hire`, `webhooks`, `workers`, `clients`, `shares`, `search`, `content`, `deleted`, `skill-reviews`, `bot-memory`, `kanban`, `rooms`, `telegram`) |
 | 2 | Cookie writes can't come from another site | `sameOriginWrites` on `/api/*`: a write whose `Sec-Fetch-Site`/`Origin` is another site gets 403 |
 | 3 | Each owner route checks the bot, card or file belongs to the signed-in owner | `ownBot` / `user_id = ?` in every query; a wrong id answers 404, not someone else's data |
 | 4 | Open routes protect themselves | Webhooks: per-webhook bearer secret or HMAC-SHA256 of the body, compared in constant time. Outside programs: API keys. Share links: 192-bit random token, an expiry, can be turned off. Webhook results: random token. Windows app: one-time pairing code, then a device key. Agents' tools (`/mcp`): local requests only, per-bot token |
@@ -22,7 +22,7 @@ It reads `server/src` to list every route (following each `app.route(...)` mount
 | 6 | Size limits on what comes in | Webhook bodies 256 KB; hire files 1 MB; recordings 25 MB per piece; pictures 15 MB each, 6 per message |
 | 7 | Nothing outside can make a bot act on its own | Webhooks and outside programs are marked as not the owner's words; the owner's-words hook refuses sends, posts and deletes in those runs |
 | 8 | Files are served sealed | Library files and share links: `Content-Security-Policy` sandbox for HTML/SVG, `nosniff`, `no-referrer`; share links add `no-store` and `noindex` |
-| 9 | Secrets never leave the server | Keys live in the server's env files; hire files and exports strip anything that looks like a key; webhook and API key secrets are shown once |
+| 9 | Secrets never leave the server | Keys live in the server's env files; hire files and exports strip anything that looks like a key; webhook and API key secrets are shown once. A team member's Telegram bot token and the owner's Telegram ID go only into that member's own Hermes `.env` (mode 600): never into a chat message, a card or the model, never logged or sent back (`telegram-setup.ts`) |
 | 10 | The app isn't on the open internet | The app is served on the private Tailscale network only (`tailscale serve`). The one public part is share links: Tailscale Funnel on its own port (10000) maps only `/s` to the server, so every other path there answers 404 and the app's own ports stay private. `SHARE_ORIGIN` in the server's env makes the app hand out links on that public address. To close it again: `tailscale funnel --https=10000 off` |
 
 ## Open on purpose

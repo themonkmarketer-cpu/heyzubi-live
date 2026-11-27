@@ -138,6 +138,11 @@ export type CardBody =
       name: string;
       role: string;
       status: 'pending' | 'ready' | 'skipped';
+      /**
+       * Its own Telegram bot, the step after the Claude sign-in: 'ask' while it waits, then connected (with only the
+       * bot's @username; the token and the owner's ID are never stored in a card) or skipped. Absent on older cards.
+       */
+      telegram?: { status: 'ask' | 'connected' | 'skipped'; username?: string };
     }
   | {
       /** A file a team member saved in its Library: Open (when it can be shown) and Download. */
@@ -302,3 +307,6 @@ export type ServerEvent =
   | { type: 'social'; episodeId: string }
   | { type: 'connections' }
   | { type: 'ping' };
+
+/** A team member's own Telegram bot (telegram-setup.ts). Never carries the token or the owner's user ID. */
+export interface TelegramState { available: boolean; connected: boolean; username: string | null; reason?: string }

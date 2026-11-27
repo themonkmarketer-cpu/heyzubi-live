@@ -74,7 +74,7 @@ export function teammateSignedIn(botId: string) {
   if (card) {
     enqueue(zubi, {
       type: 'system', owner: true,
-      text: `The owner signed ${bot.name} in to Claude with its own sign-in. Check ${bot.name} answers: send it a one-line hello with send_to_bot. When its reply comes, tell the owner in two or three short lines that ${bot.name} is ready, what it can do first, and that it is in the sidebar.`,
+      text: `The owner signed ${bot.name} in to Claude with its own sign-in. Check ${bot.name} answers: send it a one-line hello with send_to_bot. When its reply comes, tell the owner in two or three short lines that ${bot.name} is ready, what it can do first, and that it is in the sidebar. If they want ${bot.name} on Telegram too, the card above now has that step (a short video, then two paste boxes); never ask them to type a token or user ID in this chat.`,
     });
   }
 }

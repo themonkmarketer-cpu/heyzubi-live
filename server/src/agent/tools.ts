@@ -574,13 +574,13 @@ Fixes that need the owner (signing in, connecting an app) are theirs to do; say 
           catch (e: any) { persona = `not written: ${String(e?.message ?? e).slice(0, 200)}`; }
         }
       }
-      appendRow(ctx.botId, 'card', { type: 'card', card: 'teammate', teammateId: bot.id, name, role, status: 'pending' });
+      appendRow(ctx.botId, 'card', { type: 'card', card: 'teammate', teammateId: bot.id, name, role, status: 'pending', telegram: { status: 'ask' } });
       const row = getBotRow(bot.id);
       return {
         output: JSON.stringify({
           created: true, name, role, gender: a.gender, mascot: mascot ?? null, hermes_profile: row?.hermes_profile ?? null,
           skills_folder: home ? path.join(home, 'skills') : null, persona,
-          next: `A card is now in this chat for ${name}: it shows the setup and has the "Sign in to Claude" button. If skills should be installed, put each reviewed skill folder in skills_folder first. Then tell the owner in one or two short lines to sign ${name} in with the card, and stop. You'll get a message when ${name} is signed in.`,
+          next: `A card is now in this chat for ${name}: it shows the setup and has the "Sign in to Claude" button. If skills should be installed, put each reviewed skill folder in skills_folder first. Then tell the owner in one or two short lines to sign ${name} in with the card, and stop. You'll get a message when ${name} is signed in. After the sign-in the same card offers ${name} its own Telegram bot (a how-to video and two paste boxes). Never ask the owner to type a Telegram token or user ID in this chat: those go only in the card's boxes, which keep them out of the chat.`,
         }),
         summary: `Added ${name} · ${role}`,
       };

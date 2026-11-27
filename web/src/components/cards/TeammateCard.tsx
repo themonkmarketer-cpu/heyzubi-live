@@ -6,6 +6,7 @@ import { useStore } from '../../store';
 import { useConfigUI } from '../../configStore';
 import { BotAvatarFor } from '../../avatar/BotAvatar';
 import { Icon } from '../Icon';
+import { TelegramSetup } from './TelegramSetup';
 
 type Body = Extract<CardBody, { card: 'teammate' }>;
 
@@ -36,6 +37,9 @@ export function TeammateCard({ row, body }: { row: Row; body: Body }) {
   const claude = engine?.providers?.find((p) => p.id === 'anthropic');
   const ready = engine?.status === 'ready';
   const signedIn = body.status === 'ready' || !!claude?.connected;
+  // Telegram comes after the sign-in (newer cards only). The server records connected / skipped on the card itself.
+  const tg = body.telegram;
+  const tgNow = !!tg && tg.status === 'ask' && body.status === 'ready';
   const open = () => { useStore.getState().selectBot(body.teammateId); useConfigUI.getState().setView('chat'); };
 
   const start = async () => {
@@ -75,7 +79,7 @@ export function TeammateCard({ row, body }: { row: Row; body: Body }) {
   );
 
   return (
-    <div className={`card teammate-card${pending ? '' : ' is-resolved'}`}>
+    <div className={`card teammate-card${pending || tgNow ? '' : ' is-resolved'}`}>
       <div className="card__head">
         <BotAvatarFor bot={bot} size={44} />
         <div className="card__titles">
@@ -88,7 +92,11 @@ export function TeammateCard({ row, body }: { row: Row; body: Body }) {
         {step(true, false, 'Added to HeyZubi and Hermes', engine?.profile ? `Hermes profile “${engine.profile}”, same name and mascot in both` : undefined)}
         {step(ready || body.status === 'ready', pending && !ready, ready || body.status === 'ready' ? 'Engine running' : 'Starting its engine…')}
         {step(signedIn, pending && ready && !signedIn, signedIn ? 'Signed in to Claude with its own sign-in' : 'Sign in to Claude', !signedIn && pending ? 'Its own Claude subscription, so it never shares Zubi’s' : undefined)}
+        {tg && step(tg.status === 'connected', tgNow,
+          tg.status === 'connected' ? `On Telegram${tg.username ? ` as @${tg.username}` : ''}` : tg.status === 'skipped' ? 'Telegram skipped (set it up later in its settings)' : 'Its own Telegram bot',
+          tgNow ? 'Optional: message it from your phone. The video shows how, in under 2 minutes.' : undefined)}
       </ol>
+      {tgNow && <TelegramSetup botId={body.teammateId} botName={bot.name} mode="card" />}
 
       {pending && ready && !signedIn && (
         link ? (

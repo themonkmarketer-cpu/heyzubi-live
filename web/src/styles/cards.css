@@ -73,6 +73,34 @@
 .teammate-signin__row { display: flex; gap: 8px; }
 .teammate-signin__row .text-input { flex: 1; min-width: 0; }
 
+/* A team member's own Telegram bot (TelegramSetup.tsx): how-to video beside the steps, then the two paste boxes */
+.tg-setup { display: flex; flex-direction: column; }
+.tg-setup--loading { padding: 10px 16px; font-size: 13px; color: var(--color-text-tertiary); }
+.tg-setup__body { display: flex; gap: 14px; padding: 12px 16px 4px; align-items: flex-start; }
+.tg-setup__video { width: 150px; flex-shrink: 0; aspect-ratio: 9 / 16; border-radius: 10px; background: #0b1020; object-fit: cover; }
+.tg-setup__how { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; min-width: 0;
+  font-size: 13px; line-height: 19px; color: var(--color-text-secondary); }
+.tg-setup__how b { color: var(--color-text-primary); font-weight: 600; }
+.tg-setup__fields { display: flex; flex-direction: column; gap: 8px; padding: 10px 16px 0; }
+.tg-setup__field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 500; color: var(--color-text-tertiary); }
+.tg-setup__row { display: flex; gap: 8px; align-items: center; }
+.tg-setup__row .text-input { flex: 1; min-width: 0; }
+.tg-setup__note { padding: 0 16px 12px; font-size: 13px; line-height: 19px; color: var(--color-text-secondary); }
+.tg-setup__note a, .tg-setup__done a { color: var(--color-primary); }
+.tg-setup__done { display: flex; align-items: center; gap: 8px; padding: 12px 16px 8px; font-size: 13.5px; color: var(--color-text-primary); }
+.tg-setup__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-success); flex-shrink: 0; }
+.tg-setup.is-connected .link-btn { align-self: flex-start; margin: 0 16px 12px; }
+/* In settings (narrow side panel) the video sits above the steps and the box has no card padding */
+.tg-setup--settings .tg-setup__body { flex-direction: column; padding: 4px 0; }
+.tg-setup--settings .tg-setup__video { width: 100%; max-width: 220px; }
+.tg-setup--settings .tg-setup__fields, .tg-setup--settings .card__actions { padding-left: 0; padding-right: 0; }
+.tg-setup--settings .tg-setup__note, .tg-setup--settings .card__error, .tg-setup--settings .tg-setup__done { padding-left: 0; padding-right: 0; }
+.tg-setup--settings.is-connected .link-btn { margin-left: 0; }
+@media (max-width: 520px) {
+  .tg-setup--card .tg-setup__body { flex-direction: column; }
+  .tg-setup--card .tg-setup__video { width: 100%; max-width: 240px; align-self: center; }
+}
+
 /* A file saved to the Library */
 .file-card__main { display: flex; align-items: center; gap: 12px; padding: 16px 16px 0; min-width: 0; }
 .file-card__icon { display: flex; align-items: center; justify-content: center; width: 38px; height: 38px; flex-shrink: 0; border-radius: 10px; background: var(--color-bg-tertiary); }
