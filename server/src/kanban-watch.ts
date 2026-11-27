@@ -99,6 +99,53 @@ export function initKanbanWatch() {
   setInterval(() => { void boardScreens().catch(() => {}); }, 20_000).unref?.();
 }
 
+/**
+ * A line of linked cards (an assembly line) that just finished gets one message in Zubi's chat: what the line was, how
+ * long it took, and its last step's result (each step passes the earlier lines on, so that result holds the whole line).
+ * A line is finished when a card that waited on another one is Done and nothing on the board waits on it. Only lines
+ * finished in the last hour are told, each once, so old work never floods the chat after a restart.
+ */
+async function announceFinishedLines(cards: Card[], links: [string, string][]) {
+  const zubi = primaryBotId();
+  if (!zubi || !getBotRow(zubi)) return;
+  const byId = new Map(cards.map((c) => [c.id, c]));
+  const parentsOf = new Map<string, string[]>(), kidsOf = new Map<string, string[]>();
+  for (const [p, c] of links) {
+    parentsOf.set(c, [...(parentsOf.get(c) ?? []), p]);
+    kidsOf.set(p, [...(kidsOf.get(p) ?? []), c]);
+  }
+  const t = now();
+  for (const c of cards) {
+    if (c.status !== 'done' || !parentsOf.has(c.id)) continue;
+    if ((kidsOf.get(c.id) ?? []).some((k) => byId.has(k))) continue; // a later step is still on the board
+    if (seen(`line-done:${c.id}`)) continue;
+    const d = await kanban<any>('task', { id: c.id }).catch(() => null);
+    if (!d) continue;
+    const runs = ((d.runs ?? []) as any[]).filter((r) => /complet|done/i.test(`${r.outcome} ${r.status}`));
+    const last = runs.at(-1);
+    const ended = sec(last?.ended_at ?? d.task?.completed_at);
+    if (!ended || t - ended > 60 * 60_000) { mark(`line-done:${c.id}`); continue; }
+    // Walk back to the line's first card for its start time and step count.
+    let root = c.id, steps = 1;
+    for (let n = 0; n < 30; n++) { const up = parentsOf.get(root)?.[0]; if (!up) break; root = up; steps++; }
+    const first = root === c.id ? d : await kanban<any>('task', { id: root }).catch(() => null);
+    const started = sec((((first?.runs ?? []) as any[])[0] ?? {}).started_at);
+    const took = started && ended > started ? Math.round((ended - started) / 1000) : null;
+    const name = String(byId.get(root)?.title ?? c.title).replace(/^▶\s*/, '').replace(/\s*·\s*\d+\/\d+\s.*$/, '').trim() || c.title;
+    const result = String(last?.summary ?? d.task?.latest_summary ?? '').trim().slice(0, 3000);
+    const tookText = took === null ? '' : took < 90 ? ` in ${took} s` : ` in ${Math.round(took / 60)} min`;
+    appendRow(zubi, 'message', {
+      type: 'message', role: 'assistant', streaming: false,
+      text: `**Assembly line finished: ${name}**${tookText}, ${steps} step${steps === 1 ? '' : 's'}${c.assignee ? `, last step by ${getBotNameForProfile(c.assignee)}` : ''}.\n\n${result || 'The last step left no result text.'}\n\n_Open it on the Kanban board, Done › “${c.title}”, for each step's full report._`,
+    });
+    db.prepare('UPDATE bots SET unread = unread + 1 WHERE id=?').run(zubi);
+    emitBot(zubi);
+    mark(`line-done:${c.id}`);
+  }
+}
+
+const getBotNameForProfile = (p: string) => (p === 'owner' ? 'you' : p === 'default' ? 'Zubi' : ((db.prepare('SELECT name FROM bots WHERE hermes_profile=? AND deleted_at IS NULL').get(p) as { name?: string } | undefined)?.name ?? p));
+
 let screensBusy = false;
 /** Get the screen and browser ready for every team member with a card in Ready or Running, or next after a running one. */
 async function boardScreens() {
@@ -108,7 +155,8 @@ async function boardScreens() {
     const board = await kanban<any>('board', {});
     const cards: Card[] = ((board.columns ?? []) as any[]).flatMap((c) => (c.tasks ?? []) as Card[]);
     const busyIds = new Set(cards.filter((c) => c.status === 'running').map((c) => c.id));
-    const links = busyIds.size ? (((await kanban<any>('links', {}).catch(() => ({ links: [] }))).links ?? []) as [string, string][]) : [];
+    const links = ((await kanban<any>('links', {}).catch(() => ({ links: [] }))).links ?? []) as [string, string][];
+    await announceFinishedLines(cards, links).catch((e) => console.warn('[kanban-watch] line done:', (e as Error)?.message ?? e));
     const next = new Set(links.filter(([p]) => busyIds.has(p)).map(([, c]) => c));
     const profiles = new Set(cards.filter((c) => c.assignee && (c.status === 'ready' || c.status === 'running' || (c.status === 'todo' && next.has(c.id)))).map((c) => c.assignee as string));
     for (const p of profiles) {
