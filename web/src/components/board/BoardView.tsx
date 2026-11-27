@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { useStore } from '../../store';
 import { kanbanApi, type KanbanBoardData, type KanbanBoardMeta, type KanbanCard, type KanbanWorkflow } from '../../lib/kanbanApi';
 import { Icon } from '../Icon';
-import { CreateDialog, MoveDialog, type NewCard } from './BoardDialogs';
+import { ConfirmDialog, CreateDialog, MoveDialog, type NewCard } from './BoardDialogs';
 import { TaskCard } from './TaskCard';
 import { TaskDrawer } from './TaskDrawer';
 import {
@@ -88,6 +88,26 @@ export function BoardView() {
     for (const id of kids.keys()) { const seen = new Set<string>(), todo = [...kids.get(id)!]; while (todo.length) { const x = todo.pop()!; if (!seen.has(x)) { seen.add(x); todo.push(...(kids.get(x) ?? [])); } } out.set(id, seen.size); }
     return out;
   }, [links]);
+  /**
+   * The earlier steps a card still waits on (not done or archived). Hermes won't put such a card in Ready: it starts by
+   * itself once they are done. 'root' is where its line starts, the card to move to Ready instead.
+   */
+  const statusOf = useMemo(() => new Map((data?.columns ?? []).flatMap((c) => c.tasks.map((t) => [t.id, t.status] as const))), [data]);
+  const waiting = useMemo(() => {
+    const parents = new Map<string, string[]>();
+    for (const [p, c] of links) parents.set(c, [...(parents.get(c) ?? []), p]);
+    const open = (id: string) => (parents.get(id) ?? []).filter((p) => { const s = statusOf.get(p); return s !== undefined && s !== 'done' && s !== 'archived'; });
+    const out = new Map<string, { on: string; root: string }>();
+    for (const id of parents.keys()) {
+      const first = open(id)[0];
+      if (!first) continue;
+      let root = first;
+      for (let n = 0; n < 50; n++) { const up = open(root)[0]; if (!up) break; root = up; }
+      out.set(id, { on: first, root });
+    }
+    return out;
+  }, [links, statusOf]);
+  const [startInstead, setStartInstead] = useState<{ card: KanbanCard; root: KanbanCard } | null>(null);
   const [offline, setOffline] = useState<string | null>(null);
   const [syncedAt, setSyncedAt] = useState<number | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -227,6 +247,12 @@ export function BoardView() {
 
   /** Every move starts here: Hermes's rules first, then anything Hermes needs or does to an agent is asked for. */
   const requestMove = useCallback((card: KanbanCard, to: string) => {
+    // A step still waiting on the one before can't go to Ready (Hermes sends it back): offer to start its line instead.
+    const w = to === 'ready' ? waiting.get(card.id) : undefined;
+    if (w) {
+      const root = allCards.find((c) => c.id === w.root);
+      if (root) { setStartInstead({ card, root }); return; }
+    }
     if (!canMove(workflow, card.status, to)) {
       const label = workflow?.columns.find((c) => c.key === to)?.label ?? to;
       say(`Hermes doesn’t allow moving a card from ${card.status} to ${label} by hand.`);
@@ -235,7 +261,7 @@ export function BoardView() {
     const plan = planMove(card, to, who);
     if (plan.needsSummary || plan.asksReason || plan.effects.length) setPending({ card, to, plan });
     else void doMove(card, to);
-  }, [workflow, who, doMove, say]);
+  }, [workflow, who, doMove, say, waiting, allCards]);
 
   const add = useCallback(async (column: string, title: string, key: string): Promise<string | null> => {
     try {
@@ -472,7 +498,7 @@ export function BoardView() {
                       {col.shown.map((card, i) => (
                         <div key={card.id} className="kb-slot">
                           {markerAt === i && <div className="kb-marker" aria-hidden />}
-                          <TaskCard card={card} blocking={blocking.get(card.id) ?? 0} bots={bots} workflow={workflow} who={who} dragging={drag?.id === card.id} open={openId === card.id}
+                          <TaskCard card={card} blocking={blocking.get(card.id) ?? 0} waitsFor={waiting.has(card.id) ? allCards.find((c) => c.id === waiting.get(card.id)!.on)?.title ?? 'the step before' : undefined} bots={bots} workflow={workflow} who={who} dragging={drag?.id === card.id} open={openId === card.id}
                             onOpen={() => setOpenId(card.id)} onMove={(to) => requestMove(card, to)} onDragStart={dragStart(card)} onDragEnd={dragEnd} />
                         </div>
                       ))}
@@ -506,6 +532,16 @@ export function BoardView() {
           onMade={(w) => { setNewWorker(false); setWorkersVersion((v) => v + 1); say(`Worker started: “${w.title}”, with a $${w.capUsd.toFixed(2)} cap.`); void reload(); }} />
       )}
       {creating && workflow && <CreateDialog workflow={workflow} column={creating} people={people} who={who} onCreate={addChain} onBrief={(p) => kanbanApi.brief(slug, p)} onClose={() => setCreating(null)} />}
+      {startInstead && (
+        <ConfirmDialog title="This step starts by itself"
+          lines={[
+            `“${startInstead.card.title}” waits for “${startInstead.root.title}” to be done, then Hermes moves it to Ready on its own.`,
+            `To run the line, move its first card to Ready. ${startInstead.root.assignee && !isOwner(startInstead.root.assignee) ? `${who(startInstead.root.assignee)}’s agent starts on it right away.` : ''}`,
+          ]}
+          action="Start the line"
+          onCancel={() => setStartInstead(null)}
+          onConfirm={() => { const s = startInstead; setStartInstead(null); if (s) void doMove(s.root, 'ready'); }} />
+      )}
       {pending && (
         <MoveDialog card={pending.card} toLabel={workflow?.columns.find((c) => c.key === pending.to)?.label ?? pending.to} plan={pending.plan}
           onCancel={() => setPending(null)} onConfirm={(extra) => { const p = pending; setPending(null); void doMove(p.card, p.to, extra); }} />
