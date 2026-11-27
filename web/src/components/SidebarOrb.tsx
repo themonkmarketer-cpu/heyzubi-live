@@ -62,7 +62,7 @@ const CAPS: Cap[] = [
   { k: 'instagram', n: 'Instagram', c: '#f06aa8', re: /instagram|\breel/i, h: 'Checking Instagram', can: 'Make a GIF/reel and publish it after your yes.', ready: 'part', ask: 'Make an Instagram GIF about ' },
   { k: 'profit', n: 'Profit', c: '#c9a6ff', re: /profit|p&l|expense|revenue|ledger|gst/i, h: 'Checking your numbers', can: 'Answer “what is my profit?” from a money log.', ready: 'no', ask: 'What is my profit this month?' },
   { k: 'sheets', n: 'Sheets', c: '#34a853', re: /googlesheets|google ?sheets?|spreadsheet|xlsx|excel|openpyxl|\.csv\b/i, h: 'Working on your sheet', can: 'Show your latest Google Sheets, and build a sheet with totals from numbers you give.', ready: 'yes', ask: 'Build a Google Sheet: ' },
-  { k: 'notion', n: 'Notion', c: '#e9e9e7', re: /notion/i, h: 'Reading Notion', can: 'Your reel numbers, tasks due, recent pages and memories from Notion, and search. Read only: only you and Claude Desktop write to Notion.', ready: 'part', ask: 'Find in my Notion: ' },
+  { k: 'notion', n: 'Notion', c: '#e9e9e7', re: /notion/i, h: 'Reading Notion', can: 'Your Notion tasks and posts as a to-do list, table, board, calendar and content calendar, and search. Read only: only you and Claude Desktop write to Notion.', ready: 'part', ask: 'Find in my Notion: ' },
   { k: 'phone', n: 'Phone', c: '#ffb35a', re: /\bphone|twilio|vapi|\bsms\b/i, h: 'Placing your call', can: 'Call someone at a set time and ask your questions.', ready: 'no', ask: 'Call ' },
 ];
 

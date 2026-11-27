@@ -153,3 +153,79 @@ a.lmedia__title:hover { text-decoration: underline; }
 .sgrid__kinds button { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 12px; color: var(--color-text-secondary); background: color-mix(in srgb, var(--color-text-primary) 6%, transparent); white-space: nowrap; }
 .sgrid__kinds button span { font-variant-numeric: tabular-nums; opacity: .7; }
 .sgrid__kinds button.is-active { background: var(--color-bg-elevated); color: var(--color-text-primary); box-shadow: var(--shadow-card); }
+
+/* Notion window views (LivePanels.tsx NotionViews): To-do, Table, Board, Calendar, Content, like Notion's own templates */
+.nviews { display: flex; gap: 2px; margin: 2px 0 4px; padding-bottom: 6px; border-bottom: 1px solid var(--color-border-secondary); overflow-x: auto; scrollbar-width: none; }
+.nviews__tab { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 8px; border-radius: 6px; font-size: 12px; font-weight: 550; color: var(--color-text-tertiary); white-space: nowrap; }
+.nviews__tab:hover { background: color-mix(in srgb, var(--color-text-primary) 6%, transparent); color: var(--color-text-secondary); }
+.nviews__tab.is-active { color: var(--color-text-primary); background: color-mix(in srgb, var(--color-text-primary) 8%, transparent); }
+
+/* status colours: not started, in progress, waiting on you, blocked, done */
+.nstatus { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 1px 7px; border-radius: 5px; font-size: 11px; font-weight: 600; line-height: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; --s: #8a8f98; color: color-mix(in srgb, var(--s) 80%, var(--color-text-primary)); background: color-mix(in srgb, var(--s) 16%, transparent); }
+.nstatus::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--s); flex-shrink: 0; }
+:is(.nstatus, .ntodo__box, .nboard__col).is-todo { --s: #8a8f98; }
+:is(.nstatus, .ntodo__box, .nboard__col).is-doing { --s: #3b82f6; }
+:is(.nstatus, .ntodo__box, .nboard__col).is-waiting { --s: #e0a12f; }
+:is(.nstatus, .ntodo__box, .nboard__col).is-blocked { --s: #e5484d; }
+:is(.nstatus, .ntodo__box, .nboard__col).is-done { --s: #2f9e63; }
+
+/* To-do list */
+.ntodo { display: flex; flex-direction: column; gap: 10px; }
+.ntodo__group h4 { margin: 4px 0 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-secondary); }
+.ntodo__group h4 span { margin-left: 4px; font-weight: 500; opacity: .7; }
+.ntodo__group h4.is-warn { color: #e0742f; }
+.ntodo__group ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.ntodo__item { display: flex; align-items: flex-start; gap: 9px; padding: 5px 2px; border-bottom: 1px solid color-mix(in srgb, var(--color-border-secondary) 60%, transparent); }
+.ntodo__item:last-child { border-bottom: 0; }
+.ntodo__box { display: grid; place-items: center; width: 15px; height: 15px; margin-top: 2px; flex-shrink: 0; border-radius: 4px; border: 1.5px solid var(--s); color: #fff; }
+.ntodo__box.is-done { background: var(--s); }
+.ntodo__body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ntodo__title { font-size: 12.5px; line-height: 17px; color: var(--color-text-primary); text-decoration: none; overflow-wrap: anywhere; }
+a.ntodo__title:hover { text-decoration: underline; }
+.ntodo__item.is-done .ntodo__title { color: var(--color-text-tertiary); text-decoration: line-through; }
+.ntodo__more { align-self: flex-start; padding: 2px 0; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); }
+
+/* Table */
+.ntable { overflow-x: auto; margin: 0 -2px; }
+.ntable table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.ntable th { position: sticky; top: 0; text-align: left; font-weight: 500; border-bottom: 1px solid var(--color-border-secondary); background: var(--color-bg-elevated); }
+.ntable th button { padding: 5px 6px; font-size: 11.5px; color: var(--color-text-tertiary); }
+.ntable th button.is-on { color: var(--color-text-primary); font-weight: 650; }
+.ntable td { padding: 6px; vertical-align: top; border-bottom: 1px solid color-mix(in srgb, var(--color-border-secondary) 60%, transparent); color: var(--color-text-secondary); }
+.ntable td:first-child { min-width: 0; width: 60%; }
+.ntable td:last-child { white-space: nowrap; }
+.ntable td.is-warn { color: #e0742f; font-weight: 600; }
+.ntable__title { display: block; color: var(--color-text-primary); text-decoration: none; line-height: 16px; overflow-wrap: anywhere; }
+a.ntable__title:hover { text-decoration: underline; }
+.ntable__proj { display: block; margin-top: 2px; font-size: 10.5px; color: var(--color-text-tertiary); }
+
+/* Board (kanban) */
+.nboard { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; margin: 0 -2px; scroll-snap-type: x proximity; }
+.nboard__col { flex: 0 0 196px; display: flex; flex-direction: column; gap: 6px; padding: 7px; border-radius: 10px; scroll-snap-align: start; background: color-mix(in srgb, var(--s) 7%, transparent); }
+.nboard__head { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 11px; color: var(--color-text-tertiary); }
+.nboard__card { display: flex; flex-direction: column; gap: 5px; padding: 8px 9px; border-radius: 8px; background: var(--color-bg-elevated); border: 1px solid var(--color-border-secondary); color: inherit; text-decoration: none; }
+a.nboard__card:hover { border-color: color-mix(in srgb, var(--s) 55%, var(--color-border-secondary)); }
+.nboard__title { font-size: 12px; line-height: 16px; color: var(--color-text-primary); overflow-wrap: anywhere; }
+.nboard__meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 11px; color: var(--color-text-tertiary); }
+.nboard__meta .is-warn { color: #e0742f; font-weight: 600; }
+
+/* Calendar */
+.ncal__bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; font-size: 12.5px; }
+.ncal__grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+.ncal__dow { text-align: center; font-size: 10.5px; font-weight: 600; color: var(--color-text-tertiary); padding: 2px 0; }
+.ncal__day { display: flex; flex-direction: column; align-items: center; gap: 2px; height: 38px; padding-top: 4px; border-radius: 7px; font-size: 11.5px; color: var(--color-text-secondary); }
+.ncal__day:hover { background: color-mix(in srgb, var(--color-text-primary) 6%, transparent); }
+.ncal__day.is-today > span:first-child { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--color-brand); color: #fff; font-weight: 700; }
+.ncal__day.is-pick { box-shadow: inset 0 0 0 1.5px var(--color-brand); color: var(--color-text-primary); }
+.ncal__dots { display: flex; gap: 2px; }
+.ncal__dots i, .ncal__item > i { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+.ncal i.is-task { background: var(--color-brand); } .ncal i.is-post { background: #e1306c; } .ncal i.is-warn { background: #e0742f; }
+.ncal__item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.ncal__item .nstatus { max-width: 110px; }
+
+/* Content calendar */
+.ncontent { display: flex; flex-direction: column; gap: 8px; }
+.ncontent__n { margin-left: 4px; font-weight: 500; opacity: .7; }
+.ncontent__row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 9px; }
+.ncontent__date { display: flex; flex-direction: column; align-items: center; width: 34px; padding: 3px 0; border-radius: 7px; font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--color-text-tertiary); background: color-mix(in srgb, var(--color-text-primary) 6%, transparent); }
+.ncontent__date b { font-size: 14px; line-height: 16px; color: var(--color-text-primary); letter-spacing: 0; }

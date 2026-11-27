@@ -735,17 +735,27 @@ async function readNotion() {
             platforms, best,
             fresh72: live.filter((p) => ageH(p) >= 0 && ageH(p) <= 72).length,
             scheduled: { count: scheduled.length, next: scheduled[0] ?? null },
+            upcoming: scheduled.slice(0, 14),
             latest: live.slice(0, 8),
           };
         }),
         section(ids.tasks, async (id) => {
           const today = istDay(), soon = istDay(3);
-          const open: NotionTask[] = (await notionRows(id)).map((r) => ({
+          const rows = (await notionRows(id)).map((r) => ({
             title: clip(nText(byType(r, 'title')), 140), status: nText(byType(r, 'status')) || nText(byType(r, 'select', /status/i)),
             due: dateOf(r, /due/i).slice(0, 10), project: nText(byType(r, 'select', /project/i)), page: nLink(r.url),
-          })).filter((t) => !/^(done|complete|completed|archived)$/i.test(t.status));
+            edited: Date.parse(str(r.last_edited_time)) || 0,
+          }));
+          const isDone = (t: { status: string }) => /^(done|complete|completed)$/i.test(t.status);
+          const strip = ({ edited: _e, ...t }: NotionTask & { edited: number }): NotionTask => t;
+          const open: NotionTask[] = rows.filter((t) => !isDone(t) && !/^archived$/i.test(t.status)).map(strip);
           const byDue = (l: NotionTask[]) => l.sort((a, b) => (a.due < b.due ? -1 : a.due > b.due ? 1 : 0));
+          // The window's views (to-do, table, board, calendar) show every open task, and the board's Done column the last week's.
+          const week = Date.now() - 7 * 86_400_000;
+          const done = rows.filter((t) => isDone(t) && t.edited >= week).sort((a, b) => b.edited - a.edited).slice(0, 20).map(strip);
           return {
+            items: [...byDue(open.filter((t) => t.due)), ...open.filter((t) => !t.due)].slice(0, 200),
+            done,
             open: open.length,
             overdue: byDue(open.filter((t) => t.due && t.due < today)),
             today: open.filter((t) => t.due === today),

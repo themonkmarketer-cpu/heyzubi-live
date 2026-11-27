@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Copy, Eye, Forward, Heart, Image as ImageIcon, MessageCircle, Play, Type } from 'lucide-react';
+import { CalendarDays, Check, ChevronLeft, ChevronRight, Clapperboard, Copy, Eye, Forward, Heart, Image as ImageIcon, ListChecks, MessageCircle, Play, SquareKanban, Table2, Type } from 'lucide-react';
 import { useOpeningFrame } from '../lib/floatFrame';
 import { create } from 'zustand';
 import { useStore } from '../store';
@@ -602,8 +602,8 @@ interface NTask { title: string; status: string; due: string; project: string; p
 interface NPage { title: string; kind?: string; type?: string; at: number; page: string }
 interface NotionData {
   connected: boolean; configured?: boolean; error?: string; loading?: boolean; refreshing?: boolean; at?: number;
-  posts?: NSection<{ totals: { posts: number; views: number; likes: number; comments: number }; platforms: { name: string; posts: number; views: number; likes: number; comments: number }[]; best: NPost | null; fresh72: number; scheduled: { count: number; next: NPost | null }; latest: NPost[] }>;
-  tasks?: NSection<{ open: number; overdue: NTask[]; today: NTask[]; soon: NTask[]; waiting: NTask[] }>;
+  posts?: NSection<{ totals: { posts: number; views: number; likes: number; comments: number }; platforms: { name: string; posts: number; views: number; likes: number; comments: number }[]; best: NPost | null; fresh72: number; scheduled: { count: number; next: NPost | null }; upcoming?: NPost[]; latest: NPost[] }>;
+  tasks?: NSection<{ open: number; items?: NTask[]; done?: NTask[]; overdue: NTask[]; today: NTask[]; soon: NTask[]; waiting: NTask[] }>;
   memories?: NSection<NPage[]>;
   recent?: NSection<NPage[]>;
   links?: { memories?: string };
@@ -636,7 +636,6 @@ function NotionPanel() {
   }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
   const [q, setQ] = useState('');
   const [found, setFound] = useState<{ q: string; results: NPage[]; error?: string } | null>(null);
-  const [list, setList] = useState<'overdue' | 'today' | 'soon' | 'waiting' | null>(null);
   const search = (e?: React.FormEvent) => {
     e?.preventDefault();
     const s = q.trim();
@@ -645,9 +644,6 @@ function NotionPanel() {
       .then((r) => r.json()).then((j) => setFound({ q: s, results: j.results ?? [], error: j.error }))
       .catch(() => setFound({ q: s, results: [], error: 'Couldn’t search Notion just now.' }));
   };
-  const posts = data?.posts?.state === 'ok' ? data.posts.data : null;
-  const tasks = data?.tasks?.state === 'ok' ? data.tasks.data : null;
-  const shownTasks = tasks ? (list ?? (tasks.overdue.length ? 'overdue' : tasks.today.length ? 'today' : tasks.soon.length ? 'soon' : 'waiting')) : null;
   return (
     <section className="lpanel lnotion" aria-label="Notion">
       <PanelHead title="NOTION" open="Open" href="https://www.notion.so/" onRefresh={() => load(true)} onClose={() => usePanels.setState({ notion: null })} />
@@ -666,82 +662,279 @@ function NotionPanel() {
         : data.loading ? <p className="lpanel__mut">Reading your Notion. The first read takes a minute or two (long task notes come one at a time); this fills in by itself.</p>
         : data.error ? <p className="lpanel__mut">{data.error}</p>
         : (
-          <>
-            <div className="lnotion__sec">
-              <h4>Reels</h4>
-              <NWhy s={data.posts} what="the post tracker" />
-              {posts && (
-                <>
-                  <dl className="sgrid__sum" aria-label={`Totals for ${posts.totals.posts} live posts`}>
-                    <div><dd><Eye size={13} strokeWidth={2.2} aria-hidden />{big(posts.totals.views)}</dd><dt>Views</dt></div>
-                    <div><dd><Heart size={13} strokeWidth={2.2} aria-hidden />{big(posts.totals.likes)}</dd><dt>Likes</dt></div>
-                    <div><dd><MessageCircle size={13} strokeWidth={2.2} aria-hidden />{big(posts.totals.comments)}</dd><dt>Comments</dt></div>
-                    <div><dd>{posts.totals.posts}</dd><dt>Live posts</dt></div>
-                  </dl>
-                  {posts.platforms.length > 1 && (
-                    <p className="lnotion__line">{posts.platforms.map((p) => `${p.name}: ${big(p.views)} views, ${big(p.likes)} likes`).join(' · ')}</p>
-                  )}
-                  {posts.best && <p className="lnotion__line">Best this week: <NLink href={posts.best.link || posts.best.page}>{posts.best.title}</NLink> ({posts.best.platform}, {big(posts.best.views ?? 0)} views)</p>}
-                  <p className="lnotion__line">
-                    {posts.fresh72} in their first 72 hours · {posts.scheduled.count} scheduled
-                    {posts.scheduled.next && <> · next: <NLink href={posts.scheduled.next.page}>{posts.scheduled.next.title}</NLink> ({day(posts.scheduled.next.at)})</>}
-                  </p>
-                  <ul className="lpanel__list">
-                    {posts.latest.map((p, i) => (
-                      <li key={i} className="lnotion__post">
-                        <span className="lnotion__tag">{p.platform || '—'}</span>
-                        <NLink href={p.link || p.page} className="lmedia__title">{p.title}</NLink>
-                        <span className="lnotion__n"><Eye size={11} aria-hidden />{p.views === null ? '–' : big(p.views)} <Heart size={11} aria-hidden />{p.likes === null ? '–' : big(p.likes)} <MessageCircle size={11} aria-hidden />{p.comments === null ? '–' : big(p.comments)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
-            </div>
-            <div className="lnotion__sec">
-              <h4>Tasks</h4>
-              <NWhy s={data.tasks} what="the task list" />
-              {tasks && shownTasks && (
-                <>
-                  <div className="lnotion__chips" role="radiogroup" aria-label="Which tasks">
-                    {([['overdue', 'Overdue'], ['today', 'Due today'], ['soon', 'Next 3 days'], ['waiting', 'Waiting on you']] as const).map(([k, l]) => (
-                      <button key={k} type="button" role="radio" aria-checked={shownTasks === k} className={`lnotion__chip${shownTasks === k ? ' is-active' : ''}${k === 'overdue' && tasks.overdue.length ? ' is-warn' : ''}`} onClick={() => setList(k)}>
-                        <b>{tasks[k].length}</b><span>{l}</span>
-                      </button>
-                    ))}
-                  </div>
-                  {tasks[shownTasks].length === 0 ? <p className="lpanel__mut">None. {tasks.open} open tasks in all.</p> : (
-                    <ul className="lpanel__list">
-                      {tasks[shownTasks].map((t, i) => (
-                        <li key={i} className="lnotion__row">
-                          <NLink href={t.page} className="lmedia__title">{t.title}</NLink>
-                          <span className="lmedia__meta">{[t.due && `due ${day(t.due)}`, t.status, t.project].filter(Boolean).join(' · ')}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </>
-              )}
-            </div>
-            <div className="lnotion__sec">
-              <h4>Recently edited</h4>
-              <NWhy s={data.recent} what="your pages" />
-              {data.recent?.state === 'ok' && (data.recent.data.length ? (
-                <ul className="lpanel__list">{data.recent.data.map((p, i) => <li key={i} className="lnotion__row"><NLink href={p.page} className="lmedia__title">{p.title}</NLink><span className="lmedia__meta">{p.kind === 'database' ? 'Database · ' : ''}{ago(p.at)} ago</span></li>)}</ul>
-              ) : <p className="lpanel__mut">Zubi’s Notion connection can’t see any pages yet.</p>)}
-            </div>
-            <div className="lnotion__sec">
-              <h4>Memories</h4>
-              {data.memories?.state === 'unshared' ? (
-                <p className="lpanel__mut">Notion keeps Memories to its own agents, so no connection can read it here.{data.links?.memories && <> <a href={data.links.memories} target="_blank" rel="noreferrer noopener">Open Memories in Notion</a></>}</p>
-              ) : <NWhy s={data.memories} what="the Memories database" />}
-              {data.memories?.state === 'ok' && (data.memories.data.length ? (
-                <ul className="lpanel__list">{data.memories.data.map((p, i) => <li key={i} className="lnotion__row"><NLink href={p.page} className="lmedia__title">{p.title}</NLink><span className="lmedia__meta">{[p.type, `${ago(p.at)} ago`].filter(Boolean).join(' · ')}</span></li>)}</ul>
-              ) : <p className="lpanel__mut">No memories yet.</p>)}
-            </div>
-          </>
+          <NotionViews data={data} />
         )}
       <AskZubi ask="Find in my Notion: " label="Ask Zubi about Notion" />
     </section>
+  );
+}
+
+// ---------- Notion views: the task list and post tracker shown the way Notion's own templates show them ----------
+
+type NView = 'todo' | 'table' | 'board' | 'calendar' | 'content';
+const NVIEWS: { id: NView; label: string; Icon: typeof ListChecks }[] = [
+  { id: 'todo', label: 'To-do', Icon: ListChecks },
+  { id: 'table', label: 'Table', Icon: Table2 },
+  { id: 'board', label: 'Board', Icon: SquareKanban },
+  { id: 'calendar', label: 'Calendar', Icon: CalendarDays },
+  { id: 'content', label: 'Content', Icon: Clapperboard },
+];
+const NVIEW_KEY = 'hz.notion.view';
+
+/** Local YYYY-MM-DD for a date (the owner's own day). */
+const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const addDays = (iso: string, n: number) => { const d = new Date(`${iso}T12:00:00`); d.setDate(d.getDate() + n); return isoDay(d); };
+
+/** What a Notion status means, for its colour and its board column. */
+type NKind = 'todo' | 'doing' | 'waiting' | 'blocked' | 'done';
+const kindOf = (status: string): NKind =>
+  /done|complete|implemented|shipped|published/i.test(status) ? 'done' : /block/i.test(status) ? 'blocked' : /wait|draft|review/i.test(status) ? 'waiting' : /progress|doing|working/i.test(status) ? 'doing' : 'todo';
+const KIND_ORDER: NKind[] = ['todo', 'doing', 'waiting', 'blocked', 'done'];
+/** Board and table order: the way work moves; a status that says nothing (Unknown, none) goes last. */
+const rankOf = (status: string) => (!status || /unknown/i.test(status) ? 99 : KIND_ORDER.indexOf(kindOf(status)));
+
+const NStatus = ({ s }: { s: string }) => <span className={`nstatus is-${kindOf(s)}`}>{s || 'No status'}</span>;
+
+type NPosts = Extract<NonNullable<NotionData['posts']>, { state: 'ok' }>['data'];
+
+function NotionViews({ data }: { data: NotionData }) {
+  const [view, setViewState] = useState<NView>(() => {
+    const v = lsGet(NVIEW_KEY);
+    return NVIEWS.some((x) => x.id === v) ? (v as NView) : 'todo';
+  });
+  const setView = (v: NView) => { setViewState(v); lsSet(NVIEW_KEY, v); };
+  const tasks = data.tasks?.state === 'ok' ? data.tasks.data : null;
+  const posts = data.posts?.state === 'ok' ? data.posts.data : null;
+  // An older answer (before `items`) still works: its buckets hold the tasks that matter most.
+  const items = tasks ? tasks.items ?? [...new Map([...tasks.overdue, ...tasks.today, ...tasks.soon, ...tasks.waiting].map((t) => [t.page || t.title, t])).values()] : [];
+  const done = tasks?.done ?? [];
+  const today = isoDay(new Date());
+  return (
+    <>
+      <div className="nviews" role="tablist" aria-label="Notion views">
+        {NVIEWS.map(({ id, label, Icon }) => (
+          <button key={id} type="button" role="tab" aria-selected={view === id} className={`nviews__tab${view === id ? ' is-active' : ''}`} onClick={() => setView(id)}>
+            <Icon size={13} strokeWidth={2} aria-hidden />{label}
+          </button>
+        ))}
+      </div>
+      {view === 'content' ? (
+        <>
+          <NWhy s={data.posts} what="the post tracker" />
+          {posts && <NContent posts={posts} />}
+        </>
+      ) : (
+        <>
+          <NWhy s={data.tasks} what="the task list" />
+          {tasks && (view === 'todo' ? <NTodo items={items} done={done} today={today} />
+            : view === 'table' ? <NTable items={items} today={today} />
+            : view === 'board' ? <NBoard items={items} done={done} today={today} />
+            : <NCalendar items={items} posts={posts?.upcoming ?? []} today={today} />)}
+        </>
+      )}
+    </>
+  );
+}
+
+/** To-do list: checkboxes grouped by when they are due. */
+function NTodo({ items, done, today }: { items: NTask[]; done: NTask[]; today: string }) {
+  const [showDone, setShowDone] = useState(false);
+  const week = addDays(today, 7);
+  const groups: { label: string; warn?: boolean; list: NTask[] }[] = [
+    { label: 'Overdue', warn: true, list: items.filter((t) => t.due && t.due < today) },
+    { label: 'Today', list: items.filter((t) => t.due === today) },
+    { label: 'Next 7 days', list: items.filter((t) => t.due > today && t.due <= week) },
+    { label: 'Later', list: items.filter((t) => t.due > week) },
+    { label: 'No date', list: items.filter((t) => !t.due) },
+  ].filter((g) => g.list.length);
+  if (!items.length && !done.length) return <p className="lpanel__mut">No open tasks. Nice.</p>;
+  const row = (t: NTask, i: number, isDone = false) => (
+    <li key={i} className={`ntodo__item${isDone ? ' is-done' : ''}`}>
+      <span className={`ntodo__box is-${isDone ? 'done' : kindOf(t.status)}`} aria-hidden>{isDone && <Check size={10} strokeWidth={3} />}</span>
+      <span className="ntodo__body">
+        <NLink href={t.page} className="ntodo__title">{t.title}</NLink>
+        <span className="lmedia__meta">{[t.due && day(t.due), t.status, t.project].filter(Boolean).join(' · ')}</span>
+      </span>
+    </li>
+  );
+  return (
+    <div className="ntodo">
+      {groups.map((g) => (
+        <div key={g.label} className="ntodo__group">
+          <h4 className={g.warn ? 'is-warn' : undefined}>{g.label} <span>{g.list.length}</span></h4>
+          <ul>{g.list.map((t, i) => row(t, i))}</ul>
+        </div>
+      ))}
+      {done.length > 0 && (
+        <div className="ntodo__group">
+          <button type="button" className="ntodo__more" onClick={() => setShowDone((v) => !v)} aria-expanded={showDone}>
+            {showDone ? 'Hide' : 'Show'} done this week ({done.length})
+          </button>
+          {showDone && <ul>{done.map((t, i) => row(t, i, true))}</ul>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Table: one row per task, sorted by the column header picked. */
+function NTable({ items, today }: { items: NTask[]; today: string }) {
+  const [sort, setSort] = useState<'due' | 'status' | 'title'>('due');
+  const rows = useMemo(() => {
+    const l = [...items];
+    const due = (t: NTask) => t.due || '9999';
+    if (sort === 'title') l.sort((a, b) => a.title.localeCompare(b.title));
+    else if (sort === 'status') l.sort((a, b) => rankOf(a.status) - rankOf(b.status) || a.status.localeCompare(b.status));
+    else l.sort((a, b) => (due(a) < due(b) ? -1 : due(a) > due(b) ? 1 : 0));
+    return l;
+  }, [items, sort]);
+  if (!items.length) return <p className="lpanel__mut">No open tasks.</p>;
+  const th = (k: typeof sort, label: string) => (
+    <th aria-sort={sort === k ? 'ascending' : 'none'}><button type="button" onClick={() => setSort(k)} className={sort === k ? 'is-on' : undefined}>{label}</button></th>
+  );
+  return (
+    <div className="ntable">
+      <table>
+        <thead><tr>{th('title', 'Task')}{th('status', 'Status')}{th('due', 'Due')}</tr></thead>
+        <tbody>
+          {rows.map((t, i) => (
+            <tr key={i}>
+              <td><NLink href={t.page} className="ntable__title">{t.title}</NLink>{t.project && <span className="ntable__proj">{t.project}</span>}</td>
+              <td><NStatus s={t.status} /></td>
+              <td className={t.due && t.due < today ? 'is-warn' : undefined}>{t.due ? day(t.due) : '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Board: a column per status, in the order work moves. */
+function NBoard({ items, done, today }: { items: NTask[]; done: NTask[]; today: string }) {
+  const cols = useMemo(() => {
+    const m = new Map<string, NTask[]>();
+    for (const t of [...items, ...done]) { const k = t.status || 'No status'; m.set(k, [...(m.get(k) ?? []), t]); }
+    return [...m.entries()].sort(([a], [b]) => rankOf(a) - rankOf(b));
+  }, [items, done]);
+  if (!cols.length) return <p className="lpanel__mut">No tasks to show.</p>;
+  return (
+    <div className="nboard" role="list">
+      {cols.map(([status, list]) => (
+        <div key={status} className={`nboard__col is-${kindOf(status)}`} role="listitem" aria-label={`${status}: ${list.length}`}>
+          <div className="nboard__head"><NStatus s={status} /><span>{list.length}</span></div>
+          {list.map((t, i) => (
+            <NLink key={i} href={t.page} className="nboard__card">
+              <span className="nboard__title">{t.title}</span>
+              {(t.due || t.project) && (
+                <span className="nboard__meta">
+                  {t.due && <span className={kindOf(status) !== 'done' && t.due < today ? 'is-warn' : undefined}>{day(t.due)}</span>}
+                  {t.project && <span className="lnotion__tag">{t.project}</span>}
+                </span>
+              )}
+            </NLink>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Calendar: a month of tasks by due date and posts by publish date; the picked day's list below. */
+function NCalendar({ items, posts, today }: { items: NTask[]; posts: NPost[]; today: string }) {
+  const [month, setMonth] = useState(() => today.slice(0, 7));
+  const [pick, setPick] = useState(today);
+  const byDay = useMemo(() => {
+    const m = new Map<string, { tasks: NTask[]; posts: NPost[] }>();
+    const at = (d: string) => { if (!m.has(d)) m.set(d, { tasks: [], posts: [] }); return m.get(d)!; };
+    for (const t of items) if (t.due) at(t.due).tasks.push(t);
+    for (const p of posts) if (p.at) at(isoDay(new Date(p.at))).posts.push(p);
+    return m;
+  }, [items, posts]);
+  const first = new Date(`${month}-01T12:00:00`);
+  const lead = (first.getDay() + 6) % 7; // weeks start on Monday
+  const days = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+  const cells: (string | null)[] = [...Array<null>(lead).fill(null), ...Array.from({ length: days }, (_, i) => `${month}-${String(i + 1).padStart(2, '0')}`)];
+  const shift = (n: number) => { const d = new Date(first); d.setMonth(d.getMonth() + n); setMonth(isoDay(d).slice(0, 7)); };
+  const sel = byDay.get(pick);
+  const undated = items.filter((t) => !t.due).length;
+  return (
+    <div className="ncal">
+      <div className="ncal__bar">
+        <button type="button" className="lpanel__icon" onClick={() => shift(-1)} aria-label="Previous month"><ChevronLeft size={14} /></button>
+        <b>{first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</b>
+        <button type="button" className="lpanel__icon" onClick={() => shift(1)} aria-label="Next month"><ChevronRight size={14} /></button>
+      </div>
+      <div className="ncal__grid">
+        {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => <span key={i} className="ncal__dow" aria-hidden>{d}</span>)}
+        {cells.map((d, i) => {
+          if (!d) return <span key={i} />;
+          const e = byDay.get(d);
+          const late = !!e?.tasks.length && d < today;
+          return (
+            <button key={i} type="button" aria-pressed={pick === d}
+              className={`ncal__day${d === today ? ' is-today' : ''}${pick === d ? ' is-pick' : ''}`} onClick={() => setPick(d)}
+              aria-label={`${day(d)}: ${e?.tasks.length ?? 0} tasks, ${e?.posts.length ?? 0} posts`}>
+              <span>{Number(d.slice(8))}</span>
+              <span className="ncal__dots" aria-hidden>
+                {e?.tasks.slice(0, 3).map((_, j) => <i key={`t${j}`} className={late ? 'is-warn' : 'is-task'} />)}
+                {e?.posts.slice(0, 2).map((_, j) => <i key={`p${j}`} className="is-post" />)}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="lnotion__sec">
+        <h4>{pick === today ? 'Today' : day(pick)}</h4>
+        {!sel || (!sel.tasks.length && !sel.posts.length) ? <p className="lpanel__mut">Nothing due{undated ? ` · ${undated} tasks have no date` : ''}.</p> : (
+          <ul className="lpanel__list">
+            {sel.tasks.map((t, i) => <li key={`t${i}`} className="ncal__item"><i className={pick < today ? 'is-warn' : 'is-task'} aria-hidden /><NLink href={t.page} className="lmedia__title">{t.title}</NLink><NStatus s={t.status} /></li>)}
+            {sel.posts.map((p, i) => <li key={`p${i}`} className="ncal__item"><i className="is-post" aria-hidden /><NLink href={p.page} className="lmedia__title">{p.title}</NLink><span className="lnotion__tag">{p.platform || 'Post'}</span></li>)}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Content calendar: what's scheduled next, then how the live posts are doing. */
+function NContent({ posts }: { posts: NPosts }) {
+  const upcoming = posts.upcoming ?? (posts.scheduled.next ? [posts.scheduled.next] : []);
+  return (
+    <div className="ncontent">
+      <div className="lnotion__sec">
+        <h4>Scheduled <span className="ncontent__n">{posts.scheduled.count}</span></h4>
+        {!upcoming.length ? <p className="lpanel__mut">Nothing scheduled.</p> : (
+          <ul className="lpanel__list">
+            {upcoming.map((p, i) => (
+              <li key={i} className="ncontent__row">
+                <span className="ncontent__date"><b>{new Date(p.at).getDate()}</b>{new Date(p.at).toLocaleDateString(undefined, { month: 'short' })}</span>
+                <NLink href={p.page} className="lmedia__title">{p.title}</NLink>
+                <span className="lnotion__tag">{p.platform || 'Post'}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <div className="lnotion__sec">
+        <h4>Live <span className="ncontent__n">{posts.totals.posts}</span></h4>
+        <dl className="sgrid__sum" aria-label={`Totals for ${posts.totals.posts} live posts`}>
+          <div><dd><Eye size={13} strokeWidth={2.2} aria-hidden />{big(posts.totals.views)}</dd><dt>Views</dt></div>
+          <div><dd><Heart size={13} strokeWidth={2.2} aria-hidden />{big(posts.totals.likes)}</dd><dt>Likes</dt></div>
+          <div><dd><MessageCircle size={13} strokeWidth={2.2} aria-hidden />{big(posts.totals.comments)}</dd><dt>Comments</dt></div>
+          <div><dd>{posts.fresh72}</dd><dt>First 72 h</dt></div>
+        </dl>
+        {posts.best && <p className="lnotion__line">Best this week: <NLink href={posts.best.link || posts.best.page}>{posts.best.title}</NLink> ({posts.best.platform}, {big(posts.best.views ?? 0)} views)</p>}
+        <ul className="lpanel__list">
+          {posts.latest.map((p, i) => (
+            <li key={i} className="lnotion__post">
+              <span className="lnotion__tag">{p.platform || '—'}</span>
+              <NLink href={p.link || p.page} className="lmedia__title">{p.title}</NLink>
+              <span className="lnotion__n"><Eye size={11} aria-hidden />{p.views === null ? '–' : big(p.views)} <Heart size={11} aria-hidden />{p.likes === null ? '–' : big(p.likes)}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
   );
 }
